@@ -216,15 +216,37 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, animDelay }) {
 function ExerciseSearch({ onSelect }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [results, setResults] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Close when clicking outside - since we are inline, we can just use onBlur loosely,
-  // but a timeout allows the click to register on the custom options first.
   const handleBlur = () => setTimeout(() => setOpen(false), 200);
 
-  const filtered = AVAILABLE_EXERCISES.filter((ex) =>
-    ex.name.toLowerCase().includes(query.toLowerCase()) ||
-    ex.muscle.toLowerCase().includes(query.toLowerCase())
-  );
+  useEffect(() => {
+    if (query.trim() === "") {
+        setResults([]);
+        return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+        setIsLoading(true);
+        try {
+            const res = await fetch(`http://localhost:5000/exercises/search?name=${encodeURIComponent(query)}`);
+            if (res.ok) {
+                const data = await res.json();
+                setResults(data);
+            } else {
+                setResults([]);
+            }
+        } catch (error) {
+            console.error("Failed to search exercises", error);
+            setResults([]);
+        } finally {
+            setIsLoading(false);
+        }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [query]);
 
   return (
     <div style={{ position: "relative", height: "150px", overflowY: "scroll", }}>
@@ -234,7 +256,7 @@ function ExerciseSearch({ onSelect }) {
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={handleBlur}
-        placeholder="Type to search exercises..."
+        placeholder="Type to search DB & API Ninjas..."
         style={{
           width: "100%",
           padding: "12px",
@@ -266,14 +288,17 @@ function ExerciseSearch({ onSelect }) {
             boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
           }}
         >
-          {filtered.length > 0 ? (
-            filtered.map((ex) => (
+          {isLoading ? (
+            <div style={{ padding: "12px", color: "var(--text-tertiary)", fontSize: "13px", textAlign: "center" }}>
+              Searching...
+            </div>
+          ) : results.length > 0 ? (
+            results.map((ex) => (
               <div
                 key={ex.id}
                 onMouseDown={(e) => {
-                  // use onMouseDown instead of onClick to fire before input's onBlur
                   e.preventDefault();
-                  onSelect(ex.id);
+                  onSelect(ex);
                   setQuery("");
                   setOpen(false);
                 }}
@@ -292,7 +317,7 @@ function ExerciseSearch({ onSelect }) {
                   {ex.name}
                 </div>
                 <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
-                  {ex.muscle}
+                  {ex.muscle_group || ex.muscle}
                 </div>
               </div>
             ))
@@ -316,6 +341,7 @@ export default function WorkoutPage() {
   const [elapsed, setElapsed] = useState(0);
   const [restTimer, setRestTimer] = useState(0);
   const [isResting, setIsResting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!started) return;
@@ -331,6 +357,7 @@ export default function WorkoutPage() {
   }, [isResting, restTimer]);
 
   const toggle = (ei, si) => {
+    if (isSaving) return;
     const key = `${ei}-${si}`;
     const nowDone = !completed[key];
     setCompleted((prev) => ({ ...prev, [key]: nowDone }));
@@ -367,17 +394,65 @@ export default function WorkoutPage() {
     newPlan.splice(exIdx, 1);
     setWorkoutPlan(newPlan);
   };
-  const addExercise = (catalogId) => {
-    if (!catalogId) return;
-    const template = AVAILABLE_EXERCISES.find((e) => e.id === catalogId);
-    if (!template) return;
+  const addExercise = (exercise) => {
+    if (!exercise) return;
     const newPlan = [...workoutPlan];
     newPlan.push({
-      ...template,
-      id: Date.now(), // Generate a unique instance ID
+      ...exercise,
+      muscle: exercise.muscle_group || exercise.muscle,
+      accentColor: "#30D158",
+      exerciseId: exercise.id,
+      id: Date.now(), // Generate a unique instance ID for React
       sets: [{ reps: 10, weight: 0, rir: 0 }],
     });
     setWorkoutPlan(newPlan);
+  };
+
+  const finishWorkout = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    
+    try {
+        const workoutRes = await fetch("http://localhost:5000/workouts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: 1, name: "Push Day API Sync", notes: `Finished with ${Math.round(overallPct)}% completion in ${fmt(elapsed)}` })
+        });
+        
+        if (!workoutRes.ok) throw new Error("Failed to create workout");
+        const workoutData = await workoutRes.json();
+        const workoutId = workoutData.id;
+        
+        // Loop over completed sets and POST them to PostgreSQL backend
+        for (let ei = 0; ei < workoutPlan.length; ei++) {
+           const exercise = workoutPlan[ei];
+           const exId = exercise.exerciseId || exercise.id || 1; 
+           
+           for (let si = 0; si < exercise.sets.length; si++) {
+               if (completed[`${ei}-${si}`]) {
+                   const set = exercise.sets[si];
+                   await fetch(`http://localhost:5000/workouts/${workoutId}/sets`, {
+                       method: "POST",
+                       headers: { "Content-Type": "application/json" },
+                       body: JSON.stringify({
+                           exerciseId: exId,
+                           setOrder: si + 1,
+                           reps: set.reps,
+                           weight: set.weight,
+                           rir: set.rir || 0
+                       })
+                   });
+               }
+           }
+        }
+        
+        setLastWorkoutTime(new Date());
+        setIsSaving(false);
+    } catch (err) {
+        console.error("Error saving workout to database:", err);
+        setIsSaving(false);
+        setLastWorkoutTime(new Date()); 
+    }
   };
 
   /* ── Edit screen ──────────────────────────────────────────────── */
@@ -765,7 +840,8 @@ export default function WorkoutPage() {
 
       {/* ── Finish Button ─────────────────────────────────── */}
       <button
-        onClick={() => setLastWorkoutTime(new Date())}
+        onClick={finishWorkout}
+        disabled={isSaving}
         style={{
           width: "100%",
           padding: "16px",
@@ -779,12 +855,13 @@ export default function WorkoutPage() {
           fontSize: "15px",
           fontWeight: 800,
           letterSpacing: "0.5px",
-          cursor: "pointer",
+          cursor: isSaving ? "wait" : "pointer",
           transition: "all 0.3s",
           marginTop: "4px",
+          opacity: isSaving ? 0.7 : 1,
         }}
       >
-        {overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
+        {isSaving ? "Saving to Database..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
       </button>
     </PageShell>
   );
