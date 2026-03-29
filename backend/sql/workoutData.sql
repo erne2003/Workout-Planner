@@ -1,4 +1,3 @@
-create database workout_planner;
 
 
 CREATE TABLE users (
