@@ -1,37 +1,59 @@
 const pool = require("../config/db");
 
-// Create a new workout
+// ── Workouts ──────────────────────────────────────────────
+
 const createWorkout = async ({ userId, name, notes }) => {
     const result = await pool.query(
         `INSERT INTO workouts (user_id, name, notes)
-     VALUES ($1, $2, $3)
-     RETURNING *`,
+         VALUES ($1, $2, $3)
+         RETURNING *`,
         [userId, name, notes]
     );
     return result.rows[0];
 };
 
-// Get all workouts for a user
 const getWorkoutsByUser = async (userId) => {
     const result = await pool.query(
         `SELECT * FROM workouts
-     WHERE user_id = $1
-     ORDER BY created_at DESC`,
+         WHERE user_id = $1
+         ORDER BY created_at DESC`,
         [userId]
     );
     return result.rows;
 };
 
-// Get a single workout by ID
 const getWorkoutById = async (workoutId) => {
-    const result = await pool.query(
+    const workoutResult = await pool.query(
         `SELECT * FROM workouts WHERE id = $1`,
         [workoutId]
+    );
+    const workout = workoutResult.rows[0];
+    if (!workout) return null;
+
+    const setsResult = await pool.query(
+        `SELECT ws.*, e.name AS exercise_name, e.muscle_group
+         FROM workout_sets ws
+         JOIN exercises e ON ws.exercise_id = e.id
+         WHERE ws.workout_id = $1
+         ORDER BY ws.set_order ASC`,
+        [workoutId]
+    );
+    workout.sets = setsResult.rows;
+    return workout;
+};
+
+const updateWorkout = async (workoutId, { name, notes }) => {
+    const result = await pool.query(
+        `UPDATE workouts
+         SET name  = COALESCE($1, name),
+             notes = COALESCE($2, notes)
+         WHERE id = $3
+         RETURNING *`,
+        [name, notes, workoutId]
     );
     return result.rows[0];
 };
 
-// Delete a workout
 const deleteWorkout = async (id) => {
     const result = await pool.query(
         `DELETE FROM workouts WHERE id = $1 RETURNING *`,
@@ -40,39 +62,11 @@ const deleteWorkout = async (id) => {
     return result.rows[0];
 };
 
-// Delete all sets for a workout (useful before deleting workout if no CASCADE)
-const deleteWorkoutSetsByWorkoutId = async (workoutId) => {
-    const result = await pool.query(
-        `DELETE FROM workout_sets WHERE workout_id = $1 RETURNING *`,
-        [workoutId]
-    );
-    return result.rows;
-};
+// ── Workout Sets ──────────────────────────────────────────
 
-// Create a Workout Set
-const createWorkoutSet = async ({ workoutId, exerciseId, setOrder, reps, weight, rir }) => {
-    const result = await pool.query(
-        `INSERT INTO workout_sets (workout_id, exercise_id, set_order, reps, weight, rir)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`,
-        [workoutId, exerciseId, setOrder, reps, weight, rir]
-    );
-    return result.rows[0];
-};
-
-// Delete a single Workout Set
-const deleteWorkoutSet = async (setId) => {
-    const result = await pool.query(
-        `DELETE FROM workout_sets WHERE id = $1 RETURNING *`,
-        [setId]
-    );
-    return result.rows[0];
-};
-
-// Get all sets for a workout
 const getWorkoutSets = async (workoutId) => {
     const result = await pool.query(
-        `SELECT ws.*, e.name as exercise_name, e.muscle_group
+        `SELECT ws.*, e.name AS exercise_name, e.muscle_group
          FROM workout_sets ws
          JOIN exercises e ON ws.exercise_id = e.id
          WHERE ws.workout_id = $1
@@ -82,13 +76,85 @@ const getWorkoutSets = async (workoutId) => {
     return result.rows;
 };
 
-module.exports = { 
-    createWorkout, 
-    getWorkoutsByUser, 
+const createWorkoutSet = async ({ workoutId, exerciseId, setOrder, reps, weight, rir }) => {
+    const result = await pool.query(
+        `INSERT INTO workout_sets (workout_id, exercise_id, set_order, reps, weight, rir)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [workoutId, exerciseId, setOrder, reps, weight, rir ?? null]
+    );
+    return result.rows[0];
+};
+
+const updateWorkoutSet = async (setId, { reps, weight, rir, setOrder }) => {
+    const result = await pool.query(
+        `UPDATE workout_sets
+         SET reps      = COALESCE($1, reps),
+             weight    = COALESCE($2, weight),
+             rir       = COALESCE($3, rir),
+             set_order = COALESCE($4, set_order)
+         WHERE id = $5
+         RETURNING *`,
+        [reps, weight, rir, setOrder, setId]
+    );
+    return result.rows[0];
+};
+
+const deleteWorkoutSet = async (setId) => {
+    const result = await pool.query(
+        `DELETE FROM workout_sets WHERE id = $1 RETURNING *`,
+        [setId]
+    );
+    return result.rows[0];
+};
+
+const deleteWorkoutSetsByWorkoutId = async (workoutId) => {
+    const result = await pool.query(
+        `DELETE FROM workout_sets WHERE workout_id = $1 RETURNING *`,
+        [workoutId]
+    );
+    return result.rows;
+};
+
+// ── NEW: Last session sets for a given exercise + user ────
+//
+// Returns all sets (ordered by set_order) from the most recent
+// workout that contains at least one set of this exercise.
+// Used by the frontend to show "previous" ghost data on each set row.
+//
+const getLastSetsForExercise = async (userId, exerciseId) => {
+    const result = await pool.query(
+        `SELECT ws.set_order, ws.reps, ws.weight, ws.rir
+         FROM workout_sets ws
+         JOIN workouts w ON ws.workout_id = w.id
+         WHERE w.user_id   = $1
+           AND ws.exercise_id = $2
+           AND w.id = (
+               -- most recent workout for this user that has this exercise
+               SELECT w2.id
+               FROM workouts w2
+               JOIN workout_sets ws2 ON ws2.workout_id = w2.id
+               WHERE w2.user_id    = $1
+                 AND ws2.exercise_id = $2
+               ORDER BY w2.created_at DESC
+               LIMIT 1
+           )
+         ORDER BY ws.set_order ASC`,
+        [userId, exerciseId]
+    );
+    return result.rows;
+};
+
+module.exports = {
+    createWorkout,
+    getWorkoutsByUser,
     getWorkoutById,
+    updateWorkout,
     deleteWorkout,
-    deleteWorkoutSetsByWorkoutId,
+    getWorkoutSets,
     createWorkoutSet,
+    updateWorkoutSet,
     deleteWorkoutSet,
-    getWorkoutSets
+    deleteWorkoutSetsByWorkoutId,
+    getLastSetsForExercise,   // ← NEW
 };
