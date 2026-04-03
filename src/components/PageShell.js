@@ -87,7 +87,7 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
               color: "#fff",
             }}
           >
-            JD
+            EC
           </div>
         </div>
       </header>

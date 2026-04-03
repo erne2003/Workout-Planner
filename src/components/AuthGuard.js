@@ -10,7 +10,8 @@ export default function AuthGuard({ children }) {
     useEffect(() => {
         const userId = localStorage.getItem("userId");
         if (!userId && pathname !== "/login") {
-            router.replace("/login");
+            // router.replace("/login");
+            setChecked(true);
         } else {
             setChecked(true);
         }

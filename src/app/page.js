@@ -98,7 +98,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <PageShell title={`${greeting()}, JD`} subtitle={formatDate()}>
+    <PageShell title={`${greeting()}, EC`} subtitle={formatDate()}>
       {/* ── Quick Stats ──────────────────────────────────── */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
         <StatCard label="This Week" value="4" unit="sessions" color="#0A84FF" delay={1} />
@@ -202,8 +202,8 @@ export default function HomePage() {
         <div style={{ display: "flex", gap: "0", marginBottom: "14px" }}>
           {[
             { label: "Duration", value: LAST_WORKOUT.duration },
-            { label: "Volume",   value: LAST_WORKOUT.volume },
-            { label: "Sets",     value: `${LAST_WORKOUT.sets} sets` },
+            { label: "Volume", value: LAST_WORKOUT.volume },
+            { label: "Sets", value: `${LAST_WORKOUT.sets} sets` },
           ].map(({ label, value }, i) => (
             <div
               key={label}
