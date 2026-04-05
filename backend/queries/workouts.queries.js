@@ -13,13 +13,26 @@ const createWorkout = async ({ userId, name, notes }) => {
 };
 
 const getWorkoutsByUser = async (userId) => {
-    const result = await pool.query(
+    const workoutsRes = await pool.query(
         `SELECT * FROM workouts
          WHERE user_id = $1
          ORDER BY created_at DESC`,
         [userId]
     );
-    return result.rows;
+    const workouts = workoutsRes.rows;
+
+    for (let workout of workouts) {
+        const setsResult = await pool.query(
+            `SELECT ws.*, e.name AS exercise_name, e.muscle_group, e.name
+             FROM workout_sets ws
+             JOIN exercises e ON ws.exercise_id = e.id
+             WHERE ws.workout_id = $1
+             ORDER BY ws.set_order ASC`,
+            [workout.id]
+        );
+        workout.sets = setsResult.rows;
+    }
+    return workouts;
 };
 
 const getWorkoutById = async (workoutId) => {

@@ -6,9 +6,8 @@ import { OVERALL_STRENGTH_SCORE, WORKOUT_EXERCISES } from "../lib/data";
 import {
   RECOVERY_COLOR,
   RECOVERY_LABEL,
-  getLastWorkoutTime,
   getMuscleSoreness,
-  computeRecovery,
+  computeDynamicRecovery,
 } from "../lib/recovery";
 
 /* ─── Helpers ─────────────────────────────────────────────── */
@@ -27,14 +26,7 @@ function formatDate() {
   });
 }
 
-const LAST_WORKOUT = {
-  name: "Push Day",
-  subtitle: "Chest · Triceps · Shoulders",
-  date: "Yesterday",
-  duration: "52 min",
-  volume: "8,420 lbs",
-  sets: WORKOUT_EXERCISES.reduce((acc, ex) => acc + ex.sets.length, 0),
-};
+
 
 const RECOVERY_MUSCLES = ["chest", "shoulders", "quads", "lats"];
 
@@ -89,20 +81,98 @@ function StatCard({ label, value, unit, color = "#fff", delay }) {
 export default function HomePage() {
   const router = useRouter();
 
-  // ── Recovery state (time-based, refreshed each render) ──
+  const [sessionCount, setSessionCount] = useState(0);
+  const [totalVolume, setTotalVolume] = useState(0);
+  const [lastWorkout, setLastWorkout] = useState({
+    name: "No Sessions Logged",
+    subtitle: "Start a workout to see stats here",
+    date: "-",
+    duration: "0 min",
+    volume: "0 lbs",
+    sets: 0,
+    exercises: [] // populated by name and sets mapping
+  });
+
   const [recoveryData, setRecoveryData] = useState({});
+
   useEffect(() => {
-    const lastTime = getLastWorkoutTime();
-    const overrides = getMuscleSoreness();
-    setRecoveryData(computeRecovery(RECOVERY_MUSCLES, lastTime, overrides));
+    // 2. Fetch and aggregate historical workout data dynamically
+    const fetchDashboardDetails = async () => {
+      try {
+        const uId = localStorage.getItem("userId") || 1;
+        const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // 1. Setup local recovery logic DYNAMICALLY per muscle
+        const overrides = getMuscleSoreness();
+        setRecoveryData(computeDynamicRecovery(RECOVERY_MUSCLES, data, overrides));
+
+        if (data.length > 0) {
+          // -- Aggregates: the Last 7 Days --
+          const now = new Date();
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(now.getDate() - 7);
+
+          let weekSessions = 0;
+          let weekVolTotal = 0;
+
+          data.forEach(w => {
+            const wDate = new Date(w.created_at);
+            if (wDate >= oneWeekAgo) {
+              weekSessions++;
+              w.sets?.forEach(s => { weekVolTotal += (s.reps * s.weight); });
+            }
+          });
+
+          setSessionCount(weekSessions);
+          setTotalVolume((weekVolTotal / 1000).toFixed(1)); // formatted in "k lbs"
+
+          // -- Profile: The Last Workout --
+          const lw = data[0];
+          let lwVol = 0;
+          const exMap = {};
+
+          lw.sets?.forEach(s => {
+            lwVol += (s.reps * s.weight);
+            const nm = s.name || s.exercise_name || "Unknown Exercise";
+            if (!exMap[nm]) { exMap[nm] = 0; }
+            exMap[nm]++;
+          });
+
+          // Check if completion time was written in notes string securely
+          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (\d+:\d+)/) : null;
+          const dStr = dMatch ? `${dMatch[1]} min` : "N/A";
+
+          setLastWorkout({
+            name: lw.name || "Workout Session",
+            subtitle: Object.keys(exMap).slice(0, 3).join(" · ") || "-",
+            date: new Date(lw.created_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
+            duration: dStr,
+            volume: `${lwVol.toLocaleString()} lbs`,
+            sets: lw.sets?.length || 0,
+            exercises: Object.entries(exMap).map(([nm, ct], idx) => ({
+              id: `ex-${idx}`,
+              name: nm,
+              setsLength: ct,
+              accentColor: ["#0A84FF", "#FF2D55", "#FFD60A", "#30D158", "#BF5AF2"][idx % 5]
+            }))
+          });
+        }
+      } catch (e) {
+        console.error("Dashboard pull failed", e);
+      }
+    };
+
+    fetchDashboardDetails();
   }, []);
 
   return (
     <PageShell title={`${greeting()}, EC`} subtitle={formatDate()}>
       {/* ── Quick Stats ──────────────────────────────────── */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-        <StatCard label="This Week" value="4" unit="sessions" color="#0A84FF" delay={1} />
-        <StatCard label="Volume" value="34.2" unit="k lbs" color="#FFD60A" delay={2} />
+        <StatCard label="This Week" value={sessionCount} unit="sessions" color="#0A84FF" delay={1} />
+        <StatCard label="Volume" value={totalVolume} unit={<>k<span style={{ fontSize: "20px", marginLeft: "8px" }}>lbs</span></>} color="#FFD60A" delay={2} />
         <StatCard label="Strength" value={OVERALL_STRENGTH_SCORE} unit="/ 100" color="#30D158" delay={3} />
       </div>
 
@@ -174,7 +244,7 @@ export default function HomePage() {
               fontWeight: 800,
             }}
           >
-            {LAST_WORKOUT.name}
+            {lastWorkout.name}
           </span>
           <span
             style={{
@@ -183,7 +253,7 @@ export default function HomePage() {
               fontWeight: 500,
             }}
           >
-            {LAST_WORKOUT.date}
+            {lastWorkout.date}
           </span>
         </div>
         <div
@@ -195,15 +265,15 @@ export default function HomePage() {
             marginBottom: "14px",
           }}
         >
-          {LAST_WORKOUT.subtitle}
+          {lastWorkout.subtitle}
         </div>
 
         {/* Stats row */}
         <div style={{ display: "flex", gap: "0", marginBottom: "14px" }}>
           {[
-            { label: "Duration", value: LAST_WORKOUT.duration },
-            { label: "Volume", value: LAST_WORKOUT.volume },
-            { label: "Sets", value: `${LAST_WORKOUT.sets} sets` },
+            { label: "Duration", value: lastWorkout.duration },
+            { label: "Volume", value: lastWorkout.volume },
+            { label: "Sets", value: `${lastWorkout.sets} sets` },
           ].map(({ label, value }, i) => (
             <div
               key={label}
@@ -239,7 +309,7 @@ export default function HomePage() {
 
         {/* Exercise list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {WORKOUT_EXERCISES.map((ex) => (
+          {lastWorkout.exercises.map((ex) => (
             <div
               key={ex.id}
               style={{
@@ -271,7 +341,7 @@ export default function HomePage() {
                   fontWeight: 500,
                 }}
               >
-                {ex.sets.length} sets
+                {ex.setsLength} sets
               </span>
             </div>
           ))}

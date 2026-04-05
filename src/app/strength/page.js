@@ -3,9 +3,10 @@ import { useEffect, useState, useMemo } from "react";
 import PageShell from "../../components/PageShell";
 import { OVERALL_STRENGTH_SCORE, PERSONAL_RECORDS } from "../../lib/data";
 import {
-  getLastWorkoutTime,
+  RECOVERY_COLOR,
+  getStatusFromPct,
   getMuscleSoreness,
-  computeRecovery,
+  computeDynamicRecovery,
 } from "../../lib/recovery";
 
 /* ─── Overall Score Ring ────────────────────────────────────── */
@@ -122,9 +123,9 @@ function OverallRing({ score }) {
       {/* Quick stats row */}
       <div style={{ display: "flex", justifyContent: "space-around" }}>
         {[
-          { label: "Strength Index", val: "4.2×", color: "#0A84FF" },
-          { label: "Body Weight", val: "185 lbs", color: "var(--text-primary)" },
-          { label: "Training Age", val: "3 yrs", color: "#FF9F0A" },
+          { label: "Strength Index", val: "0.0×", color: "#0A84FF" },
+          { label: "Body Weight", val: "0 lbs", color: "var(--text-primary)" },
+          { label: "Training Age", val: "0 yrs", color: "#FF9F0A" },
         ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: "center" }}>
             <div
@@ -153,10 +154,10 @@ function LiftCard({ liftName, weight, bw, delay }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = setTimeout(() => setMounted(true), 150); return () => clearTimeout(t); }, []);
 
-  const multiplier = weight / bw;
+  const multiplier = bw > 0 ? (weight / bw) : 0;
   
   // Example brackets: Novice, Intermediate, Advanced, Elite
-  let grade = "Novice";
+  let grade = "Unassigned";
   let gradeColor = "var(--text-secondary)";
   let pct = 0;
 
@@ -447,7 +448,7 @@ function MuscleRadar({ scores }) {
 
 /* ─── Page ──────────────────────────────────────────────────── */
 export default function StrengthPage() {
-  const userBW = 185; // Hardcoded Body Weight
+  const userBW = 0; // Hardcoded Body Weight, later dynamically hooked
 
   // 1. Fetch time-based recovery for all muscles
   const ALL_MUSCLES = [
@@ -456,40 +457,32 @@ export default function StrengthPage() {
   ];
   const [recoveryData, setRecoveryData] = useState({});
   useEffect(() => {
-    const lastTime = getLastWorkoutTime();
-    const overrides = getMuscleSoreness();
-    setRecoveryData(computeRecovery(ALL_MUSCLES, lastTime, overrides));
+    const fetchRecovery = async () => {
+      try {
+        const uId = localStorage.getItem("userId") || 1;
+        const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+        const data = res.ok ? await res.json() : [];
+        const overrides = getMuscleSoreness();
+        setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, data, overrides));
+      } catch (e) {
+        console.error("Failed fetching muscle recovery profiles", e);
+      }
+    };
+    fetchRecovery();
   }, []);
 
-  // 2. Map muscle recovery % into aggregate STRENGTH_SCORES
-  const dynamicScores = useMemo(() => {
-    // Helper to average multiple muscle recovery percentages safely
-    const avgScore = (keys) => {
-      let sum = 0, count = 0;
-      keys.forEach((k) => {
-        if (recoveryData[k]) {
-          sum += recoveryData[k].pct;
-          count++;
-        }
-      });
-      return count ? Math.round(sum / count) : 0;
-    };
+  // 2. Map fixed base STRENGTH_SCORES to 0 globally, pending the user's manual config screen implementation.
+  const dynamicScores = [
+      { muscle: "Chest",     score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
+      { muscle: "Back",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
+      { muscle: "Shoulders", score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
+      { muscle: "Arms",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
+      { muscle: "Legs",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
+      { muscle: "Core",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
+  ];
 
-    return [
-      { muscle: "Chest",     score: avgScore(["chest"]), color: "#0A84FF", prev: 78 },
-      { muscle: "Back",      score: avgScore(["lats"]), color: "#30D158", prev: 87 },
-      { muscle: "Shoulders", score: avgScore(["shoulders"]), color: "#FF9F0A", prev: 71 },
-      { muscle: "Arms",      score: avgScore(["biceps", "triceps"]), color: "#BF5AF2", prev: 65 },
-      { muscle: "Legs",      score: avgScore(["quads", "hamstrings", "calves", "glutes"]), color: "#FF2D55", prev: 52 },
-      { muscle: "Core",      score: avgScore(["core"]), color: "#FFD60A", prev: 84 },
-    ];
-  }, [recoveryData]);
-
-  // If recoveryData is empty (initial render mount), maybe compute dummy scores so radar draws properly
-  const safeScores = Object.keys(recoveryData).length > 0 ? dynamicScores : dynamicScores;
-  
   // Re-calculate the overall average based on these new dynamic scores
-  const derivedOverall = Math.round(dynamicScores.reduce((a, b) => a + b.score, 0) / 6) || OVERALL_STRENGTH_SCORE;
+  const derivedOverall = 0;
 
   return (
     <PageShell title="Strength" subtitle="Analytics · Big Lifts & Recovery">
@@ -514,7 +507,7 @@ export default function StrengthPage() {
           Muscle Readiness Radar
         </div>
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <MuscleRadar scores={safeScores} />
+          <MuscleRadar scores={dynamicScores} />
         </div>
       </div>
 
@@ -554,12 +547,12 @@ export default function StrengthPage() {
           marginTop: "16px",
         }}
       >
-        Muscle Group Breakdown (Recovery %)
+        Muscle Group Breakdown (Strength Index)
       </div>
 
       {/* ── Strength rows ─────────────────────────────────── */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {[...safeScores].sort((a, b) => b.score - a.score).map((item, i) => (
+        {[...dynamicScores].map((item, i) => (
           <StrengthRow key={item.muscle} item={item} delay={Math.min(i + 6, 8)} />
         ))}
       </div>

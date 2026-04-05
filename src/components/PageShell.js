@@ -1,6 +1,6 @@
 import BottomNav from "./BottomNav";
 
-export default function PageShell({ title, subtitle, badge, badgeColor = "badge-blue", children }) {
+export default function PageShell({ title, subtitle, badge, badgeColor = "badge-blue", backAction, children }) {
   return (
     <div
       style={{
@@ -33,6 +33,14 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
       >
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+            {backAction && (
+              <button 
+                onClick={backAction} 
+                style={{ background: "none", border: "none", color: "var(--text-tertiary)", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 4px 0 0" }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+            )}
             <h1
               style={{
                 fontFamily: "var(--font-display)",

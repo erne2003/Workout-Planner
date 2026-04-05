@@ -15,22 +15,31 @@
  */
 
 export const RECOVERY_COLOR = {
-  fresh:    "#30D158",
-  moderate: "#FF9F0A",
-  sore:     "#FF2D55",
+  fully_recovered:     "#30D158", // Green ✅
+  mostly_recovered:    "#FFD60A", // Yellow 🟡
+  partially_recovered: "#FF9F0A", // Orange 🟠
+  not_recovered:       "#FF2D55", // Red 🔴
 };
 
 export const RECOVERY_LABEL = {
-  fresh:    "Fresh",
-  moderate: "Moderate",
-  sore:     "Sore",
+  fully_recovered:     "Fully Recovered",
+  mostly_recovered:    "Mostly Recovered",
+  partially_recovered: "Partially Recovered",
+  not_recovered:       "Not Recovered",
 };
 
-/** Derive status from hours elapsed since the last workout. */
+/** Map percentage cleanly to the configured statuses */
+export function getStatusFromPct(pct) {
+  if (pct >= 80) return "fully_recovered";
+  if (pct >= 60) return "mostly_recovered";
+  if (pct >= 40) return "partially_recovered";
+  return "not_recovered";
+}
+
+/** Derive status strictly from hours elapsed dynamically mapping to smooth percentage logic */
 export function statusFromHours(hours) {
-  if (hours >= 24) return "fresh";
-  if (hours >= 12) return "moderate";
-  return "sore";
+  const pct = Math.min(Math.round((hours / 24) * 100), 100);
+  return getStatusFromPct(pct);
 }
 
 /** Percentage (0-100) to fill the bar, based purely on hours (caps at 100 after 24h). */
@@ -94,9 +103,10 @@ export function computeRecovery(muscles, lastWorkoutTime, manualOverrides) {
     
     // If there's a manual override, enforce a baseline pct so it displays reasonably in the UI
     if (manual) {
-      if (manual === "fresh") pct = 100;
-      else if (manual === "moderate") pct = 60;
-      else if (manual === "sore") pct = 20;
+      if (manual === "fully_recovered") pct = 100;
+      else if (manual === "mostly_recovered") pct = 70;
+      else if (manual === "partially_recovered") pct = 50;
+      else if (manual === "not_recovered") pct = 20;
     }
 
     result[muscle] = {
@@ -106,5 +116,57 @@ export function computeRecovery(muscles, lastWorkoutTime, manualOverrides) {
       hours,
     };
   });
+  return result;
+}
+
+/**
+ * Compute recovery dynamically per-muscle by scanning raw `/workouts` history.
+ * Aggressively scans chronologically discovering the explicit last entry per muscle mapped structurally.
+ */
+export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
+  const now = Date.now();
+  const lastHit = {};
+
+  // workoutsData is typically sorted DESC (newest first). 
+  // We just need the first matched date for each specific muscle.
+  workoutsData.forEach(w => {
+    const wDate = new Date(w.created_at).getTime();
+    w.sets?.forEach(s => {
+      const nm = (s.muscle_group || "").toLowerCase();
+      // If the targeted muscle hasn't been tracked yet, or if this date is magically newer string
+      if (nm && (!lastHit[nm] || wDate > lastHit[nm])) {
+        lastHit[nm] = wDate;
+      }
+    });
+  });
+
+  const result = {};
+  muscles.forEach(muscle => {
+    const mKey = muscle.toLowerCase();
+    const manual = manualOverrides[mKey] ?? null;
+
+    // If never hit, hours = Infinity (fully recovered)
+    const hours = lastHit[mKey] ? (now - lastHit[mKey]) / 3600000 : Infinity;
+    const timeStatus = statusFromHours(hours);
+    const status = manual ?? timeStatus;
+
+    let pct = recoveryPct(hours);
+    if (hours === Infinity) pct = 100; // Force 100% physically if never tracked
+
+    if (manual) {
+      if (manual === "fully_recovered") pct = 100;
+      else if (manual === "mostly_recovered") pct = 70;
+      else if (manual === "partially_recovered") pct = 50;
+      else if (manual === "not_recovered") pct = 20;
+    }
+
+    result[muscle] = {
+      status,
+      pct,
+      isManual: !!manual,
+      hours: hours === Infinity ? 0 : hours
+    };
+  });
+
   return result;
 }

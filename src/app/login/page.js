@@ -40,7 +40,19 @@ export default function LoginPage() {
             } else {
                 localStorage.setItem("userId", data.id);
                 localStorage.setItem("userName", data.name);
-                router.replace("/");
+                
+                // Intercept dashboard to verify physical baseline was provided
+                try {
+                    const metricsReq = await fetch(`http://localhost:5000/metrics?userId=${data.id}`);
+                    const metrics = await metricsReq.json();
+                    if (metrics.length === 0) {
+                        router.replace("/onboarding");
+                    } else {
+                        router.replace("/");
+                    }
+                } catch {
+                    router.replace("/");
+                }
             }
         } catch {
             setError("Cannot reach server. Is the backend running?");
