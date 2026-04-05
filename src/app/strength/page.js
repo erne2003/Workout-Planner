@@ -10,7 +10,7 @@ import {
 } from "../../lib/recovery";
 
 /* ─── Overall Score Ring ────────────────────────────────────── */
-function OverallRing({ score }) {
+function OverallRing({ score, bw, age, index }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = setTimeout(() => setMounted(true), 100); return () => clearTimeout(t); }, []);
 
@@ -20,6 +20,7 @@ function OverallRing({ score }) {
 
   const grade = score >= 90 ? "Elite" : score >= 75 ? "Advanced" : score >= 60 ? "Intermediate" : "Developing";
   const gradeColor = score >= 90 ? "#FFD60A" : score >= 75 ? "#30D158" : score >= 60 ? "#0A84FF" : "#FF9F0A";
+  const percentile = score >= 90 ? "2%" : score >= 75 ? "8%" : score >= 60 ? "15%" : "45%";
 
   return (
     <div
@@ -114,7 +115,7 @@ function OverallRing({ score }) {
         {grade}
       </div>
       <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-        Top 18% of athletes your level
+        Top {percentile} of athletes your level
       </div>
 
       {/* Divider */}
@@ -123,9 +124,9 @@ function OverallRing({ score }) {
       {/* Quick stats row */}
       <div style={{ display: "flex", justifyContent: "space-around" }}>
         {[
-          { label: "Strength Index", val: "0.0×", color: "#0A84FF" },
-          { label: "Body Weight", val: "0 lbs", color: "var(--text-primary)" },
-          { label: "Training Age", val: "0 yrs", color: "#FF9F0A" },
+          { label: "Strength Index", val: `${index || "0.0"}×`, color: "#0A84FF" },
+          { label: "Body Weight", val: bw ? `${Math.round(bw)} lbs` : "0 lbs", color: "var(--text-primary)" },
+          { label: "Training Age", val: age ? `${age} yrs` : "0 yrs", color: "#FF9F0A" },
         ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: "center" }}>
             <div
@@ -164,18 +165,21 @@ function LiftCard({ liftName, weight, bw, delay }) {
   if (liftName === "bench") {
     if (multiplier >= 1.5)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
     else if (multiplier >= 1.2) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
-    else if (multiplier >= 1.0) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 50; }
-    else { pct = 25; }
+    else if (multiplier >= 1.0) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
+    else if (multiplier >= 0.7) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
+    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = 20; }
   } else if (liftName === "squat") {
     if (multiplier >= 2.0)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
     else if (multiplier >= 1.5) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
-    else if (multiplier >= 1.2) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 50; }
-    else { pct = 25; }
+    else if (multiplier >= 1.2) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
+    else if (multiplier >= 0.9) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
+    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = 20; }
   } else if (liftName === "deadlift") {
     if (multiplier >= 2.5)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
     else if (multiplier >= 2.0) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
-    else if (multiplier >= 1.5) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 50; }
-    else { pct = 25; }
+    else if (multiplier >= 1.5) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
+    else if (multiplier >= 1.1) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
+    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = 20; }
   }
 
   return (
@@ -308,7 +312,8 @@ function StrengthRow({ item, delay }) {
 }
 
 /* ─── Personal Record Card ──────────────────────────────────── */
-function PRCard() {
+function PRCard({ prData }) {
+  if (!prData) return null;
   return (
     <div className="glass-card animate-fade-up delay-4" style={{ padding: "16px 20px", marginBottom: "12px" }}>
       <div
@@ -324,7 +329,7 @@ function PRCard() {
         Personal Records
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
-        {Object.entries(PERSONAL_RECORDS).map(([lift, data]) => (
+        {Object.entries(prData).map(([lift, data]) => (
           <div key={lift}>
             <div
               style={{
@@ -448,7 +453,21 @@ function MuscleRadar({ scores }) {
 
 /* ─── Page ──────────────────────────────────────────────────── */
 export default function StrengthPage() {
-  const userBW = 0; // Hardcoded Body Weight, later dynamically hooked
+  const [metrics, setMetrics] = useState({ weight: 0, trainingYears: 0 });
+  const [prs, setPrs] = useState({ 
+    bench: { weight: 0, unit: "lbs", gain: "+0" }, 
+    squat: { weight: 0, unit: "lbs", gain: "+0" }, 
+    deadlift: { weight: 0, unit: "lbs", gain: "+0" } 
+  });
+  
+  const [dynamicScores, setDynamicScores] = useState([
+      { muscle: "Chest",     score: 0, color: "#0A84FF", prev: 0 },
+      { muscle: "Back",      score: 0, color: "#BF5AF2", prev: 0 },
+      { muscle: "Shoulders", score: 0, color: "#FF9F0A", prev: 0 },
+      { muscle: "Arms",      score: 0, color: "#30D158", prev: 0 },
+      { muscle: "Legs",      score: 0, color: "#FFD60A", prev: 0 },
+      { muscle: "Core",      score: 0, color: "#FF3B30", prev: 0 },
+  ]);
 
   // 1. Fetch time-based recovery for all muscles
   const ALL_MUSCLES = [
@@ -464,6 +483,55 @@ export default function StrengthPage() {
         const data = res.ok ? await res.json() : [];
         const overrides = getMuscleSoreness();
         setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, data, overrides));
+
+        // Evaluate Volume for Muscle Group Breakdown dynamically
+        const muscleVol = { Chest: 0, Back: 0, Shoulders: 0, Arms: 0, Legs: 0, Core: 0 };
+        data.forEach(w => {
+            w.sets?.forEach(s => {
+                const n = (s.name || s.exercise_name || "").toLowerCase();
+                if (n.includes("bench") || n.includes("chest") || n.includes("push") || n.includes("fly")) muscleVol.Chest += 1;
+                else if (n.includes("row") || n.includes("pull") || n.includes("lat")) muscleVol.Back += 1;
+                else if (n.includes("shoulder") || n.includes("press") || n.includes("delt")) muscleVol.Shoulders += 1;
+                else if (n.includes("curl") || n.includes("extension") || n.includes("tricep") || n.includes("bicep")) muscleVol.Arms += 1;
+                else if (n.includes("squat") || n.includes("leg") || n.includes("deadlift") || n.includes("calf")) muscleVol.Legs += 1;
+                else muscleVol.Core += 1; // Default fallbacks
+            });
+        });
+        
+        setDynamicScores([
+            { muscle: "Chest",     score: Math.min(100, muscleVol.Chest * 5), color: "#0A84FF", prev: 0 },
+            { muscle: "Back",      score: Math.min(100, muscleVol.Back * 5), color: "#BF5AF2", prev: 0 },
+            { muscle: "Shoulders", score: Math.min(100, muscleVol.Shoulders * 5), color: "#FF9F0A", prev: 0 },
+            { muscle: "Arms",      score: Math.min(100, muscleVol.Arms * 5), color: "#30D158", prev: 0 },
+            { muscle: "Legs",      score: Math.min(100, muscleVol.Legs * 5), color: "#FFD60A", prev: 0 },
+            { muscle: "Core",      score: Math.min(100, Math.floor(muscleVol.Core * 2.5)), color: "#FF3B30", prev: 0 },
+        ]);
+
+        // Dynamically track body weight and physical constraints
+        const metReq = await fetch(`http://localhost:5000/metrics?userId=${uId}`);
+        const metData = metReq.ok ? await metReq.json() : [];
+        if (metData.length > 0) {
+            const latest = metData[metData.length - 1]; // most recent chronological snapshot
+            setMetrics({ weight: latest.weight || 0, trainingYears: latest.training_years || 0 });
+        }
+        
+        // Dynamically pull Personal Records explicitly mapping Big Lifts directly
+        const prReq = await fetch(`http://localhost:5000/prs?userId=${uId}`);
+        const prData = prReq.ok ? await prReq.json() : [];
+        if (prData.length > 0) {
+            let maxes = { bench: 0, squat: 0, deadlift: 0 };
+            prData.forEach(p => {
+                const e = p.exercise_name?.toLowerCase();
+                if (["bench press", "bench"].includes(e) && parseFloat(p.weight) > maxes.bench) maxes.bench = parseFloat(p.weight);
+                else if (["squat", "barbell squat"].includes(e) && parseFloat(p.weight) > maxes.squat) maxes.squat = parseFloat(p.weight);
+                else if (["deadlift", "barbell deadlift"].includes(e) && parseFloat(p.weight) > maxes.deadlift) maxes.deadlift = parseFloat(p.weight);
+            });
+            setPrs({
+                bench: { weight: maxes.bench, unit: "lbs", gain: `+0` },
+                squat: { weight: maxes.squat, unit: "lbs", gain: `+0` },
+                deadlift: { weight: maxes.deadlift, unit: "lbs", gain: `+0` }
+            });
+        }
       } catch (e) {
         console.error("Failed fetching muscle recovery profiles", e);
       }
@@ -471,23 +539,27 @@ export default function StrengthPage() {
     fetchRecovery();
   }, []);
 
-  // 2. Map fixed base STRENGTH_SCORES to 0 globally, pending the user's manual config screen implementation.
-  const dynamicScores = [
-      { muscle: "Chest",     score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
-      { muscle: "Back",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
-      { muscle: "Shoulders", score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
-      { muscle: "Arms",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
-      { muscle: "Legs",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
-      { muscle: "Core",      score: 0, color: "rgba(255,255,255,0.1)", prev: 0 },
-  ];
+  // Stabilize performance calculations with useMemo
+  const { strengthIndex, derivedOverall } = useMemo(() => {
+    const volScore = Math.round(dynamicScores.reduce((acc, curr) => acc + curr.score, 0) / (dynamicScores.length || 1));
+    const bw = metrics.weight || 1;
+    const bMultiplier = prs.bench.weight / bw;
+    const sMultiplier = prs.squat.weight / bw;
+    const dMultiplier = prs.deadlift.weight / bw;
+    const rawIndex = (bMultiplier + sMultiplier + dMultiplier) / 3;
+    const indexStr = rawIndex.toFixed(1);
 
-  // Re-calculate the overall average based on these new dynamic scores
-  const derivedOverall = 0;
+    // Performance Basis: 1.5x average (Elite) = 100 points, 0.75x (Intermediate) = 50 points
+    const performanceBasis = (rawIndex / 1.5) * 100;
+    const score = Math.min(100, Math.round((performanceBasis * 0.7) + (volScore * 0.3)));
+    
+    return { strengthIndex: indexStr, derivedOverall: score };
+  }, [dynamicScores, metrics, prs]);
 
   return (
     <PageShell title="Strength" subtitle="Analytics · Big Lifts & Recovery">
       {/* ── Overall Score ─────────────────────────────────── */}
-      <OverallRing score={derivedOverall} />
+      <OverallRing score={derivedOverall} bw={metrics.weight} age={metrics.trainingYears} index={strengthIndex} />
 
       {/* ── Radar + Breakdown side by side ───────────────── */}
       <div
@@ -526,13 +598,13 @@ export default function StrengthPage() {
         Big Lifts vs Bodyweight
       </div>
 
-      <LiftCard liftName="bench" weight={PERSONAL_RECORDS.bench.weight} bw={userBW} delay={3} />
-      <LiftCard liftName="squat" weight={PERSONAL_RECORDS.squat.weight} bw={userBW} delay={4} />
-      <LiftCard liftName="deadlift" weight={PERSONAL_RECORDS.deadlift.weight} bw={userBW} delay={5} />
+      <LiftCard liftName="bench" weight={prs.bench.weight} bw={metrics.weight} delay={3} />
+      <LiftCard liftName="squat" weight={prs.squat.weight} bw={metrics.weight} delay={4} />
+      <LiftCard liftName="deadlift" weight={prs.deadlift.weight} bw={metrics.weight} delay={5} />
 
       {/* ── PRs ──────────────────────────────────────────── */}
       <div style={{ marginTop: "12px" }}>
-        <PRCard />
+        <PRCard prData={prs} />
       </div>
 
       {/* ── Section label ─────────────────────────────────── */}
