@@ -6,10 +6,12 @@ import {
   RECOVERY_COLOR,
   getStatusFromPct,
   getMuscleSoreness,
+  setMuscleSoreness,
   computeDynamicRecovery,
 } from "../../lib/recovery";
+import BodyMap from "../../components/BodyMap";
 
-/* ─── Overall Score Ring ────────────────────────────────────── */
+/* --- Overall Score Ring -------------------------------------- */
 function OverallRing({ score, bw, age, index }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = setTimeout(() => setMounted(true), 100); return () => clearTimeout(t); }, []);
@@ -150,7 +152,7 @@ function OverallRing({ score, bw, age, index }) {
   );
 }
 
-/* ─── Lift Card (BW Multiplier) ─────────────────────────────── */
+/* --- Lift Card (BW Multiplier) ------------------------------- */
 function LiftCard({ liftName, weight, bw, delay }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = setTimeout(() => setMounted(true), 150); return () => clearTimeout(t); }, []);
@@ -225,7 +227,7 @@ function LiftCard({ liftName, weight, bw, delay }) {
   );
 }
 
-/* ─── Strength Bar Row ──────────────────────────────────────── */
+/* --- Strength Bar Row ---------------------------------------- */
 function StrengthRow({ item, delay }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = setTimeout(() => setMounted(true), 150); return () => clearTimeout(t); }, []);
@@ -311,7 +313,7 @@ function StrengthRow({ item, delay }) {
   );
 }
 
-/* ─── Personal Record Card ──────────────────────────────────── */
+/* --- Personal Record Card ------------------------------------ */
 function PRCard({ prData }) {
   if (!prData) return null;
   return (
@@ -374,7 +376,7 @@ function PRCard({ prData }) {
   );
 }
 
-/* ─── Radar-style muscle radar (SVG) ───────────────────────── */
+/* --- Radar-style muscle radar (SVG) ------------------------- */
 function MuscleRadar({ scores }) {
   const cx = 100, cy = 100, r = 72;
   const n = scores.length;
@@ -442,16 +444,16 @@ function MuscleRadar({ scores }) {
           fontWeight="700"
           fill="rgba(255,255,255,0.4)"
           fontFamily="DM Sans, sans-serif"
-          textTransform="uppercase"
+          style={{ textTransform: "uppercase" }}
         >
-          {label.toUpperCase()}
+          {label}
         </text>
       ))}
     </svg>
   );
 }
 
-/* ─── Page ──────────────────────────────────────────────────── */
+/* --- Page ---------------------------------------------------- */
 export default function StrengthPage() {
   const [metrics, setMetrics] = useState({ weight: 0, trainingYears: 0 });
   const [prs, setPrs] = useState({ 
@@ -469,75 +471,105 @@ export default function StrengthPage() {
       { muscle: "Core",      score: 0, color: "#FF3B30", prev: 0 },
   ]);
 
-  // 1. Fetch time-based recovery for all muscles
+  const [recoveryData, setRecoveryData] = useState({});
+  const [selectedMuscle, setSelectedMuscle] = useState(null);
+
+  // Constants
   const ALL_MUSCLES = [
     "chest", "shoulders", "biceps", "triceps",
     "lats", "core", "quads", "hamstrings", "glutes", "calves",
   ];
-  const [recoveryData, setRecoveryData] = useState({});
+
+  // 1. Fetch data for strength analytics
   useEffect(() => {
-    const fetchRecovery = async () => {
+    const fetchAllData = async () => {
       try {
         const uId = localStorage.getItem("userId") || 1;
-        const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
-        const data = res.ok ? await res.json() : [];
-        const overrides = getMuscleSoreness();
-        setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, data, overrides));
-
-        // Evaluate Volume for Muscle Group Breakdown dynamically
-        const muscleVol = { Chest: 0, Back: 0, Shoulders: 0, Arms: 0, Legs: 0, Core: 0 };
-        data.forEach(w => {
-            w.sets?.forEach(s => {
-                const n = (s.name || s.exercise_name || "").toLowerCase();
-                if (n.includes("bench") || n.includes("chest") || n.includes("push") || n.includes("fly")) muscleVol.Chest += 1;
-                else if (n.includes("row") || n.includes("pull") || n.includes("lat")) muscleVol.Back += 1;
-                else if (n.includes("shoulder") || n.includes("press") || n.includes("delt")) muscleVol.Shoulders += 1;
-                else if (n.includes("curl") || n.includes("extension") || n.includes("tricep") || n.includes("bicep")) muscleVol.Arms += 1;
-                else if (n.includes("squat") || n.includes("leg") || n.includes("deadlift") || n.includes("calf")) muscleVol.Legs += 1;
-                else muscleVol.Core += 1; // Default fallbacks
-            });
-        });
         
-        setDynamicScores([
-            { muscle: "Chest",     score: Math.min(100, muscleVol.Chest * 5), color: "#0A84FF", prev: 0 },
-            { muscle: "Back",      score: Math.min(100, muscleVol.Back * 5), color: "#BF5AF2", prev: 0 },
-            { muscle: "Shoulders", score: Math.min(100, muscleVol.Shoulders * 5), color: "#FF9F0A", prev: 0 },
-            { muscle: "Arms",      score: Math.min(100, muscleVol.Arms * 5), color: "#30D158", prev: 0 },
-            { muscle: "Legs",      score: Math.min(100, muscleVol.Legs * 5), color: "#FFD60A", prev: 0 },
-            { muscle: "Core",      score: Math.min(100, Math.floor(muscleVol.Core * 2.5)), color: "#FF3B30", prev: 0 },
-        ]);
+        // Fetch Workouts for Recovery
+        const workoutsRes = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+        const workoutsData = workoutsRes.ok ? await workoutsRes.json() : [];
+        const overrides = getMuscleSoreness();
+        setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, workoutsData, overrides));
 
-        // Dynamically track body weight and physical constraints
+        // Dynamically track body weight
         const metReq = await fetch(`http://localhost:5000/metrics?userId=${uId}`);
         const metData = metReq.ok ? await metReq.json() : [];
+        let bw = 1;
         if (metData.length > 0) {
-            const latest = metData[metData.length - 1]; // most recent chronological snapshot
-            setMetrics({ weight: latest.weight || 0, trainingYears: latest.training_years || 0 });
+            const latest = metData[metData.length - 1];
+            bw = parseFloat(latest.weight) || 1;
+            setMetrics({ weight: bw, trainingYears: latest.training_years || 0 });
         }
         
-        // Dynamically pull Personal Records explicitly mapping Big Lifts directly
+        // Fetch PRs
         const prReq = await fetch(`http://localhost:5000/prs?userId=${uId}`);
         const prData = prReq.ok ? await prReq.json() : [];
+        
+        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
         if (prData.length > 0) {
-            let maxes = { bench: 0, squat: 0, deadlift: 0 };
             prData.forEach(p => {
                 const e = p.exercise_name?.toLowerCase();
-                if (["bench press", "bench"].includes(e) && parseFloat(p.weight) > maxes.bench) maxes.bench = parseFloat(p.weight);
-                else if (["squat", "barbell squat"].includes(e) && parseFloat(p.weight) > maxes.squat) maxes.squat = parseFloat(p.weight);
-                else if (["deadlift", "barbell deadlift"].includes(e) && parseFloat(p.weight) > maxes.deadlift) maxes.deadlift = parseFloat(p.weight);
+                const w = parseFloat(p.weight);
+                if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
+                else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
+                else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
+                else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
+                else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
             });
             setPrs({
-                bench: { weight: maxes.bench, unit: "lbs", gain: `+0` },
-                squat: { weight: maxes.squat, unit: "lbs", gain: `+0` },
-                deadlift: { weight: maxes.deadlift, unit: "lbs", gain: `+0` }
+                bench: { weight: rawMaxes.bench, unit: "lbs", gain: `+0` },
+                squat: { weight: rawMaxes.squat, unit: "lbs", gain: `+0` },
+                deadlift: { weight: rawMaxes.deadlift, unit: "lbs", gain: `+0` }
             });
         }
+
+        // 2. Define Elite Standards (100% Score)
+        const ELITE = {
+            bench: 1.5,
+            deadlift: 2.5,
+            ohp: 0.9,
+            squat: 2.0,
+            rows: 1.2
+        };
+
+        const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
+
+        const scores = [
+            { muscle: "Chest",     score: calcScore(rawMaxes.bench, ELITE.bench), color: "#0A84FF", prev: 0 },
+            { muscle: "Back",      score: calcScore(rawMaxes.deadlift, ELITE.deadlift), color: "#BF5AF2", prev: 0 },
+            { muscle: "Shoulders", score: calcScore(rawMaxes.ohp, ELITE.ohp), color: "#FF9F0A", prev: 0 },
+            { muscle: "Legs",      score: calcScore(rawMaxes.squat, ELITE.squat), color: "#FFD60A", prev: 0 },
+            { 
+              muscle: "Arms",      
+              score: Math.round((calcScore(rawMaxes.bench, ELITE.bench) * 0.5) + (calcScore(rawMaxes.rows, ELITE.rows) * 0.5)), 
+              color: "#30D158", prev: 0 
+            },
+            { 
+              muscle: "Core",      
+              score: Math.max(0, calcScore(rawMaxes.squat, ELITE.squat) - 15), // Proxy from squat stability
+              color: "#FF3B30", prev: 0 
+            },
+        ];
+
+        setDynamicScores(scores);
       } catch (e) {
-        console.error("Failed fetching muscle recovery profiles", e);
+        console.error("Failed fetching strength profiles", e);
       }
     };
-    fetchRecovery();
+    fetchAllData();
   }, []);
+
+  const handleMuscleClick = (muscle) => {
+    setSelectedMuscle(muscle);
+    // Option to toggle soreness could be added here
+  };
+
+  const handleSorenessChange = (muscle, level) => {
+    setMuscleSoreness(muscle, level);
+    // Trigger refresh
+    window.location.reload(); // Simple refresh for now to trigger useEffect
+  };
 
   // Stabilize performance calculations with useMemo
   const { strengthIndex, derivedOverall } = useMemo(() => {
@@ -558,32 +590,9 @@ export default function StrengthPage() {
 
   return (
     <PageShell title="Strength" subtitle="Analytics · Big Lifts & Recovery">
-      {/* ── Overall Score ─────────────────────────────────── */}
+      {/* -- Overall Score ----------------------------------- */}
       <OverallRing score={derivedOverall} bw={metrics.weight} age={metrics.trainingYears} index={strengthIndex} />
-
-      {/* ── Radar + Breakdown side by side ───────────────── */}
-      <div
-        className="glass-card animate-fade-up delay-2"
-        style={{ padding: "16px 20px", marginBottom: "12px" }}
-      >
-        <div
-          style={{
-            fontSize: "11px",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "1.4px",
-            color: "var(--text-tertiary)",
-            marginBottom: "14px",
-          }}
-        >
-          Muscle Readiness Radar
-        </div>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <MuscleRadar scores={dynamicScores} />
-        </div>
-      </div>
-
-      {/* ── Lift Cards ─────────────────────────────────────── */}
+      {/* -- Lift Cards --------------------------------------- */}
       <div
         style={{
           fontSize: "11px",
@@ -602,12 +611,12 @@ export default function StrengthPage() {
       <LiftCard liftName="squat" weight={prs.squat.weight} bw={metrics.weight} delay={4} />
       <LiftCard liftName="deadlift" weight={prs.deadlift.weight} bw={metrics.weight} delay={5} />
 
-      {/* ── PRs ──────────────────────────────────────────── */}
+      {/* -- PRs -------------------------------------------- */}
       <div style={{ marginTop: "12px" }}>
         <PRCard prData={prs} />
       </div>
 
-      {/* ── Section label ─────────────────────────────────── */}
+      {/* -- Section label ----------------------------------- */}
       <div
         style={{
           fontSize: "11px",
@@ -619,10 +628,10 @@ export default function StrengthPage() {
           marginTop: "16px",
         }}
       >
-        Muscle Group Breakdown (Strength Index)
+        Strength by Muscle Group
       </div>
 
-      {/* ── Strength rows ─────────────────────────────────── */}
+      {/* -- Strength rows ----------------------------------- */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {[...dynamicScores].map((item, i) => (
           <StrengthRow key={item.muscle} item={item} delay={Math.min(i + 6, 8)} />

@@ -4,13 +4,11 @@ import { useRouter } from "next/navigation";
 import PageShell from "../components/PageShell";
 import { OVERALL_STRENGTH_SCORE, WORKOUT_EXERCISES } from "../lib/data";
 import {
-  RECOVERY_COLOR,
-  RECOVERY_LABEL,
   getMuscleSoreness,
   computeDynamicRecovery,
 } from "../lib/recovery";
 
-/* ─── Helpers ─────────────────────────────────────────────── */
+/* --- Helpers ----------------------------------------------- */
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -30,7 +28,7 @@ function formatDate() {
 
 const RECOVERY_MUSCLES = ["chest", "shoulders", "quads", "lats"];
 
-/* ─── Stat Card ───────────────────────────────────────────── */
+/* --- Stat Card --------------------------------------------- */
 function StatCard({ label, value, unit, color = "#fff", delay }) {
   return (
     <div
@@ -77,7 +75,7 @@ function StatCard({ label, value, unit, color = "#fff", delay }) {
   );
 }
 
-/* ─── Page ────────────────────────────────────────────────── */
+/* --- Page -------------------------------------------------- */
 export default function HomePage() {
   const router = useRouter();
 
@@ -93,6 +91,7 @@ export default function HomePage() {
     exercises: [] // populated by name and sets mapping
   });
 
+  const [strengthData, setStrengthData] = useState({});
   const [recoveryData, setRecoveryData] = useState({});
 
   useEffect(() => {
@@ -100,13 +99,49 @@ export default function HomePage() {
     const fetchDashboardDetails = async () => {
       try {
         const uId = localStorage.getItem("userId") || 1;
+        
+        // Fetch Body Weight
+        const metReq = await fetch(`http://localhost:5000/metrics?userId=${uId}`);
+        const metData = metReq.ok ? await metReq.json() : [];
+        let bw = 1;
+        if (metData.length > 0) {
+            bw = parseFloat(metData[metData.length - 1].weight) || 1;
+        }
+
+        // Fetch PRs for Strength calculation
+        const prReq = await fetch(`http://localhost:5000/prs?userId=${uId}`);
+        const prData = prReq.ok ? await prReq.json() : [];
+        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+        prData.forEach(p => {
+            const e = p.exercise_name?.toLowerCase();
+            const w = parseFloat(p.weight);
+            if (["bench press", "bench"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
+            else if (["squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
+            else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
+            else if (["rows", "pull", "deadlift"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
+        });
+
+        const ELITE = { bench: 1.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
+        const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
+
+        setStrengthData({
+            chest: { pct: calcScore(rawMaxes.bench, ELITE.bench) },
+            shoulders: { pct: calcScore(rawMaxes.ohp, ELITE.ohp) },
+            quads: { pct: calcScore(rawMaxes.squat, ELITE.squat) },
+            back: { pct: calcScore(rawMaxes.rows, ELITE.rows) }
+        });
+
         const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
         if (!res.ok) return;
         const data = await res.json();
 
-        // 1. Setup local recovery logic DYNAMICALLY per muscle
+        // Recovery Logic
+        const ALL_MUSCLES = [
+            "chest", "shoulders", "biceps", "triceps",
+            "lats", "core", "quads", "hamstrings", "glutes", "calves",
+        ];
         const overrides = getMuscleSoreness();
-        setRecoveryData(computeDynamicRecovery(RECOVERY_MUSCLES, data, overrides));
+        setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, data, overrides));
 
         if (data.length > 0) {
           // -- Aggregates: the Last 7 Days --
@@ -169,14 +204,14 @@ export default function HomePage() {
 
   return (
     <PageShell title={`${greeting()}, EC`} subtitle={formatDate()}>
-      {/* ── Quick Stats ──────────────────────────────────── */}
+      {/* -- Quick Stats ------------------------------------ */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
         <StatCard label="This Week" value={sessionCount} unit="sessions" color="#0A84FF" delay={1} />
         <StatCard label="Volume" value={totalVolume} unit={<>k<span style={{ fontSize: "20px", marginLeft: "8px" }}>lbs</span></>} color="#FFD60A" delay={2} />
         <StatCard label="Strength" value={OVERALL_STRENGTH_SCORE} unit="/ 100" color="#30D158" delay={3} />
       </div>
 
-      {/* ── Start Workout CTA ─────────────────────────────── */}
+      {/* -- Start Workout CTA ------------------------------- */}
       <button
         onClick={() => router.push("/workout")}
         className="animate-fade-up delay-4"
@@ -209,7 +244,7 @@ export default function HomePage() {
         Start Today's Workout
       </button>
 
-      {/* ── Section label ─────────────────────────────────── */}
+      {/* -- Section label ----------------------------------- */}
       <div
         style={{
           fontSize: "11px",
@@ -223,7 +258,7 @@ export default function HomePage() {
         Last Workout
       </div>
 
-      {/* ── Last Workout Card ─────────────────────────────── */}
+      {/* -- Last Workout Card ------------------------------- */}
       <div
         className="glass-card animate-fade-up delay-5"
         style={{ padding: "16px", marginBottom: "20px" }}
@@ -348,94 +383,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ── Section label ─────────────────────────────────── */}
-      <div
-        style={{
-          fontSize: "11px",
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "1.4px",
-          color: "var(--text-tertiary)",
-          marginBottom: "10px",
-        }}
-      >
-        Recovery
-      </div>
-
-      {/* ── Recovery Snapshot ─────────────────────────────── */}
-      <div
-        className="glass-card animate-fade-up delay-6"
-        style={{ padding: "14px 16px" }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {RECOVERY_MUSCLES.map((muscle) => {
-            const d = recoveryData[muscle];
-            if (!d) return null;
-            const color = RECOVERY_COLOR[d.status];
-            return (
-              <div
-                key={muscle}
-                style={{ display: "flex", alignItems: "center", gap: "10px" }}
-              >
-                {/* Dot */}
-                <div
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: color,
-                    boxShadow: `0 0 6px ${color}80`,
-                    flexShrink: 0,
-                  }}
-                />
-                {/* Name */}
-                <span
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    flex: 1,
-                    textTransform: "capitalize",
-                  }}
-                >
-                  {muscle}
-                </span>
-                {/* Bar */}
-                <div
-                  className="bar-track"
-                  style={{ width: "80px", flexShrink: 0 }}
-                >
-                  <div
-                    className="bar-fill"
-                    style={{
-                      width: `${d.pct}%`,
-                      background: color,
-                    }}
-                  />
-                </div>
-                {/* Label + manual indicator */}
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color,
-                    fontWeight: 700,
-                    width: d.isManual ? "62px" : "52px",
-                    textAlign: "right",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "3px",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  {d.isManual && (
-                    <span style={{ fontSize: "9px", opacity: 0.6 }}>✎</span>
-                  )}
-                  {RECOVERY_LABEL[d.status]}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </PageShell>
   );
 }

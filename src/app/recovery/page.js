@@ -10,65 +10,14 @@ import {
   setMuscleSoreness,
   computeRecovery,
 } from "../../lib/recovery";
+import BodyMap from "../../components/BodyMap";
 
 const ALL_MUSCLES = [
   "chest", "shoulders", "biceps", "triceps",
   "lats", "core", "quads", "hamstrings", "glutes", "calves",
 ];
 
-/* ─── Body Map SVG ──────────────────────────────────────────── */
-function BodyMap({ muscleData }) {
-  const fillFor = (key) => {
-    const d = muscleData[key];
-    if (!d) return "rgba(255,255,255,0.08)";
-    const c = RECOVERY_COLOR[d.status];
-    const alpha = 0.55 + (1 - d.pct / 100) * 0.3;
-    return `${c}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
-  };
 
-  return (
-    <svg
-      viewBox="0 0 160 320"
-      width="130"
-      height="260"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* Head */}
-      <ellipse cx="80" cy="22" rx="18" ry="20" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
-      {/* Neck */}
-      <rect x="73" y="40" width="14" height="12" rx="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      {/* Shoulders */}
-      <ellipse cx="46" cy="62" rx="18" ry="10" fill={fillFor("shoulders")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <ellipse cx="114" cy="62" rx="18" ry="10" fill={fillFor("shoulders")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      {/* Chest */}
-      <path d="M60 56 Q80 50 100 56 L104 90 Q80 96 56 90 Z" fill={fillFor("chest")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      {/* Upper arms (biceps) */}
-      <rect x="28" y="68" width="16" height="44" rx="8" fill={fillFor("biceps")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <rect x="116" y="68" width="16" height="44" rx="8" fill={fillFor("biceps")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      {/* Forearms */}
-      <rect x="22" y="114" width="14" height="38" rx="7" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-      <rect x="124" y="114" width="14" height="38" rx="7" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-      {/* Core / Abs */}
-      <path d="M60 90 Q80 86 100 90 L100 148 Q80 154 60 148 Z" fill={fillFor("core")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      {/* Lats (back – rendered as wide side panels) */}
-      <path d="M44 70 Q34 90 38 148 Q50 150 60 148 L56 90 Z" fill={fillFor("lats")} stroke="rgba(255,255,255,0.08)" strokeWidth="1" opacity="0.7" />
-      <path d="M116 70 Q126 90 122 148 Q110 150 100 148 L104 90 Z" fill={fillFor("lats")} stroke="rgba(255,255,255,0.08)" strokeWidth="1" opacity="0.7" />
-      {/* Quads */}
-      <rect x="62" y="154" width="26" height="68" rx="13" fill={fillFor("quads")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <rect x="72" y="154" width="26" height="68" rx="13" fill={fillFor("quads")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      {/* Hamstrings (lighter, behind quads) */}
-      <rect x="63" y="154" width="24" height="66" rx="12" fill={fillFor("hamstrings")} stroke="rgba(255,255,255,0.06)" strokeWidth="1" opacity="0.5" />
-      <rect x="73" y="154" width="24" height="66" rx="12" fill={fillFor("hamstrings")} stroke="rgba(255,255,255,0.06)" strokeWidth="1" opacity="0.5" />
-      {/* Calves */}
-      <rect x="62" y="226" width="22" height="46" rx="11" fill={fillFor("calves")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <rect x="76" y="226" width="22" height="46" rx="11" fill={fillFor("calves")} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      {/* Feet */}
-      <ellipse cx="70" cy="274" rx="14" ry="6" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-      <ellipse cx="90" cy="274" rx="14" ry="6" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-    </svg>
-  );
-}
 
 /* ─── Legend Dot ────────────────────────────────────────────── */
 function LegendDot({ color, label }) {
@@ -401,8 +350,11 @@ export default function RecoveryPage() {
           <OverallScore muscleData={muscleData} />
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
-          <BodyMap muscleData={muscleData} />
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "32px", width: "100%", overflow: "visible" }}>
+          <BodyMap muscleData={muscleData} size={220} onMuscleClick={(id) => {
+              const el = document.getElementById(`muscle-row-${id}`);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
@@ -444,6 +396,7 @@ export default function RecoveryPage() {
         {sortedMuscles.map((name, i) => (
           <MuscleRow
             key={name}
+            id={`muscle-row-${name}`}
             name={name}
             data={muscleData[name] ?? { status: "fresh", pct: 0, isManual: false, hours: 0 }}
             manualLevel={manualOverrides[name] ?? null}

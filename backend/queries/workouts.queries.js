@@ -2,12 +2,12 @@ const pool = require("../config/db");
 
 // ── Workouts ──────────────────────────────────────────────
 
-const createWorkout = async ({ userId, name, notes }) => {
+const createWorkout = async ({ userId, name, notes, status }) => {
     const result = await pool.query(
-        `INSERT INTO workouts (user_id, name, notes)
-         VALUES ($1, $2, $3)
+        `INSERT INTO workouts (user_id, name, notes, status)
+         VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [userId, name, notes]
+        [userId, name, notes, status || 'completed']
     );
     return result.rows[0];
 };

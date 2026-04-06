@@ -3,19 +3,19 @@ import { useState, useEffect } from "react";
 import PageShell from "../../components/PageShell";
 import { PROGRESS_DATA, PERSONAL_RECORDS } from "../../lib/data";
 
-/* ─── Lift config ───────────────────────────────────────────── */
+/* --- Lift config --------------------------------------------- */
 const LIFTS = [
   { key: "bench",    label: "Bench Press", color: "#0A84FF", unit: "lbs" },
   { key: "squat",    label: "Back Squat",  color: "#FF2D55", unit: "lbs" },
   { key: "deadlift", label: "Deadlift",    color: "#FFD60A", unit: "lbs" },
 ];
 
-/* ─── SVG Line Chart ────────────────────────────────────────── */
+/* --- SVG Line Chart ------------------------------------------ */
 function LineChart({ data, dataKey, color, width = 340, height = 160 }) {
   const values = data.map((d) => d[dataKey]);
-  const min = Math.min(...values) - 20;
-  const max = Math.max(...values) + 20;
-  const range = max - min || 1;
+  const min = values.length ? Math.min(...values) - 20 : 0;
+  const max = values.length ? Math.max(...values) + 20 : 100;
+  const range = (max - min) || 1;
 
   const padL = 8, padR = 8, padT = 12, padB = 28;
   const innerW = width - padL - padR;
@@ -91,12 +91,12 @@ function LineChart({ data, dataKey, color, width = 340, height = 160 }) {
   );
 }
 
-/* ─── Sparkline (tiny inline chart) ────────────────────────── */
+/* --- Sparkline (tiny inline chart) -------------------------- */
 function Sparkline({ data, dataKey, color, width = 80, height = 32 }) {
   const values = data.map((d) => d[dataKey]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 100;
+  const range = (max - min) || 1;
 
   const toX = (i) => (i / (values.length - 1)) * width;
   const toY = (v) => height - 4 - ((v - min) / range) * (height - 8);
@@ -116,46 +116,104 @@ function Sparkline({ data, dataKey, color, width = 80, height = 32 }) {
   );
 }
 
-/* ─── Weekly Volume Bar Chart ───────────────────────────────── */
-function VolumeChart({ data }) {
-  const totalVolumes = data.map((d) => d.bench * 8 + d.squat * 8 + d.deadlift * 5);
-  const max = Math.max(...totalVolumes);
-  const width = 340, height = 80;
-  const barW = (width / data.length) * 0.6;
-  const gap = (width / data.length) * 0.4;
+/* --- Direct Muscle Stats Card (NEW) -------------------------- */
+function MuscleGroupStats({ workouts, selected, onSelect }) {
+  // Mapping anatomical groups to the user's desired categories
+  const MUSCLE_MAP = {
+    "Chest": ["chest"],
+    "Arms": ["biceps", "triceps"],
+    "Legs": ["quadriceps", "hamstrings", "glutes", "calves", "legs"],
+    "Back": ["lats", "back", "core"],
+    "Shoulders": ["shoulders"]
+  };
+
+  const options = ["Total", "Chest", "Arms", "Legs", "Back", "Shoulders"];
+
+  // Week Logic: Start of Sunday (midnight)
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayOfWeek = today.getDay(); // 0 is Sunday
+  const startOfThisWeek = new Date(today);
+  startOfThisWeek.setDate(today.getDate() - dayOfWeek);
+  
+  const startOfLastWeek = new Date(startOfThisWeek);
+  startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
+
+  const filterByGroup = (w) => {
+    if (selected === "Total") return w.sets || [];
+    const targetAnatomy = MUSCLE_MAP[selected] || [];
+    return (w.sets || []).filter(s => targetAnatomy.includes(s.muscle_group?.toLowerCase()));
+  };
+
+  const thisWeekSets = workouts.filter(w => new Date(w.created_at) >= startOfThisWeek).flatMap(filterByGroup).length;
+  const lastWeekSets = workouts.filter(w => {
+    const d = new Date(w.created_at);
+    return d >= startOfLastWeek && d < startOfThisWeek;
+  }).flatMap(filterByGroup).length;
+
+  const delta = thisWeekSets - lastWeekSets;
+  const trendColor = delta >= 0 ? "#30D158" : "#FF453A";
 
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ overflow: "visible" }}>
-      {data.map((d, i) => {
-        const vol = totalVolumes[i];
-        const barH = (vol / max) * (height - 20);
-        const x = i * (barW + gap) + gap / 2;
-        const y = height - barH - 16;
-        const isLast = i === data.length - 1;
-        return (
-          <g key={i}>
-            <rect
-              x={x} y={y}
-              width={barW} height={barH}
-              rx="4"
-              fill={isLast ? "#0A84FF" : "rgba(255,255,255,0.08)"}
-            />
-            <text
-              x={x + barW / 2} y={height - 2}
-              textAnchor="middle" fontSize="8"
-              fill="rgba(255,255,255,0.25)"
-              fontFamily="DM Sans, sans-serif"
-            >
-              {d.week}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <div className="glass-card animate-fade-up delay-3" style={{ padding: "20px", marginBottom: "16px" }}>
+      <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1.4px", color: "var(--text-tertiary)", marginBottom: "16px" }}>
+        Weekly Training Volume · Focus
+      </div>
+
+      {/* Chips Selector */}
+      <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "12px", marginBottom: "16px", scrollbarWidth: "none" }}>
+        {options.map(opt => (
+          <button
+            key={opt}
+            onClick={() => onSelect(opt)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "20px",
+              fontSize: "11px",
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              background: selected === opt ? "rgba(10, 132, 255, 0.2)" : "rgba(255,255,255,0.05)",
+              color: selected === opt ? "#0A84FF" : "rgba(255,255,255,0.4)",
+              border: `1px solid ${selected === opt ? "#0A84FF40" : "transparent"}`,
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+
+      {/* Big Number */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: "10px", color: "var(--text-tertiary)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "1px", marginBottom: "4px" }}>
+            Total Sets {selected !== "Total" && `(${selected})`}
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+            <span style={{ fontSize: "42px", fontWeight: 900, fontFamily: "var(--font-display)", color: "#fff", lineHeight: 1 }}>
+              {thisWeekSets}
+            </span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-tertiary)" }}>
+              sets
+            </span>
+          </div>
+        </div>
+
+        <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: "18px", fontWeight: 800, color: trendColor, fontFamily: "var(--font-display)" }}>
+                {delta >= 0 ? `+${delta}` : delta}
+            </div>
+            <div style={{ fontSize: "10px", color: "var(--text-tertiary)", textTransform: "uppercase", fontWeight: 600 }}>
+                vs Last Week
+            </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-/* ─── Lift Selector ─────────────────────────────────────────── */
+/* --- Lift Selector ------------------------------------------- */
 function LiftSelector({ selected, onSelect }) {
   return (
     <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
@@ -190,15 +248,14 @@ function LiftSelector({ selected, onSelect }) {
   );
 }
 
-/* ─── Streak + Activity Card ────────────────────────────────── */
-function ActivityCard() {
-  // 10 weeks × 7 days = 70 cells
-  const days = Array.from({ length: 70 }, (_, i) => {
-    const rand = Math.random();
-    return rand > 0.6 ? (rand > 0.85 ? 2 : 1) : 0;
-  });
-
+/* --- Streak + Activity Card ---------------------------------- */
+function ActivityCard({ workoutStats = {} }) {
+  const { workouts = 0, avg = 0, rest = 0, activity = [] } = workoutStats;
+  
   const colors = ["rgba(255,255,255,0.06)", "#0A84FF60", "#0A84FF"];
+
+  // If no activity provided yet, use empty shells
+  const displayActivity = activity.length ? activity : Array.from({ length: 70 }, () => 0);
 
   return (
     <div className="glass-card animate-fade-up delay-3" style={{ padding: "16px 20px", marginBottom: "12px" }}>
@@ -224,7 +281,7 @@ function ActivityCard() {
             }}
           />
           <span style={{ fontSize: "11px", color: "#FF2D55", fontWeight: 700 }}>
-            14-day streak
+             Streak Active
           </span>
         </div>
       </div>
@@ -236,7 +293,7 @@ function ActivityCard() {
           gap: "4px",
         }}
       >
-        {days.map((intensity, i) => (
+        {displayActivity.map((intensity, i) => (
           <div
             key={i}
             style={{
@@ -251,9 +308,9 @@ function ActivityCard() {
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px" }}>
         {[
-          { label: "Workouts", val: "28", color: "#0A84FF" },
-          { label: "Avg / week", val: "2.8", color: "#FF9F0A" },
-          { label: "Rest days", val: "42", color: "var(--text-secondary)" },
+          { label: "Workouts", val: workouts, color: "#0A84FF" },
+          { label: "Avg / week", val: avg, color: "#FF9F0A" },
+          { label: "Rest days", val: rest, color: "var(--text-secondary)" },
         ].map(({ label, val, color }) => (
           <div key={label} style={{ textAlign: "center" }}>
             <div style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 800, color }}>
@@ -269,7 +326,7 @@ function ActivityCard() {
   );
 }
 
-/* ─── Log PR Form ───────────────────────────────────────────── */
+/* --- Log PR Form --------------------------------------------- */
 function LogPRCard() {
   const [exercise, setExercise] = useState("bench");
   const [weight, setWeight] = useState("");
@@ -425,7 +482,7 @@ function LogPRCard() {
   );
 }
 
-/* ─── Log Metrics Form ──────────────────────────────────────── */
+/* --- Log Metrics Form ---------------------------------------- */
 function LogMetricsCard() {
   const [weight, setWeight] = useState("");
   const [hUnit, setHUnit] = useState("ft"); // "ft" or "cm"
@@ -553,49 +610,76 @@ function LogMetricsCard() {
   );
 }
 
-/* ─── Page ──────────────────────────────────────────────────── */
+/* --- Page ---------------------------------------------------- */
 export default function ProgressPage() {
   const [selectedLift, setSelectedLift] = useState("bench");
   const [graphData, setGraphData] = useState([{ week: "Start", bench: 0, squat: 0, deadlift: 0 }, { week: "Now", bench: 0, squat: 0, deadlift: 0 }]);
   const [rawPrs, setRawPrs] = useState([]);
+  
+  // -- Real Data States --
+  const [workoutStats, setWorkoutStats] = useState({ workouts: 0, avg: 0, rest: 0, activity: [] });
+  const [muscleSelection, setMuscleSelection] = useState("Total");
+  const [allWorkouts, setAllWorkouts] = useState([]);
 
   useEffect(() => {
-    const fetchPRs = async () => {
+    const fetchAnalytics = async () => {
       try {
         const uId = localStorage.getItem("userId") || 1;
-        const res = await fetch(`http://localhost:5000/prs?userId=${uId}`);
-        const data = res.ok ? await res.json() : [];
-        setRawPrs(data);
-
-        if (data.length > 0) {
-          const sorted = [...data].sort((a, b) => new Date(a.achieved_at) - new Date(b.achieved_at));
+        
+        // 1. Fetch PRs (Existing Logic)
+        const prRes = await fetch(`http://localhost:5000/prs?userId=${uId}`);
+        const prData = prRes.ok ? await prRes.json() : [];
+        setRawPrs(prData);
+        if (prData.length > 0) {
+          const sorted = [...prData].sort((a, b) => new Date(a.achieved_at) - new Date(b.achieved_at));
           let runningMax = { bench: 0, squat: 0, deadlift: 0 };
           const formatted = [];
-
-          sorted.forEach((pr, i) => {
+          sorted.forEach((pr) => {
             const exName = pr.exercise_name?.toLowerCase();
-            if (exName in runningMax) {
-              runningMax[exName] = parseFloat(pr.weight);
-            }
+            if (exName in runningMax) runningMax[exName] = parseFloat(pr.weight);
             formatted.push({
-              week: new Date(pr.achieved_at).toLocaleDateString("en-US"),
-              bench: runningMax.bench,
-              squat: runningMax.squat,
-              deadlift: runningMax.deadlift,
+              week: new Date(pr.achieved_at).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
+              bench: runningMax.bench, squat: runningMax.squat, deadlift: runningMax.deadlift,
             });
           });
-
-          // Line charts need at least 2 points
-          if (formatted.length === 1) {
-            formatted.push({ ...formatted[0], week: "T2" });
-          }
+          if (formatted.length === 1) formatted.push({ ...formatted[0], week: "--" });
           setGraphData(formatted);
         }
+
+        // 2. Fetch All Workouts for Activity & Volume
+        const wRes = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+        const workoutsData = wRes.ok ? await wRes.json() : [];
+        
+        // Filter: ONLY COMPLETED
+        const completed = workoutsData.filter(w => w.status === 'completed' || w.sets?.length > 0);
+        setAllWorkouts(completed);
+        
+        if (completed.length > 0) {
+          // -- A. Calculate Activity Grid (70 cells) --
+          const now = new Date();
+          const activity = Array.from({ length: 70 }, (_, i) => {
+             const d = new Date();
+             d.setDate(now.getDate() - (69 - i));
+             const dateStr = d.toISOString().split('T')[0];
+             const count = completed.filter(w => w.created_at.startsWith(dateStr)).length;
+             return Math.min(count, 2); // cap intensity at 2
+          });
+
+          // -- B. Calculate Stats --
+          const start = new Date(completed[completed.length - 1].created_at);
+          const weeks = Math.max(1, Math.ceil((now - start) / (7 * 24 * 3600 * 1000)));
+          setWorkoutStats({
+            workouts: completed.length,
+            avg: (completed.length / weeks).toFixed(1),
+            rest: (weeks * 7) - completed.length,
+            activity
+          });
+        }
       } catch (err) {
-        console.error("Failed fetching PR data:", err);
+        console.error("Progress fetch failed", err);
       }
     };
-    fetchPRs();
+    fetchAnalytics();
   }, []);
 
   const lift = LIFTS.find((l) => l.key === selectedLift);
@@ -607,7 +691,7 @@ export default function ProgressPage() {
 
   return (
     <PageShell title="Progress" subtitle="Historical · 8 Weeks">
-      {/* ── Top Summary Cards ─────────────────────────────── */}
+      {/* -- Top Summary Cards ------------------------------- */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
         {LIFTS.map((l, i) => {
           const pr = PERSONAL_RECORDS[l.key];
@@ -646,84 +730,23 @@ export default function ProgressPage() {
         })}
       </div>
 
-      {/* ── Log PR Form ───────────────────────────────────── */}
+      {/* -- Log PR Form ------------------------------------- */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
           <LogPRCard />
           <LogMetricsCard />
       </div>
 
-      {/* ── Main Chart Card ───────────────────────────────── */}
-      <div
-        className="glass-card animate-fade-up delay-2"
-        style={{ padding: "16px 20px", marginBottom: "12px" }}
-      >
-        {/* Chart header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "16px" }}>
-          <div>
-            <div
-              style={{
-                fontFamily: "var(--font-display)",
-                fontSize: "16px",
-                fontWeight: 700,
-                marginBottom: "2px",
-              }}
-            >
-              {lift.label}
-            </div>
-            <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>8-week progression</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div
-              style={{
-                fontFamily: "var(--font-display)",
-                fontSize: "22px",
-                fontWeight: 800,
-                color: lift.color,
-                letterSpacing: "-1px",
-                lineHeight: 1,
-              }}
-            >
-              +{gain} lbs
-            </div>
-            <div style={{ fontSize: "11px", color: "#30D158", fontWeight: 600 }}>
-              +{gainPct}% total
-            </div>
-          </div>
-        </div>
+      {/* -- Unified Muscle Analytics Section (NEW) ---------- */}
+      <MuscleGroupStats 
+        workouts={allWorkouts} 
+        selected={muscleSelection} 
+        onSelect={setMuscleSelection} 
+      />
 
-        {/* Lift selector tabs */}
-        <LiftSelector selected={selectedLift} onSelect={setSelectedLift} />
+      {/* -- Activity Grid ----------------------------------- */}
+      <ActivityCard workoutStats={workoutStats} />
 
-        {/* Chart */}
-        <div style={{ padding: "0 4px" }}>
-          <LineChart data={graphData} dataKey={selectedLift} color={lift.color} />
-        </div>
-      </div>
-
-      {/* ── Weekly Volume ─────────────────────────────────── */}
-      <div
-        className="glass-card animate-fade-up delay-3"
-        style={{ padding: "16px 20px", marginBottom: "12px" }}
-      >
-        <div
-          style={{
-            fontSize: "11px",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "1.4px",
-            color: "var(--text-tertiary)",
-            marginBottom: "14px",
-          }}
-        >
-          Total Volume · Per Week
-        </div>
-        <VolumeChart data={graphData} />
-      </div>
-
-      {/* ── Activity Grid ─────────────────────────────────── */}
-      <ActivityCard />
-
-      {/* ── Insight Card ──────────────────────────────────── */}
+      {/* -- Insight Card ------------------------------------ */}
       <div
         className="glass-card animate-fade-up delay-5"
         style={{
