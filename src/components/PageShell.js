@@ -1,6 +1,6 @@
 import BottomNav from "./BottomNav";
 
-export default function PageShell({ title, subtitle, badge, badgeColor = "badge-blue", backAction, children }) {
+export default function PageShell({ title, subtitle, badge, badgeColor = "badge-blue", backAction, onSettingsClick, children }) {
   return (
     <div
       style={{
@@ -69,34 +69,60 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
           )}
         </div>
 
-        {/* Avatar */}
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, #FF2D55, #0A84FF)",
-            padding: "2px",
-            flexShrink: 0,
-          }}
-        >
+        {/* Right Actions (EC + Settings) */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          {/* Avatar (EC) */}
           <div
             style={{
-              width: "100%",
-              height: "100%",
+              width: 38,
+              height: 38,
               borderRadius: "50%",
-              background: "#111120",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: "var(--font-display)",
-              fontSize: "13px",
-              fontWeight: 800,
-              color: "#fff",
+              background: "linear-gradient(135deg, #FF2D55, #0A84FF)",
+              padding: "2px",
             }}
           >
-            EC
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: "50%",
+                background: "#111120",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: "var(--font-display)",
+                fontSize: "12px",
+                fontWeight: 800,
+                color: "#fff",
+              }}
+            >
+              EC
+            </div>
           </div>
+
+          {/* Settings Button (Engine/Gear) */}
+          {onSettingsClick && (
+            <button 
+              onClick={onSettingsClick}
+              style={{
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "10px",
+                width: "38px",
+                height: "38px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--text-tertiary)",
+                cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+              onMouseOut={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1 1.51H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+          )}
         </div>
       </header>
 

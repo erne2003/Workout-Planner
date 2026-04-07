@@ -367,7 +367,7 @@ function PRCard({ prData }) {
               </span>
             </div>
             <div style={{ fontSize: "11px", color: "#30D158", fontWeight: 600, marginTop: "4px" }}>
-              {data.gain} this month
+              {data.gain} lbs
             </div>
           </div>
         ))}
@@ -506,21 +506,38 @@ export default function StrengthPage() {
         const prReq = await fetch(`http://localhost:5000/prs?userId=${uId}`);
         const prData = prReq.ok ? await prReq.json() : [];
         
+        const liftHistory = { bench: [], squat: [], deadlift: [] };
         const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
         if (prData.length > 0) {
             prData.forEach(p => {
                 const e = p.exercise_name?.toLowerCase();
                 const w = parseFloat(p.weight);
-                if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
-                else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
-                else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
+                if (["bench press", "bench", "chest press"].includes(e)) {
+                    liftHistory.bench.push(w);
+                    rawMaxes.bench = Math.max(rawMaxes.bench, w);
+                }
+                else if (["squat", "barbell squat", "back squat"].includes(e)) {
+                    liftHistory.squat.push(w);
+                    rawMaxes.squat = Math.max(rawMaxes.squat, w);
+                }
+                else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) {
+                    liftHistory.deadlift.push(w);
+                    rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
+                }
                 else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
                 else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
             });
+            const getGain = (arr) => {
+                const a = arr || [];
+                if (a.length < 2) return "±0";
+                const diff = a[a.length - 1] - a[a.length - 2];
+                return diff >= 0 ? `+${diff.toFixed(0)}` : `${diff.toFixed(0)}`;
+            };
+
             setPrs({
-                bench: { weight: rawMaxes.bench, unit: "lbs", gain: `+0` },
-                squat: { weight: rawMaxes.squat, unit: "lbs", gain: `+0` },
-                deadlift: { weight: rawMaxes.deadlift, unit: "lbs", gain: `+0` }
+                bench: { weight: liftHistory.bench[liftHistory.bench.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.bench) },
+                squat: { weight: liftHistory.squat[liftHistory.squat.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.squat) },
+                deadlift: { weight: liftHistory.deadlift[liftHistory.deadlift.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.deadlift) }
             });
         }
 

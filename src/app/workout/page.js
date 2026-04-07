@@ -52,10 +52,12 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
         width: "100%",
         padding: "11px 14px",
         borderRadius: "12px",
-        border: `1px solid ${isDone ? "rgba(48,209,88,0.25)" : "rgba(255,255,255,0.06)"}`,
-        background: isDone ? "rgba(48,209,88,0.07)" : "rgba(255,255,255,0.025)",
+        background: isDone ? "rgba(48,209,88,0.12)" : "rgba(255,255,255,0.03)",
+        border: `1px solid ${isDone ? "rgba(48,209,88,0.3)" : "rgba(255,255,255,0.06)"}`,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         cursor: "pointer",
-        transition: "all 0.2s",
+        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
         textAlign: "left",
       }}
     >
@@ -717,9 +719,9 @@ export default function WorkoutPage() {
           {routines.map(r => (
             <div 
               key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`} 
-              className="glass-card" 
+              className="glass-card transition-all active:scale-[0.98]" 
               onClick={() => selectRoutine(r)}
-              style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: isManagingRoutines ? "default" : "pointer", position: "relative", border: "1px solid rgba(255,255,255,0.08)" }}
+              style={{ padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: isManagingRoutines ? "default" : "pointer", position: "relative" }}
             >
               <div>
                 <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, marginBottom: "4px" }}>
@@ -763,7 +765,7 @@ export default function WorkoutPage() {
       <PageShell title="Edit Workout" subtitle="Customize exercises & sets">
         <div style={{ display: "flex", flexDirection: "column", gap: "20px", paddingBottom: "80px" }}>
           {workoutPlan.map((ex, ei) => (
-            <div key={ex.id || ei} className="glass-card" style={{ padding: "20px", width: "100%", border: "1px solid rgba(255,255,255,0.15)" }}>
+            <div key={ex.id || ei} className="glass-card animate-fade-up shadow-xl" style={{ padding: "24px 20px", width: "100%" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                 <div>
                   <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700 }}>{ex.name}</div>
@@ -786,10 +788,10 @@ export default function WorkoutPage() {
                     <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 600 }}>reps</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <input type="number" value={set.rir !== undefined ? set.rir : 0} onChange={(e) => updateSet(ei, si, "rir", e.target.value)} style={{ width: "50px", padding: "6px 4px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.5)", color: "#fff", outline: "none", textAlign: "right", fontFamily: "var(--font-display)", fontWeight: 700 }} />
+                    <input type="number" value={set.rir !== undefined ? set.rir : 0} onChange={(e) => updateSet(ei, si, "rir", e.target.value)} style={{ width: "50px", padding: "8px 6px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "var(--accent-blue)", outline: "none", textAlign: "center", fontFamily: "var(--font-display)", fontWeight: 800 }} />
                     <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 600 }}>RIR</span>
                   </div>
-                  <button onClick={() => removeSet(ei, si)} style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--text-tertiary)", fontSize: "18px", cursor: "pointer", padding: "0 8px", transition: "color 0.2s" }} onMouseOver={(e) => (e.currentTarget.style.color = "#FF2D55")} onMouseOut={(e) => (e.currentTarget.style.color = "var(--text-tertiary)")} title="Remove Set">×</button>
+                  <button onClick={() => removeSet(ei, si)} style={{ marginLeft: "auto", background: "rgba(255,45,85,0.1)", border: "none", borderRadius: "8px", width: "24px", height: "24px", color: "#FF2D55", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }} title="Remove Set">×</button>
                 </div>
               ))}
 

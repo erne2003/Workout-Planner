@@ -2,8 +2,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import PageShell from "../components/PageShell";
+import PlateCalculator from "../components/PlateCalculator";
 import { OVERALL_STRENGTH_SCORE, WORKOUT_EXERCISES } from "../lib/data";
 import {
+  RECOVERY_COLOR,
+  getStatusFromPct,
   getMuscleSoreness,
   computeDynamicRecovery,
 } from "../lib/recovery";
@@ -80,7 +83,8 @@ export default function HomePage() {
   const router = useRouter();
 
   const [sessionCount, setSessionCount] = useState(0);
-  const [totalVolume, setTotalVolume] = useState(0);
+  const [strengthScore, setStrengthScore] = useState(0);
+  const [recoveryScore, setRecoveryScore] = useState(0);
   const [lastWorkout, setLastWorkout] = useState({
     name: "No Sessions Logged",
     subtitle: "Start a workout to see stats here",
@@ -93,9 +97,11 @@ export default function HomePage() {
 
   const [strengthData, setStrengthData] = useState({});
   const [recoveryData, setRecoveryData] = useState({});
+  const [showPlateCalc, setShowPlateCalc] = useState(true);
 
   useEffect(() => {
-    // 2. Fetch and aggregate historical workout data dynamically
+    setShowPlateCalc(localStorage.getItem("plateCalc") !== "false");
+    
     const fetchDashboardDetails = async () => {
       try {
         const uId = localStorage.getItem("userId") || 1;
@@ -115,21 +121,36 @@ export default function HomePage() {
         prData.forEach(p => {
             const e = p.exercise_name?.toLowerCase();
             const w = parseFloat(p.weight);
-            if (["bench press", "bench"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
-            else if (["squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
+            if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
+            else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
+            else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
             else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
-            else if (["rows", "pull", "deadlift"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
+            else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
         });
 
-        const ELITE = { bench: 1.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
+        const ELITE = { bench: 1.5, deadlift: 2.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
         const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
 
-        setStrengthData({
-            chest: { pct: calcScore(rawMaxes.bench, ELITE.bench) },
-            shoulders: { pct: calcScore(rawMaxes.ohp, ELITE.ohp) },
-            quads: { pct: calcScore(rawMaxes.squat, ELITE.squat) },
-            back: { pct: calcScore(rawMaxes.rows, ELITE.rows) }
-        });
+        const benchScore = calcScore(rawMaxes.bench, ELITE.bench);
+        const dlScore = calcScore(rawMaxes.deadlift, ELITE.deadlift);
+        const ohpScore = calcScore(rawMaxes.ohp, ELITE.ohp);
+        const squatScore = calcScore(rawMaxes.squat, ELITE.squat);
+        const rowScore = calcScore(rawMaxes.rows, ELITE.rows);
+
+        const muscleScores = [
+            benchScore,
+            dlScore,
+            ohpScore,
+            squatScore,
+            Math.round((benchScore * 0.5) + (rowScore * 0.5)), // Arms proxy
+            Math.max(0, squatScore - 15) // Core proxy
+        ];
+        
+        const avgPerf = Math.round(muscleScores.reduce((a, b) => a + b, 0) / muscleScores.length);
+        const rawIndex = ((rawMaxes.bench / bw) + (rawMaxes.squat / bw) + (rawMaxes.deadlift / bw)) / 3;
+        const perfBasis = (rawIndex / 1.5) * 100;
+        
+        setStrengthScore(Math.min(100, Math.round((perfBasis * 0.7) + (avgPerf * 0.3))));
 
         const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
         if (!res.ok) return;
@@ -141,7 +162,11 @@ export default function HomePage() {
             "lats", "core", "quads", "hamstrings", "glutes", "calves",
         ];
         const overrides = getMuscleSoreness();
-        setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, data, overrides));
+        const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
+        setRecoveryData(recData);
+        
+        const avgRec = Math.round(Object.values(recData).reduce((a, b) => a + b.pct, 0) / ALL_MUSCLES.length);
+        setRecoveryScore(avgRec);
 
         if (data.length > 0) {
           // -- Aggregates: the Last 7 Days --
@@ -150,18 +175,13 @@ export default function HomePage() {
           oneWeekAgo.setDate(now.getDate() - 7);
 
           let weekSessions = 0;
-          let weekVolTotal = 0;
-
           data.forEach(w => {
             const wDate = new Date(w.created_at);
             if (wDate >= oneWeekAgo) {
               weekSessions++;
-              w.sets?.forEach(s => { weekVolTotal += (s.reps * s.weight); });
             }
           });
-
           setSessionCount(weekSessions);
-          setTotalVolume((weekVolTotal / 1000).toFixed(1)); // formatted in "k lbs"
 
           // -- Profile: The Last Workout --
           const lw = data[0];
@@ -203,12 +223,29 @@ export default function HomePage() {
   }, []);
 
   return (
-    <PageShell title={`${greeting()}, EC`} subtitle={formatDate()}>
+    <PageShell 
+      title={`${greeting()}, ${localStorage.getItem("userName")?.split(" ")[0] || "User"}`} 
+      subtitle={formatDate()}
+      onSettingsClick={() => router.push("/settings")}
+    >
+      {/* Quick Stats */}
       {/* -- Quick Stats ------------------------------------ */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
         <StatCard label="This Week" value={sessionCount} unit="sessions" color="#0A84FF" delay={1} />
-        <StatCard label="Volume" value={totalVolume} unit={<>k<span style={{ fontSize: "20px", marginLeft: "8px" }}>lbs</span></>} color="#FFD60A" delay={2} />
-        <StatCard label="Strength" value={OVERALL_STRENGTH_SCORE} unit="/ 100" color="#30D158" delay={3} />
+        <StatCard 
+          label="Recovery" 
+          value={recoveryScore} 
+          unit="%" 
+          color={RECOVERY_COLOR[getStatusFromPct(recoveryScore)]} 
+          delay={2} 
+        />
+        <StatCard 
+          label="Strength" 
+          value={strengthScore} 
+          unit="/ 100" 
+          color={strengthScore >= 90 ? "#FFD60A" : strengthScore >= 75 ? "#30D158" : strengthScore >= 60 ? "#0A84FF" : "#FF9F0A"} 
+          delay={3} 
+        />
       </div>
 
       {/* -- Start Workout CTA ------------------------------- */}
@@ -350,10 +387,13 @@ export default function HomePage() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "8px",
-                padding: "8px 10px",
-                borderRadius: "10px",
-                background: "rgba(255,255,255,0.025)",
+                gap: "10px",
+                padding: "10px 12px",
+                borderRadius: "12px",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
               }}
             >
               <div
@@ -383,6 +423,8 @@ export default function HomePage() {
         </div>
       </div>
 
+
+      {showPlateCalc && <PlateCalculator />}
     </PageShell>
   );
 }
