@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import { motion } from "framer-motion";
 import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "../lib/muscle-paths";
 
 /**
@@ -17,20 +18,14 @@ export default function BodyMap({ muscleData = {}, onMuscleClick, size = 300 }) 
   const [view, setView] = useState("front"); // "front" or "back"
   const [showAdvanced, setShowAdvanced] = useState(true);
 
-  const getStatus = (muscleId) => {
+  const getGradientId = (muscleId) => {
     const d = muscleData[muscleId.toLowerCase()];
-    return d ? d.status : "none";
-  };
-
-  const getColor = (muscleId) => {
-    const status = getStatus(muscleId);
-    return RECOVERY_COLOR[status] || RECOVERY_COLOR.none;
-  };
-
-  const getOpacity = (muscleId) => {
-    const d = muscleData[muscleId.toLowerCase()];
-    if (!d) return 0.2;
-    return 0.6 + (d.pct / 100) * 0.4;
+    if (!d) return "freshGradient";
+    // Map pct (recovery) to fatigueScore (100 - pct)
+    const fatigue = 100 - d.pct;
+    if (fatigue >= 60) return "soreGradient";
+    if (fatigue >= 30) return "midGradient";
+    return "freshGradient";
   };
 
   const currentPaths = view === "front" ? ANTERIOR_PATHS : POSTERIOR_PATHS;
@@ -71,18 +66,28 @@ export default function BodyMap({ muscleData = {}, onMuscleClick, size = 300 }) 
         style={{ filter: "drop-shadow(0 0 20px rgba(0,0,0,0.5))" }}
       >
         <defs>
+          {/* SORE: Red center to Dark Red edge */}
+          <radialGradient id="soreGradient" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+            <stop offset="0%" stopColor="#FF2D55" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#800000" />
+          </radialGradient>
+
+          {/* MID: Yellow center to Amber edge */}
+          <radialGradient id="midGradient" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+            <stop offset="0%" stopColor="#FFD60A" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#FF9F0A" />
+          </radialGradient>
+
+          {/* FRESH: White/Light Grey center to Slate edge */}
+          <radialGradient id="freshGradient" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+            <stop offset="0%" stopColor="#F2F2F7" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#48484A" />
+          </radialGradient>
+
           <filter id="pro-glow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="3" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
-          
-          {/* Create a dedicated gradient for every muscle group tracked */}
-          {[...new Set([...ANTERIOR_PATHS, ...POSTERIOR_PATHS].map(p => p.id))].map(id => (
-            <radialGradient key={id} id={`grad-pro-${id}`} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor={getColor(id)} stopOpacity={getOpacity(id)} />
-              <stop offset="100%" stopColor={getColor(id)} stopOpacity={getOpacity(id) * 0.3} />
-            </radialGradient>
-          ))}
         </defs>
 
         {/* Outer Body Shell (Silhouette) */}
@@ -98,15 +103,20 @@ export default function BodyMap({ muscleData = {}, onMuscleClick, size = 300 }) 
                 key={`${view}-${muscle.id}-${idx}`}
                 onClick={() => onMuscleClick && onMuscleClick(muscle.id)}
                 className="muscle-pro-group"
-                style={{ cursor: onMuscleClick ? "pointer" : "default" }}
+                style={{ 
+                    cursor: onMuscleClick ? "pointer" : "default",
+                    filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))"
+                }}
             >
-                <path
+                <motion.path
+                    id={muscle.id}
                     d={muscle.d}
-                    fill={`url(#grad-pro-${muscle.id})`}
-                    stroke="rgba(255,255,255,0.12)"
-                    strokeWidth="0.8"
+                    initial={false}
+                    animate={{ fill: `url(#${getGradientId(muscle.id)})` }}
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
+                    stroke="#1a202c"
+                    strokeWidth="1.5"
                     className="muscle-pro-path"
-                    style={{ transition: "all 0.3s ease" }}
                 />
                 
                 {/* Anatomical Details (Fiber Lines) */}
@@ -149,11 +159,12 @@ export default function BodyMap({ muscleData = {}, onMuscleClick, size = 300 }) 
             box-shadow: 0 0 15px rgba(48, 209, 88, 0.2);
         }
         .muscle-pro-group:hover .muscle-pro-path {
-            filter: brightness(1.3) saturate(1.2);
+            filter: brightness(1.3) saturate(1.2) drop-shadow(0 0 8px rgba(255,255,255,0.2));
             stroke: #fff;
             stroke-width: 1.5px;
         }
       `}</style>
+
     </div>
   );
 }
