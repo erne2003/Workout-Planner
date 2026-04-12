@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -24,38 +25,56 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const endpoint = isRegister ? "/auth/register" : "/auth/login";
-            const body = isRegister ? { name, email } : { email };
-
-            const res = await fetch(`http://localhost:5000${endpoint}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                setError(data.error || "Something went wrong.");
+            let result;
+            if (isRegister) {
+                // Register with Supabase
+                result = await supabase.auth.signUp({
+                    email,
+                    password: "no-auth-required", // Placeholder since current logic is email-only
+                    options: { data: { name } }
+                });
             } else {
-                localStorage.setItem("userId", data.id);
-                localStorage.setItem("userName", data.name);
-                
-                // Intercept dashboard to verify physical baseline was provided
-                try {
-                    const metricsReq = await fetch(`http://localhost:5000/metrics?userId=${data.id}`);
-                    const metrics = await metricsReq.json();
-                    if (metrics.length === 0) {
-                        router.replace("/onboarding");
-                    } else {
-                        router.replace("/");
-                    }
-                } catch {
+                // Login with Supabase
+                result = await supabase.auth.signInWithPassword({
+                    email,
+                    password: "no-auth-required"
+                });
+            }
+
+            if (result.error) {
+                return setError(result.error.message);
+            }
+
+            const { user } = result.data;
+            if (!user) throw new Error("No user returned");
+
+            // Sync with backend if register
+            if (isRegister) {
+                await fetch(`http://localhost:5000/auth/register`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name, email, id: user.id }),
+                });
+            }
+
+            localStorage.setItem("userId", user.id);
+            localStorage.setItem("userName", name || user.user_metadata?.name || email);
+            
+            // Check metrics via backend
+            try {
+                const metricsReq = await fetch(`http://localhost:5000/metrics?userId=${user.id}`);
+                const metrics = await metricsReq.json();
+                if (Array.isArray(metrics) && metrics.length === 0) {
+                    router.replace("/onboarding");
+                } else {
                     router.replace("/");
                 }
+            } catch {
+                router.replace("/");
             }
-        } catch {
-            setError("Cannot reach server. Is the backend running?");
+        } catch (err) {
+            console.error(err);
+            setError("Authentication failed. Please check your credentials.");
         } finally {
             setLoading(false);
         }

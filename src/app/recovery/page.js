@@ -9,28 +9,27 @@ import {
   getMuscleSoreness,
   setMuscleSoreness,
   computeRecovery,
+  computeDynamicRecovery,
 } from "../../lib/recovery";
-import BodyMap from "../../components/BodyMap";
+import MuscleMap from "../../components/MuscleMap";
+import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "../../lib/muscle-paths";
 
 const ALL_MUSCLES = [
-  "chest", "shoulders", "biceps", "triceps",
-  "lats", "core", "quads", "hamstrings", "glutes", "calves",
+  ...new Set([...ANTERIOR_PATHS, ...POSTERIOR_PATHS].map(p => p.id))
 ];
-
-
 
 /* ─── Legend Dot ────────────────────────────────────────────── */
 function LegendDot({ color, label }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-      <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
-      <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 500 }}>{label}</span>
+      <div style={{ width: 12, height: 12, borderRadius: "50%", backgroundColor: color }} />
+      <small style={{ color: "#8E8E93" }}>{label}</small>
     </div>
   );
 }
 
 /* ─── Soreness Picker ───────────────────────────────────────── */
-const SORENESS_LEVELS = ["fresh", "moderate", "sore"];
+const SORENESS_LEVELS = ["fully_recovered", "mostly_recovered", "partially_recovered", "not_recovered"];
 
 function SorenessPicker({ current, muscle, onSelect, onClear }) {
   return (
@@ -301,30 +300,48 @@ export default function RecoveryPage() {
   const [lastTime, setLastTimeState] = useState(null);
   const [manualOverrides, setManualOverrides] = useState({});
   const [muscleData, setMuscleData] = useState({});
+  const [view, setView] = useState("front");
 
-  const refresh = useCallback(() => {
-    const lt = getLastWorkoutTime();
-    const overrides = getMuscleSoreness();
-    setLastTimeState(lt);
-    setManualOverrides(overrides);
-    setMuscleData(computeRecovery(ALL_MUSCLES, lt, overrides));
+  const updateHeatmap = useCallback(async () => {
+    try {
+      const uId = localStorage.getItem("userId");
+      if (!uId) return;
+      const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const overrides = getMuscleSoreness();
+      setManualOverrides(overrides);
+
+      let latestTime = 0;
+      data.forEach(w => {
+        const wTime = new Date(w.created_at).getTime();
+        if (wTime > latestTime) latestTime = wTime;
+      });
+      setLastTimeState(latestTime > 0 ? new Date(latestTime) : null);
+
+      const dynData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
+      setMuscleData(dynData);
+    } catch (e) {
+      console.error("Failed to fetch heatmap data", e);
+    }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { updateHeatmap(); }, [updateHeatmap]);
 
   const handleSelect = (muscle, level) => {
     setMuscleSoreness(muscle, level);
-    refresh();
+    updateHeatmap();
   };
 
   const handleClear = (muscle) => {
     setMuscleSoreness(muscle, null);
-    refresh();
+    updateHeatmap();
   };
 
   const handleReset = () => {
-    setLastWorkoutTime(new Date());
-    refresh();
+    // Navigates to workout page for logging
+    window.location.href = "/workout";
   };
 
   const sortedMuscles = [...ALL_MUSCLES].sort(
@@ -343,24 +360,46 @@ export default function RecoveryPage() {
             <div style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, marginBottom: "2px" }}>
               Muscle Readiness
             </div>
-            <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+            <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
               Tap a muscle row to set soreness
+            </div>
+            <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: "8px", padding: "4px", width: "fit-content" }}>
+              <button 
+                onClick={() => setView("front")}
+                style={{
+                  background: view === "front" ? "#0A84FF" : "transparent",
+                  border: "none", color: "white", padding: "4px 12px", borderRadius: "6px",
+                  fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
+                }}
+              >
+                Front
+              </button>
+              <button 
+                onClick={() => setView("back")}
+                style={{
+                  background: view === "back" ? "#0A84FF" : "transparent",
+                  border: "none", color: "white", padding: "4px 12px", borderRadius: "6px",
+                  fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
+                }}
+              >
+                Back
+              </button>
             </div>
           </div>
           <OverallScore muscleData={muscleData} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "32px", width: "100%", overflow: "visible" }}>
-          <BodyMap muscleData={muscleData} size={220} onMuscleClick={(id) => {
+          <MuscleMap muscleData={muscleData} view={view} onSelect={(id) => {
               const el = document.getElementById(`muscle-row-${id}`);
               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
-          <LegendDot color="#30D158" label="≥ 24h (Fresh)" />
-          <LegendDot color="#FF9F0A" label="≥ 12h" />
-          <LegendDot color="#FF2D55" label="< 12h (Sore)" />
+          <LegendDot color="#30D158" label="Fresh" />
+          <LegendDot color="#FF9F0A" label="Recovering" />
+          <LegendDot color="#FF2D55" label="Taxed" />
         </div>
       </div>
 

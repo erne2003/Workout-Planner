@@ -127,31 +127,51 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
   const now = Date.now();
   const lastHit = {};
 
-  // workoutsData is typically sorted DESC (newest first). 
-  // We just need the first matched date for each specific muscle.
   workoutsData.forEach(w => {
     const wDate = new Date(w.created_at).getTime();
     w.sets?.forEach(s => {
       const nm = (s.muscle_group || "").toLowerCase();
-      // If the targeted muscle hasn't been tracked yet, or if this date is magically newer string
       if (nm && (!lastHit[nm] || wDate > lastHit[nm])) {
         lastHit[nm] = wDate;
       }
     });
   });
 
+  const INHERITANCE_MAP = {
+    // MuscleMap ID => DB Parent mapped ID
+    "upperchest": "chest",
+    "lowerchest": "chest",
+    "frontdeltoid": "shoulders",
+    "reardeltoid": "shoulders",
+    "deltoids": "shoulders",
+    "innerquad": "quadriceps",
+    "outerquad": "quadriceps",
+    "uppertrapezius": "traps",
+    "lowertrapezius": "traps",
+    "trapezius": "traps",
+    "upperabs": "abdominals",
+    "lowerabs": "abdominals",
+    "abs": "abdominals"
+  };
+
   const result = {};
   muscles.forEach(muscle => {
     const mKey = muscle.toLowerCase();
     const manual = manualOverrides[mKey] ?? null;
 
-    // If never hit, hours = Infinity (fully recovered)
-    const hours = lastHit[mKey] ? (now - lastHit[mKey]) / 3600000 : Infinity;
+    // Direct hit OR parent hit
+    const parentKey = INHERITANCE_MAP[mKey];
+    let muscleHitTime = lastHit[mKey];
+    if (!muscleHitTime && parentKey && lastHit[parentKey]) {
+      muscleHitTime = lastHit[parentKey];
+    }
+
+    const hours = muscleHitTime ? (now - muscleHitTime) / 3600000 : Infinity;
     const timeStatus = statusFromHours(hours);
     const status = manual ?? timeStatus;
 
     let pct = recoveryPct(hours);
-    if (hours === Infinity) pct = 100; // Force 100% physically if never tracked
+    if (hours === Infinity) pct = 100;
 
     if (manual) {
       if (manual === "fully_recovered") pct = 100;

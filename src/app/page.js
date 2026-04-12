@@ -159,7 +159,7 @@ export default function HomePage() {
         // Recovery Logic
         const ALL_MUSCLES = [
             "chest", "shoulders", "biceps", "triceps",
-            "lats", "core", "quads", "hamstrings", "glutes", "calves",
+            "lats", "abdominals", "quadriceps", "hamstrings", "glutes", "calves",
         ];
         const overrides = getMuscleSoreness();
         const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);

@@ -27,16 +27,16 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
           zIndex: 10,
           padding: "54px 22px 14px",
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           justifyContent: "space-between",
         }}
       >
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+        <div style={{ flex: 1, marginRight: "20px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: "4px" }}>
             {backAction && (
-              <button 
-                onClick={backAction} 
-                style={{ background: "none", border: "none", color: "var(--text-tertiary)", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 4px 0 0" }}
+              <button
+                onClick={backAction}
+                style={{ background: "none", border: "none", color: "var(--text-tertiary)", cursor: "pointer", display: "flex", alignItems: "center", padding: "6px 4px 0 0" }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
               </button>
@@ -48,11 +48,12 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
                 fontWeight: 800,
                 letterSpacing: "-0.6px",
                 color: "var(--text-primary)",
+                lineHeight: "1.2",
               }}
             >
               {title}
             </h1>
-            {badge && <span className={`badge ${badgeColor}`}>{badge}</span>}
+            {badge && <span className={`badge ${badgeColor}`} style={{ marginTop: "4px" }}>{badge}</span>}
           </div>
           {subtitle && (
             <p
@@ -70,7 +71,7 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
         </div>
 
         {/* Right Actions (EC + Settings) */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", flexShrink: 0 }}>
           {/* Avatar (EC) */}
           <div
             style={{
@@ -102,7 +103,7 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
 
           {/* Settings Button (Engine/Gear) */}
           {onSettingsClick && (
-            <button 
+            <button
               onClick={onSettingsClick}
               style={{
                 background: "rgba(255,255,255,0.05)",
