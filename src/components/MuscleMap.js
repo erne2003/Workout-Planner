@@ -1,26 +1,14 @@
 "use client";
 import React, { useState } from "react";
 import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "../lib/muscle-paths";
-
-/**
- * Maps fatigue percentage (0-100) to a color between Grey (#e0e0e0) and Deep Red (#ff4d4d).
- * High pct = fresh (Grey). Low pct = sore (Red).
- */
-function interpolateColor(pct) {
-  // Grey: 224, 224, 224
-  // Deep Red: 255, 77, 77
-  const r = Math.round(255 - ((255 - 224) * (pct / 100)));
-  const g = Math.round(77 + ((224 - 77) * (pct / 100)));
-  const b = Math.round(77 + ((224 - 77) * (pct / 100)));
-  return `rgb(${r}, ${g}, ${b})`;
-}
+import { RECOVERY_COLOR } from "../lib/recovery";
 
 export default function MuscleMap({ view = "front", muscleData = {}, onSelect }) {
   const [hovered, setHovered] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   
   const paths = view === "front" ? ANTERIOR_PATHS : POSTERIOR_PATHS;
-  const viewBox = view === "front" ? "0 95 727 1280" : "860 95 600 1300";
+  const viewBox = view === "front" ? "0 95 727 1280" : "696 95 727 1280";
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -38,7 +26,7 @@ export default function MuscleMap({ view = "front", muscleData = {}, onSelect })
            background: 'rgba(0,0,0,0.8)', color: 'white', padding: '6px 14px', borderRadius: 8, fontSize: '13px',
            zIndex: 10, pointerEvents: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
          }}>
-           <strong>{hovered.id.toUpperCase()}</strong>: {hovered.pct}% Recovered
+           <strong>{hovered.id.toUpperCase()}</strong>
          </div>
       )}
       
@@ -63,18 +51,23 @@ export default function MuscleMap({ view = "front", muscleData = {}, onSelect })
         </defs>
 
         {paths.map((muscle) => {
+          // Prevent rendering sub-muscles over the main muscles
+          if (["upperChest", "lowerChest", "innerQuad", "outerQuad", "upperAbs", "lowerAbs", "frontDeltoid"].includes(muscle.id)) {
+            return null;
+          }
+
           if (["head", "hair", "neck", "hands", "feet", "ankles"].includes(muscle.id)) {
             return <path key={muscle.id} d={muscle.d} fill="#2C2C2E" stroke="rgba(0,0,0,0.6)" strokeWidth="0.5px" filter="url(#inner-shadow)" />;
           }
 
           const mData = muscleData[muscle.id] || muscleData[muscle.id.toLowerCase()];
-          const recoveryPct = mData ? mData.pct : 100;
+          const status = mData ? mData.status : "fully_recovered";
           
           const isSelected = selectedIds.includes(muscle.id);
           const isHovered = hovered?.id === muscle.id;
           
-          // Neutral dim color if unselected and unhovered. Soreness color if selected or hovered!
-          const fillColor = (isSelected || isHovered) ? interpolateColor(recoveryPct) : "#3A3A3C";
+          // Only apply the established soreness color when directly hovering over the muscle
+          const fillColor = isHovered ? (RECOVERY_COLOR[status] || RECOVERY_COLOR.fully_recovered) : "#3A3A3C";
 
           const baseStyle = {
             cursor: "pointer",
@@ -90,7 +83,7 @@ export default function MuscleMap({ view = "front", muscleData = {}, onSelect })
           return (
             <g 
                 key={muscle.id} 
-                onMouseEnter={() => setHovered({ id: muscle.id, pct: recoveryPct })}
+                onMouseEnter={() => setHovered({ id: muscle.id })}
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => toggleSelect(muscle.id)}
                 style={baseStyle}

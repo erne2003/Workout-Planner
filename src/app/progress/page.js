@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import PageShell from "../../components/PageShell";
+import { useSettings } from "../../contexts/SettingsContext";
 import { PROGRESS_DATA, PERSONAL_RECORDS } from "../../lib/data";
+import Link from "next/link";
 
 /* --- Lift config --------------------------------------------- */
 const LIFTS = [
@@ -191,7 +193,7 @@ function MuscleGroupStats({ workouts, selected, onSelect }) {
             Total Sets {selected !== "Total" && `(${selected})`}
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-            <span style={{ fontSize: "42px", fontWeight: 900, fontFamily: "var(--font-display)", color: "#fff", lineHeight: 1 }}>
+            <span style={{ fontSize: "42px", fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--text-primary)", lineHeight: 1 }}>
               {thisWeekSets}
             </span>
             <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-tertiary)" }}>
@@ -328,6 +330,8 @@ function ActivityCard({ workoutStats = {} }) {
 
 /* --- Log PR Form --------------------------------------------- */
 function LogPRCard() {
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
   const [exercise, setExercise] = useState("bench");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
@@ -343,10 +347,10 @@ function LogPRCard() {
         body: JSON.stringify({
           userId: uId,
           exerciseName: exercise,
-          weight: parseFloat(weight)
+          weight: unit === "kg" ? Math.round(parseFloat(weight) * 2.205) : parseFloat(weight)
         })
       });
-      alert(`Successfully Authenticated PR: ${LIFTS.find(l => l.key === exercise)?.label || exercise} - ${weight}lbs!`);
+      alert(`Successfully Authenticated PR: ${LIFTS.find(l => l.key === exercise)?.label || exercise} - ${weight} ${unit}!`);
       setWeight("");
       setReps("");
       setRir("0");
@@ -389,7 +393,7 @@ function LogPRCard() {
           </svg>
         </div>
         <div>
-          <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: "1px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>
             Log New PR
           </div>
           <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
@@ -417,7 +421,7 @@ function LogPRCard() {
         {/* Row 2: Weight & Reps */}
         <div style={{ display: "flex", gap: "10px" }}>
           <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Weight (lbs)</label>
+            <label style={labelStyle}>Weight ({unit})</label>
             <input
               type="number"
               placeholder="e.g. 265"
@@ -484,6 +488,8 @@ function LogPRCard() {
 
 /* --- Log Metrics Form ---------------------------------------- */
 function LogMetricsCard() {
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
   const [weight, setWeight] = useState("");
   const [hUnit, setHUnit] = useState("ft"); // "ft" or "cm"
   const [feet, setFeet] = useState("");
@@ -512,7 +518,7 @@ function LogMetricsCard() {
         body: JSON.stringify({
           userId: uId,
           trainingYears: 0,
-          weight: parseFloat(weight),
+          weight: unit === "kg" ? Math.round(parseFloat(weight) * 2.205) : parseFloat(weight),
           height: finalHeight,
           bodyFat: bodyFat ? parseFloat(bodyFat) : null,
         }),
@@ -558,7 +564,7 @@ function LogMetricsCard() {
       <form onSubmit={handleMetricsSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
           <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Weight (lbs)</label>
+            <label style={labelStyle}>Weight ({unit})</label>
             <input type="number" placeholder="205" value={weight} onChange={(e) => setWeight(e.target.value)} style={inputStyle} required />
           </div>
           <div style={{ flex: 1.5 }}>
@@ -612,6 +618,8 @@ function LogMetricsCard() {
 
 /* --- Page ---------------------------------------------------- */
 export default function ProgressPage() {
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
   const [selectedLift, setSelectedLift] = useState("bench");
   const [graphData, setGraphData] = useState([{ week: "Start", bench: 0, squat: 0, deadlift: 0 }, { week: "Now", bench: 0, squat: 0, deadlift: 0 }]);
   const [rawPrs, setRawPrs] = useState([]);
@@ -636,7 +644,9 @@ export default function ProgressPage() {
           const formatted = [];
           sorted.forEach((pr) => {
             const exName = pr.exercise_name?.toLowerCase();
-            if (exName in runningMax) runningMax[exName] = parseFloat(pr.weight);
+            const wOriginal = parseFloat(pr.weight);
+            const w = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+            if (exName in runningMax) runningMax[exName] = w;
             formatted.push({
               week: new Date(pr.achieved_at).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
               bench: runningMax.bench, squat: runningMax.squat, deadlift: runningMax.deadlift,
@@ -680,7 +690,7 @@ export default function ProgressPage() {
       }
     };
     fetchAnalytics();
-  }, []);
+  }, [unit]);
 
   const lift = LIFTS.find((l) => l.key === selectedLift);
 
@@ -719,11 +729,11 @@ export default function ProgressPage() {
                 }}
               >
                 {latestWeight}
-                <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-body)", fontWeight: 500, letterSpacing: 0 }}> lbs</span>
+                <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-body)", fontWeight: 500, letterSpacing: 0 }}> {unit}</span>
               </div>
               <Sparkline data={graphData} dataKey={l.key} color={l.color} />
               <div style={{ fontSize: "10px", color: "#30D158", fontWeight: 600, marginTop: "2px" }}>
-                +{gain} lbs
+                +{gain} {unit}
               </div>
             </div>
           );
@@ -789,9 +799,9 @@ export default function ProgressPage() {
                 const bGain = graphData[graphData.length - 1]?.bench - graphData[0]?.bench;
                 const dGain = graphData[graphData.length - 1]?.deadlift - graphData[0]?.deadlift;
                 if (dGain > 0 && bGain > 0 && (dGain / bGain) >= 1.5) {
-                  return <>Your <strong style={{ color: "#fff" }}>deadlift progression rate</strong> is {(dGain/bGain).toFixed(1)}× your bench press! Consider adding horizontal pressing to balance your posterior ratio.</>;
+                  return <>Your <strong style={{ color: "var(--text-primary)" }}>deadlift progression rate</strong> is {(dGain/bGain).toFixed(1)}× your bench press! Consider adding horizontal pressing to balance your posterior ratio.</>;
                 } else if (bGain > 0 && dGain === 0) {
-                  return <>Your <strong style={{ color: "#fff" }}>bench press</strong> is exploding tracking +{bGain}lbs, but your deadlift hasn't moved yet. Focus on posterior loading explicitly!</>;
+                  return <>Your <strong style={{ color: "var(--text-primary)" }}>bench press</strong> is exploding tracking +{bGain} {unit}, but your deadlift hasn't moved yet. Focus on posterior loading explicitly!</>;
                 } else if (graphData.length <= 2 && graphData[0].bench === 0) {
                   return <>You haven't logged enough historical data yet. Start explicitly racking up Personal Records above to populate advanced statistical correlations inherently!</>;
                 }
@@ -801,6 +811,24 @@ export default function ProgressPage() {
           </div>
         </div>
       </div>
+
+      <Link 
+        href="/progress/charts"
+        style={{
+          display: "block",
+          width: "100%",
+          padding: "16px",
+          marginTop: "16px",
+          background: "rgba(10,132,255,0.1)",
+          color: "var(--accent-blue)",
+          borderRadius: "16px",
+          textAlign: "center",
+          fontWeight: 700,
+          textDecoration: "none"
+        }}
+      >
+        View Advanced Charts &rarr;
+      </Link>
     </PageShell>
   );
 }

@@ -2,60 +2,39 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import PageShell from "../../components/PageShell";
+import { useSettings } from "../../contexts/SettingsContext";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("—");
-  const [theme, setTheme] = useState("dark");
-  const [weightUnit, setWeightUnit] = useState("lbs");
-  const [lengthUnit, setLengthUnit] = useState("in");
-  const [defaultRIR, setDefaultRIR] = useState(2);
-  const [restTimer, setRestTimer] = useState(90);
-  const [plateCalc, setPlateCalc] = useState(true);
-  const [barWeight, setBarWeight] = useState(45);
-  const [autoStartRest, setAutoStartRest] = useState(true);
-  const [reminders, setReminders] = useState(true);
-  const [timerAlerts, setTimerAlerts] = useState(true);
-
-  // Load from localStorage
+  
+  const ctx = useSettings();
+  
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "");
     setUserEmail(localStorage.getItem("userEmail") || "—");
-    
-    const savedTheme = localStorage.getItem("theme") || "dark";
-    setTheme(savedTheme);
-    if (savedTheme === "dark") document.documentElement.classList.add("dark");
-    else document.documentElement.classList.remove("dark");
-
-    setWeightUnit(localStorage.getItem("weightUnit") || "lbs");
-    setLengthUnit(localStorage.getItem("lengthUnit") || "in");
-    setDefaultRIR(parseInt(localStorage.getItem("defaultRIR")) || 2);
-    setRestTimer(parseInt(localStorage.getItem("restTimer")) || 90);
-    setPlateCalc(localStorage.getItem("plateCalc") !== "false");
-    setBarWeight(parseFloat(localStorage.getItem("barWeight")) || 45);
-    setAutoStartRest(localStorage.getItem("autoStartRest") !== "false");
-    
-    const notifs = JSON.parse(localStorage.getItem("notifications") || '{"reminders": true, "alerts": true}');
-    setReminders(notifs.reminders);
-    setTimerAlerts(notifs.alerts);
   }, []);
 
-  // Persistence helpers
-  const save = (key, val) => {
-    localStorage.setItem(key, val);
-  };
+  if (!ctx) return null;
+  const {
+    theme, setTheme,
+    weightUnit, setWeightUnit,
+    lengthUnit, setLengthUnit,
+    defaultRIR, setDefaultRIR,
+    restTimer, setRestTimer,
+    plateCalc, setPlateCalc,
+    barWeight, setBarWeight,
+    autoStartRest, setAutoStartRest,
+    notifications, setNotifications
+  } = ctx;
 
   const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-    save("theme", newTheme);
-    if (newTheme === "dark") document.documentElement.classList.add("dark");
-    else document.documentElement.classList.remove("dark");
+    setTheme(theme === "dark" ? "light" : "dark");
   };
 
   const handleNameBlur = () => {
-    save("userName", userName);
+    localStorage.setItem("userName", userName);
   };
 
   const logout = () => {
@@ -83,8 +62,8 @@ export default function SettingsPage() {
   };
 
   const inputStyle = {
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.1)",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
     borderRadius: "10px",
     padding: "8px 12px",
     color: "var(--accent-blue)",
@@ -112,7 +91,7 @@ export default function SettingsPage() {
                 background: "transparent",
                 border: "none",
                 padding: 0,
-                color: "#fff",
+                color: "var(--text-primary)",
                 fontFamily: "var(--font-display)",
                 fontSize: "20px",
                 fontWeight: 700,
@@ -142,7 +121,7 @@ export default function SettingsPage() {
               <UnitToggle 
                 options={["lbs", "kg"]} 
                 active={weightUnit} 
-                onChange={(v) => { setWeightUnit(v); save("weightUnit", v); }} 
+                onChange={(v) => { setWeightUnit(v); }} 
               />
             </div>
             <div style={{ height: "1px", background: "var(--border)", margin: "0 20px" }} />
@@ -151,7 +130,7 @@ export default function SettingsPage() {
               <UnitToggle 
                 options={["in", "cm"]} 
                 active={lengthUnit} 
-                onChange={(v) => { setLengthUnit(v); save("lengthUnit", v); }} 
+                onChange={(v) => { setLengthUnit(v); }} 
               />
             </div>
           </div>
@@ -165,7 +144,7 @@ export default function SettingsPage() {
               <span style={{ fontWeight: 600 }}>Default RIR Target</span>
               <input 
                 type="number" min="0" max="5" value={defaultRIR}
-                onChange={(e) => { const v = parseInt(e.target.value); setDefaultRIR(v); save("defaultRIR", v); }}
+                onChange={(e) => { const v = parseInt(e.target.value); setDefaultRIR(v); }}
                 style={{ ...inputStyle, width: "70px" }}
               />
             </div>
@@ -174,28 +153,28 @@ export default function SettingsPage() {
               <span style={{ fontWeight: 600 }}>Rest Timer (sec)</span>
               <input 
                 type="number" value={restTimer}
-                onChange={(e) => { const v = parseInt(e.target.value); setRestTimer(v); save("restTimer", v); }}
+                onChange={(e) => { const v = parseInt(e.target.value); setRestTimer(v); }}
                 style={{ ...inputStyle, width: "80px" }}
               />
             </div>
             <div style={{ height: "1px", background: "var(--border)", margin: "0 20px" }} />
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Auto-start Rest Timer</span>
-              <Toggle active={autoStartRest} onClick={() => { const v = !autoStartRest; setAutoStartRest(v); save("autoStartRest", v); }} color="var(--accent-green)" />
+              <Toggle active={autoStartRest} onClick={() => { setAutoStartRest(!autoStartRest); }} color="var(--accent-green)" />
             </div>
             <div style={{ height: "1px", background: "var(--border)", margin: "0 20px" }} />
             <div style={{ padding: "18px 20px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: plateCalc ? "14px" : 0 }}>
                 <span style={{ fontWeight: 600 }}>Plate Calculator</span>
-                <Toggle active={plateCalc} onClick={() => { const v = !plateCalc; setPlateCalc(v); save("plateCalc", v); }} color="var(--accent-blue)" />
+                <Toggle active={plateCalc} onClick={() => { setPlateCalc(!plateCalc); }} color="var(--accent-blue)" />
               </div>
               {plateCalc && (
-                <div className="animate-fade-in" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px", background: "rgba(255,255,255,0.03)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                <div className="animate-fade-in" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px", background: "var(--bg-elevated)", borderRadius: "12px", border: "1px solid var(--border)" }}>
                   <span style={{ fontSize: "13px", color: "var(--text-secondary)", fontWeight: 500 }}>Bar Weight ({weightUnit})</span>
                   <input 
                     type="number" value={barWeight}
-                    onChange={(e) => { const v = parseFloat(e.target.value); setBarWeight(v); save("barWeight", v); }}
-                    style={{ ...inputStyle, width: "80px", background: "rgba(255,255,255,0.05)" }}
+                    onChange={(e) => { const v = parseFloat(e.target.value); setBarWeight(v); }}
+                    style={{ ...inputStyle, width: "80px", background: "var(--bg-card)" }}
                   />
                 </div>
               )}
@@ -209,15 +188,15 @@ export default function SettingsPage() {
           <div className="glass-card" style={{ display: "flex", flexDirection: "column" }}>
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Workout Reminders</span>
-              <Toggle active={reminders} onClick={() => { 
-                const v = !reminders; setReminders(v); save("notifications", JSON.stringify({ reminders: v, alerts: timerAlerts })); 
+              <Toggle active={notifications.reminders} onClick={() => { 
+                setNotifications({ ...notifications, reminders: !notifications.reminders }); 
               }} color="var(--accent-blue)" />
             </div>
             <div style={{ height: "1px", background: "var(--border)", margin: "0 20px" }} />
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Rest Timer Alerts</span>
-              <Toggle active={timerAlerts} onClick={() => { 
-                const v = !timerAlerts; setTimerAlerts(v); save("notifications", JSON.stringify({ reminders: reminders, alerts: v })); 
+              <Toggle active={notifications.alerts} onClick={() => { 
+                setNotifications({ ...notifications, alerts: !notifications.alerts }); 
               }} color="var(--accent-blue)" />
             </div>
           </div>
@@ -268,7 +247,7 @@ function Toggle({ active, onClick, color }) {
         width: "48px",
         height: "24px",
         borderRadius: "24px",
-        background: active ? color : "rgba(255,255,255,0.1)",
+        background: active ? color : "var(--border-strong)",
         padding: "3px",
         border: "none",
         cursor: "pointer",
@@ -307,9 +286,9 @@ function UnitToggle({ options, active, onChange }) {
             textTransform: "uppercase",
             border: "none",
             cursor: "pointer",
-            background: active === opt ? "rgba(255,255,255,0.12)" : "transparent",
-            color: active === opt ? "#fff" : "var(--text-tertiary)",
-            boxShadow: active === opt ? "0 4px 12px rgba(0,0,0,0.2)" : "none",
+            background: active === opt ? "var(--border-strong)" : "transparent",
+            color: active === opt ? "var(--text-primary)" : "var(--text-tertiary)",
+            boxShadow: active === opt ? "0 4px 12px rgba(0,0,0,0.1)" : "none",
             transition: "all 0.2s"
           }}
         >

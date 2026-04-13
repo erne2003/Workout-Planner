@@ -277,7 +277,7 @@ function LastWorkoutBanner({ lastTime, onReset }) {
         justifyContent: "space-between",
       }}
     >
-      <span>Last workout <strong style={{ color: "#fff" }}>{hLabel} ago</strong></span>
+      <span>Last workout <strong style={{ color: "var(--text-primary)" }}>{hLabel} ago</strong></span>
       <button
         onClick={onReset}
         style={{
@@ -368,7 +368,7 @@ export default function RecoveryPage() {
                 onClick={() => setView("front")}
                 style={{
                   background: view === "front" ? "#0A84FF" : "transparent",
-                  border: "none", color: "white", padding: "4px 12px", borderRadius: "6px",
+                  border: "none", color: view === "front" ? "#fff" : "var(--text-primary)", padding: "4px 12px", borderRadius: "6px",
                   fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
                 }}
               >
@@ -378,7 +378,7 @@ export default function RecoveryPage() {
                 onClick={() => setView("back")}
                 style={{
                   background: view === "back" ? "#0A84FF" : "transparent",
-                  border: "none", color: "white", padding: "4px 12px", borderRadius: "6px",
+                  border: "none", color: view === "back" ? "#fff" : "var(--text-primary)", padding: "4px 12px", borderRadius: "6px",
                   fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
                 }}
               >

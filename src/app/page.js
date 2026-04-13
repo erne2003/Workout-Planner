@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import PageShell from "../components/PageShell";
+import { useSettings } from "../contexts/SettingsContext";
 import PlateCalculator from "../components/PlateCalculator";
 import { OVERALL_STRENGTH_SCORE, WORKOUT_EXERCISES } from "../lib/data";
 import {
@@ -32,7 +33,7 @@ function formatDate() {
 const RECOVERY_MUSCLES = ["chest", "shoulders", "quads", "lats"];
 
 /* --- Stat Card --------------------------------------------- */
-function StatCard({ label, value, unit, color = "#fff", delay }) {
+function StatCard({ label, value, unit, color = "var(--text-primary)", delay }) {
   return (
     <div
       className={`glass-card animate-fade-up delay-${delay}`}
@@ -81,6 +82,9 @@ function StatCard({ label, value, unit, color = "#fff", delay }) {
 /* --- Page -------------------------------------------------- */
 export default function HomePage() {
   const router = useRouter();
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
+  const showPlateCalc = ctx?.plateCalc ?? true;
 
   const [sessionCount, setSessionCount] = useState(0);
   const [strengthScore, setStrengthScore] = useState(0);
@@ -90,18 +94,15 @@ export default function HomePage() {
     subtitle: "Start a workout to see stats here",
     date: "-",
     duration: "0 min",
-    volume: "0 lbs",
+    volume: `0 ${unit}`,
     sets: 0,
     exercises: [] // populated by name and sets mapping
   });
 
   const [strengthData, setStrengthData] = useState({});
   const [recoveryData, setRecoveryData] = useState({});
-  const [showPlateCalc, setShowPlateCalc] = useState(true);
 
   useEffect(() => {
-    setShowPlateCalc(localStorage.getItem("plateCalc") !== "false");
-    
     const fetchDashboardDetails = async () => {
       try {
         const uId = localStorage.getItem("userId") || 1;
@@ -189,7 +190,8 @@ export default function HomePage() {
           const exMap = {};
 
           lw.sets?.forEach(s => {
-            lwVol += (s.reps * s.weight);
+            const w = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            lwVol += (s.reps * w);
             const nm = s.name || s.exercise_name || "Unknown Exercise";
             if (!exMap[nm]) { exMap[nm] = 0; }
             exMap[nm]++;
@@ -204,7 +206,7 @@ export default function HomePage() {
             subtitle: Object.keys(exMap).slice(0, 3).join(" · ") || "-",
             date: new Date(lw.created_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
             duration: dStr,
-            volume: `${lwVol.toLocaleString()} lbs`,
+            volume: `${lwVol.toLocaleString()} ${unit}`,
             sets: lw.sets?.length || 0,
             exercises: Object.entries(exMap).map(([nm, ct], idx) => ({
               id: `ex-${idx}`,
@@ -370,7 +372,7 @@ export default function HomePage() {
                   fontFamily: "var(--font-display)",
                   fontSize: "15px",
                   fontWeight: 700,
-                  color: "#fff",
+                  color: "var(--text-primary)",
                 }}
               >
                 {value}

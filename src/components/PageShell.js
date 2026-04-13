@@ -4,7 +4,7 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         maxWidth: "430px",
         margin: "0 auto",
         display: "flex",
@@ -134,7 +134,7 @@ export default function PageShell({ title, subtitle, badge, badgeColor = "badge-
           overflowY: "auto",
           position: "relative",
           zIndex: 10,
-          padding: "4px 16px 110px",
+          padding: "4px 16px 140px",
         }}
       >
         {children}

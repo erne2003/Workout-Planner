@@ -157,7 +157,7 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
   const result = {};
   muscles.forEach(muscle => {
     const mKey = muscle.toLowerCase();
-    const manual = manualOverrides[mKey] ?? null;
+    const manual = manualOverrides[muscle] ?? null;
 
     // Direct hit OR parent hit
     const parentKey = INHERITANCE_MAP[mKey];

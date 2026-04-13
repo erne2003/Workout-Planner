@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { useSettings } from "../../contexts/SettingsContext";
 import PageShell from "../../components/PageShell";
 import { WORKOUT_EXERCISES } from "../../lib/data";
 import { setLastWorkoutTime } from "../../lib/recovery";
@@ -42,6 +43,9 @@ function completedCount(exercises, completed) {
 /* ─── SetRow ────────────────────────────────────────────────── */
 // prevSet: { reps, weight, rir } from last session, or null
 function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
+
   return (
     <button
       onClick={() => onToggle(exIdx, setIdx)}
@@ -101,7 +105,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
               }}
             >
               {prevSet.weight}
-              <span style={{ fontWeight: 500, fontSize: "9px" }}>lbs</span>
+              <span style={{ fontWeight: 500, fontSize: "9px" }}>{unit}</span>
             </span>
             <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>
               {prevSet.reps}r
@@ -124,13 +128,13 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
             fontFamily: "var(--font-display)",
             fontSize: "19px",
             fontWeight: 800,
-            color: isDone ? "#30D158" : "#fff",
+            color: isDone ? "#30D158" : "var(--text-primary)",
             transition: "color 0.2s",
           }}
         >
           {set.weight}
         </span>
-        <span style={{ fontSize: "11px", color: "var(--text-tertiary)", fontWeight: 500 }}>lbs</span>
+        <span style={{ fontSize: "11px", color: "var(--text-tertiary)", fontWeight: 500 }}>{unit}</span>
       </div>
 
       {/* Reps + RIR */}
@@ -429,6 +433,9 @@ function ExerciseSearch({ onAdd }) {
 
 /* ─── Page ──────────────────────────────────────────────────── */
 export default function WorkoutPage() {
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
+
   // ── Existing Workout States ──
   const [started, setStarted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -558,7 +565,7 @@ export default function WorkoutPage() {
             await fetch(`http://localhost:5000/workouts/${workoutId}/sets`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: set.weight, rir: set.rir || 0 }),
+              body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) * 2.205) : Number(set.weight), rir: set.rir || 0 }),
             });
           }
         }
@@ -628,7 +635,7 @@ export default function WorkoutPage() {
           };
         }
         exercisesMap[set.exercise_id].sets.push({
-          reps: set.reps, weight: set.weight, rir: set.rir !== null ? set.rir : 0
+          reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) / 2.205) : Number(set.weight), rir: set.rir !== null ? set.rir : 0
         });
       });
       plan = Object.values(exercisesMap);
@@ -636,7 +643,7 @@ export default function WorkoutPage() {
       // It's a template routine with bulk exercise params
       plan = item.exercises.map(ex => {
         const setsObj = Array(ex.sets).fill(0).map(() => ({
-          reps: ex.reps, weight: ex.weight, rir: ex.rir
+          reps: ex.reps, weight: unit === "kg" ? Math.round(Number(ex.weight) / 2.205) : Number(ex.weight), rir: ex.rir
         }));
         return {
           ...ex,
@@ -688,7 +695,7 @@ export default function WorkoutPage() {
               value={newRoutineName}
               onChange={e => setNewRoutineName(e.target.value)}
               placeholder="Workout Name (e.g. Pull Day)" 
-              style={{ width: "100%", padding: "14px", borderRadius: "10px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", marginBottom: "20px", fontSize: "16px", fontFamily: "var(--font-display)", fontWeight: 700 }}
+              style={{ width: "100%", padding: "14px", borderRadius: "10px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", color: "var(--text-primary)", marginBottom: "20px", fontSize: "16px", fontFamily: "var(--font-display)", fontWeight: 700 }}
             />
 
             <div style={{ marginBottom: "20px" }}>
@@ -781,7 +788,7 @@ export default function WorkoutPage() {
                   <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-tertiary)", width: "22px" }}>S{si + 1}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     <input type="number" value={set.weight} onChange={(e) => updateSet(ei, si, "weight", e.target.value)} style={{ width: "70px", padding: "6px 4px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.5)", color: "#fff", outline: "none", textAlign: "right", fontFamily: "var(--font-display)", fontWeight: 700 }} />
-                    <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 600 }}>lbs</span>
+                    <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 600 }}>{unit}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     <input type="number" value={set.reps} onChange={(e) => updateSet(ei, si, "reps", e.target.value)} style={{ width: "60px", padding: "6px 4px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.5)", color: "#fff", outline: "none", textAlign: "right", fontFamily: "var(--font-display)", fontWeight: 700 }} />
@@ -833,7 +840,7 @@ export default function WorkoutPage() {
             ].map(({ label, value }, i) => (
               <div key={label} style={{ flex: 1, textAlign: i === 1 ? "center" : i === 2 ? "right" : "left" }}>
                 <div style={{ fontSize: "10px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}>{label}</div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "24px", fontWeight: 800, letterSpacing: "-1px", color: "#fff" }}>{value}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "24px", fontWeight: 800, letterSpacing: "-1px", color: "var(--text-primary)" }}>{value}</div>
               </div>
             ))}
           </div>
@@ -868,7 +875,7 @@ export default function WorkoutPage() {
                     <div key={si} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "8px" }}>
                       <span style={{ fontWeight: 600 }}>Set {si + 1}</span>
                       <span>
-                        <span style={{ color: "#fff", fontWeight: 700 }}>{set.weight}</span> lbs × <span style={{ color: "#fff", fontWeight: 700 }}>{set.reps}</span> reps
+                        <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{set.weight}</span> {unit} × <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{set.reps}</span> reps
                         {set.rir > 0 && <span style={{ marginLeft: "8px", color: "var(--text-tertiary)" }}>(RIR: {set.rir})</span>}
                       </span>
                     </div>
@@ -912,12 +919,12 @@ export default function WorkoutPage() {
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
         <div className="glass-card animate-fade-up delay-1" style={{ flex: 1, padding: "14px 16px" }}>
           <div style={{ fontSize: "10px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}>Duration</div>
-          <div style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 800, letterSpacing: "-1.5px", color: "#fff" }}>{fmt(elapsed)}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 800, letterSpacing: "-1.5px", color: "var(--text-primary)" }}>{fmt(elapsed)}</div>
         </div>
         <div className="glass-card animate-fade-up delay-2" style={{ flex: 1, padding: "14px 16px" }}>
           <div style={{ fontSize: "10px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}>Volume</div>
           <div style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 800, letterSpacing: "-1.5px", color: "#FFD60A" }}>
-            {volume.toLocaleString()}<span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontFamily: "var(--font-body)", fontWeight: 500 }}> lbs</span>
+            {volume.toLocaleString()}<span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontFamily: "var(--font-body)", fontWeight: 500 }}> {unit}</span>
           </div>
         </div>
         <div className="glass-card animate-fade-up delay-3" style={{ flex: 1, padding: "14px 16px" }}>

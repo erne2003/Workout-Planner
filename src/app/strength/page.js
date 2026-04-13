@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import PageShell from "../../components/PageShell";
+import { useSettings } from "../../contexts/SettingsContext";
 import { OVERALL_STRENGTH_SCORE, PERSONAL_RECORDS } from "../../lib/data";
 import {
   RECOVERY_COLOR,
@@ -9,8 +10,6 @@ import {
   setMuscleSoreness,
   computeDynamicRecovery,
 } from "../../lib/recovery";
-import BodyMap from "../../components/BodyMap";
-
 /* --- Overall Score Ring -------------------------------------- */
 function OverallRing({ score, bw, age, index }) {
   const [mounted, setMounted] = useState(false);
@@ -169,19 +168,19 @@ function LiftCard({ liftName, weight, bw, delay }) {
     else if (multiplier >= 1.2) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
     else if (multiplier >= 1.0) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
     else if (multiplier >= 0.7) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
-    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = 20; }
+    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = weight > 0 ? 20 : 0; }
   } else if (liftName === "squat") {
     if (multiplier >= 2.0)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
     else if (multiplier >= 1.5) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
     else if (multiplier >= 1.2) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
     else if (multiplier >= 0.9) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
-    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = 20; }
+    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = weight > 0 ? 20 : 0; }
   } else if (liftName === "deadlift") {
     if (multiplier >= 2.5)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
     else if (multiplier >= 2.0) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
     else if (multiplier >= 1.5) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
     else if (multiplier >= 1.1) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
-    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = 20; }
+    else                        { grade = "Beginner"; gradeColor = "var(--text-tertiary)"; pct = weight > 0 ? 20 : 0; }
   }
 
   return (
@@ -455,6 +454,8 @@ function MuscleRadar({ scores }) {
 
 /* --- Page ---------------------------------------------------- */
 export default function StrengthPage() {
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
   const [metrics, setMetrics] = useState({ weight: 0, trainingYears: 0 });
   const [prs, setPrs] = useState({ 
     bench: { weight: 0, unit: "lbs", gain: "+0" }, 
@@ -498,7 +499,8 @@ export default function StrengthPage() {
         let bw = 1;
         if (metData.length > 0) {
             const latest = metData[metData.length - 1];
-            bw = parseFloat(latest.weight) || 1;
+            const rawBw = parseFloat(latest.weight) || 1;
+            bw = unit === "kg" ? Math.round(rawBw / 2.205) : rawBw;
             setMetrics({ weight: bw, trainingYears: latest.training_years || 0 });
         }
         
@@ -511,7 +513,8 @@ export default function StrengthPage() {
         if (prData.length > 0) {
             prData.forEach(p => {
                 const e = p.exercise_name?.toLowerCase();
-                const w = parseFloat(p.weight);
+                const rawW = parseFloat(p.weight);
+                const w = unit === "kg" ? Math.round(rawW / 2.205) : rawW;
                 if (["bench press", "bench", "chest press"].includes(e)) {
                     liftHistory.bench.push(w);
                     rawMaxes.bench = Math.max(rawMaxes.bench, w);
@@ -575,7 +578,7 @@ export default function StrengthPage() {
       }
     };
     fetchAllData();
-  }, []);
+  }, [unit]);
 
   const handleMuscleClick = (muscle) => {
     setSelectedMuscle(muscle);

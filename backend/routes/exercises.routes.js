@@ -1,7 +1,7 @@
 const express = require("express");
 const axios = require("axios");
 const router = express.Router();
-const { searchExercises, insertExercises } = require("../queries/exercises.queries");
+const { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup } = require("../queries/exercises.queries");
 
 router.get("/search", async (req, res) => {
     const { name } = req.query;
@@ -48,6 +48,41 @@ router.get("/search", async (req, res) => {
     } catch (error) {
         console.error("GET /exercises/search error:", error.message);
         res.status(500).json({ error: "Failed to search exercises" });
+    }
+});
+
+router.get("/muscles", async (req, res) => {
+    try {
+        const muscles = await getUniqueMuscles();
+        res.json(muscles);
+    } catch (error) {
+        console.error("GET /exercises/muscles error:", error.message);
+        res.status(500).json({ error: "Failed to fetch muscles" });
+    }
+});
+
+router.get("/", async (req, res) => {
+    try {
+        const { muscle } = req.query;
+        const exercises = await getAllExercises(muscle || null);
+        res.json(exercises);
+    } catch (err) {
+        console.error("GET /exercises error:", err.message);
+        res.status(500).json({ error: "Failed to fetch exercises" });
+    }
+});
+
+router.patch("/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { muscle_group } = req.body;
+        if (!muscle_group) return res.status(400).json({ error: "muscle_group is required" });
+        const updated = await updateMuscleGroup(id, muscle_group);
+        if (!updated) return res.status(404).json({ error: "Exercise not found" });
+        res.json(updated);
+    } catch (err) {
+        console.error("PATCH /exercises/:id error:", err.message);
+        res.status(500).json({ error: "Failed to update exercise" });
     }
 });
 

@@ -1,18 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useSettings } from "../contexts/SettingsContext";
 
 export default function PlateCalculator() {
   const [targetWeight, setTargetWeight] = useState(135);
-  const [barWeight, setBarWeight] = useState(45);
-  const [unit, setUnit] = useState("lbs");
   const [plates, setPlates] = useState([]);
-
-  useEffect(() => {
-    const savedBar = localStorage.getItem("barWeight");
-    const savedUnit = localStorage.getItem("weightUnit") || "lbs";
-    if (savedBar) setBarWeight(parseFloat(savedBar));
-    setUnit(savedUnit);
-  }, []);
+  
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
+  const barWeight = ctx?.barWeight || 45;
 
   useEffect(() => {
     calculatePlates(targetWeight, barWeight);
@@ -96,8 +92,8 @@ export default function PlateCalculator() {
             onChange={(e) => setTargetWeight(parseFloat(e.target.value) || 0)}
             style={{
               width: "90px",
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
               borderRadius: "12px",
               padding: "10px 14px",
               textAlign: "right",
@@ -126,10 +122,10 @@ export default function PlateCalculator() {
           justifyContent: "center", 
           minHeight: "80px", 
           padding: "20px", 
-          background: "rgba(255,255,255,0.02)", 
+          background: "var(--bg-card)", 
           borderRadius: "16px", 
-          border: "1px solid rgba(255,255,255,0.05)",
-          boxShadow: "inset 0 4px 12px rgba(0,0,0,0.3)"
+          border: "1px solid var(--border)",
+          boxShadow: "inset 0 4px 12px rgba(0,0,0,0.1)"
         }}
       >
         {plates.length === 0 ? (
@@ -154,7 +150,7 @@ export default function PlateCalculator() {
                 fontSize: "12px",
                 fontWeight: 900,
                 color: "#fff",
-                boxShadow: "0 8px 16px rgba(0,0,0,0.5)",
+                boxShadow: "0 8px 16px rgba(0,0,0,0.2)",
                 transition: "transform 0.2s"
               }}
             >
