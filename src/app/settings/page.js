@@ -8,9 +8,9 @@ export default function SettingsPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("—");
-  
+
   const ctx = useSettings();
-  
+
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "");
     setUserEmail(localStorage.getItem("userEmail") || "—");
@@ -76,13 +76,13 @@ export default function SettingsPage() {
   return (
     <PageShell title="Settings" backAction={() => router.back()}>
       <div style={{ paddingBottom: "120px", display: "flex", flexDirection: "column", gap: "32px" }}>
-        
+
         {/* Profile */}
         <section>
           <div style={sectionLabelStyle}>Profile</div>
           <div className="glass-card" style={{ padding: "18px 20px" }}>
             <div style={{ fontSize: "11px", color: "var(--text-tertiary)", fontWeight: 600, marginBottom: "4px" }}>Display Name</div>
-            <input 
+            <input
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               onBlur={handleNameBlur}
@@ -118,19 +118,19 @@ export default function SettingsPage() {
           <div className="glass-card" style={{ display: "flex", flexDirection: "column" }}>
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Weight Unit</span>
-              <UnitToggle 
-                options={["lbs", "kg"]} 
-                active={weightUnit} 
-                onChange={(v) => { setWeightUnit(v); }} 
+              <UnitToggle
+                options={["lbs", "kg"]}
+                active={weightUnit}
+                onChange={(v) => { setWeightUnit(v); }}
               />
             </div>
             <div style={{ height: "1px", background: "var(--border)", margin: "0 20px" }} />
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Length Unit</span>
-              <UnitToggle 
-                options={["in", "cm"]} 
-                active={lengthUnit} 
-                onChange={(v) => { setLengthUnit(v); }} 
+              <UnitToggle
+                options={["in", "cm"]}
+                active={lengthUnit}
+                onChange={(v) => { setLengthUnit(v); }}
               />
             </div>
           </div>
@@ -142,7 +142,7 @@ export default function SettingsPage() {
           <div className="glass-card" style={{ display: "flex", flexDirection: "column" }}>
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Default RIR Target</span>
-              <input 
+              <input
                 type="number" min="0" max="5" value={defaultRIR}
                 onChange={(e) => { const v = parseInt(e.target.value); setDefaultRIR(v); }}
                 style={{ ...inputStyle, width: "70px" }}
@@ -151,7 +151,7 @@ export default function SettingsPage() {
             <div style={{ height: "1px", background: "var(--border)", margin: "0 20px" }} />
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Rest Timer (sec)</span>
-              <input 
+              <input
                 type="number" value={restTimer}
                 onChange={(e) => { const v = parseInt(e.target.value); setRestTimer(v); }}
                 style={{ ...inputStyle, width: "80px" }}
@@ -171,7 +171,7 @@ export default function SettingsPage() {
               {plateCalc && (
                 <div className="animate-fade-in" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px", background: "var(--bg-elevated)", borderRadius: "12px", border: "1px solid var(--border)" }}>
                   <span style={{ fontSize: "13px", color: "var(--text-secondary)", fontWeight: 500 }}>Bar Weight ({weightUnit})</span>
-                  <input 
+                  <input
                     type="number" value={barWeight}
                     onChange={(e) => { const v = parseFloat(e.target.value); setBarWeight(v); }}
                     style={{ ...inputStyle, width: "80px", background: "var(--bg-card)" }}
@@ -188,15 +188,15 @@ export default function SettingsPage() {
           <div className="glass-card" style={{ display: "flex", flexDirection: "column" }}>
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Workout Reminders</span>
-              <Toggle active={notifications.reminders} onClick={() => { 
-                setNotifications({ ...notifications, reminders: !notifications.reminders }); 
+              <Toggle active={notifications.reminders} onClick={() => {
+                setNotifications({ ...notifications, reminders: !notifications.reminders });
               }} color="var(--accent-blue)" />
             </div>
             <div style={{ height: "1px", background: "var(--border)", margin: "0 20px" }} />
             <div style={rowStyle}>
               <span style={{ fontWeight: 600 }}>Rest Timer Alerts</span>
-              <Toggle active={notifications.alerts} onClick={() => { 
-                setNotifications({ ...notifications, alerts: !notifications.alerts }); 
+              <Toggle active={notifications.alerts} onClick={() => {
+                setNotifications({ ...notifications, alerts: !notifications.alerts });
               }} color="var(--accent-blue)" />
             </div>
           </div>
@@ -207,10 +207,8 @@ export default function SettingsPage() {
           <div style={sectionLabelStyle}>Account</div>
           <div className="glass-card" style={{ overflow: "hidden" }}>
             <div style={rowStyle}>
-              <span style={{ fontWeight: 600 }}>Email</span>
-              <span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>{userEmail}</span>
             </div>
-            <button 
+            <button
               onClick={logout}
               style={{
                 width: "100%",
@@ -241,7 +239,7 @@ export default function SettingsPage() {
 
 function Toggle({ active, onClick, color }) {
   return (
-    <button 
+    <button
       onClick={onClick}
       style={{
         width: "48px",
@@ -257,7 +255,7 @@ function Toggle({ active, onClick, color }) {
         justifyContent: active ? "flex-end" : "flex-start"
       }}
     >
-      <div 
+      <div
         style={{
           width: "18px",
           height: "18px",

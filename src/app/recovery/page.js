@@ -10,6 +10,7 @@ import {
   setMuscleSoreness,
   computeRecovery,
   computeDynamicRecovery,
+  parseLocalISO,
 } from "../../lib/recovery";
 import MuscleMap from "../../components/MuscleMap";
 import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "../../lib/muscle-paths";
@@ -315,7 +316,7 @@ export default function RecoveryPage() {
 
       let latestTime = 0;
       data.forEach(w => {
-        const wTime = new Date(w.created_at).getTime();
+        const wTime = parseLocalISO(w.created_at);
         if (wTime > latestTime) latestTime = wTime;
       });
       setLastTimeState(latestTime > 0 ? new Date(latestTime) : null);

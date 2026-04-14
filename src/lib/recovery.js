@@ -47,6 +47,19 @@ export function recoveryPct(hours) {
   return Math.min(Math.round((hours / 24) * 100), 100);
 }
 
+/** Parses database naive UTC dates back to local epoch time */
+export function parseLocalISO(dateStr) {
+  if (!dateStr) return 0;
+  let t = new Date(dateStr).getTime();
+  // Reverse the naive timestamp shift: Node `pg` interprets UTC naive strings as local time, 
+  // mistakenly dragging the absolute epoch into the future. Removing the offset cancels it out.
+  if (typeof dateStr === "string" && dateStr.endsWith("Z")) {
+    const tzOffset = typeof window !== "undefined" ? new Date().getTimezoneOffset() * 60000 : 0;
+    t -= tzOffset;
+  }
+  return t;
+}
+
 /** Read the last workout timestamp from localStorage (safe for SSR). */
 export function getLastWorkoutTime() {
   if (typeof window === "undefined") return null;
@@ -128,7 +141,7 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
   const lastHit = {};
 
   workoutsData.forEach(w => {
-    const wDate = new Date(w.created_at).getTime();
+    const wDate = parseLocalISO(w.created_at);
     w.sets?.forEach(s => {
       const nm = (s.muscle_group || "").toLowerCase();
       if (nm && (!lastHit[nm] || wDate > lastHit[nm])) {

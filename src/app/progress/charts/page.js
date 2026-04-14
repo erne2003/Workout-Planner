@@ -14,8 +14,8 @@ export default function DetailedChartsPage() {
   
   // Filters
   const [range, setRange] = useState("3M");
-  const [muscle, setMuscle] = useState("All");
-  const [exercise, setExercise] = useState("All");
+  const [muscle, setMuscle] = useState("Chest");
+  const [exercise, setExercise] = useState("");
 
   const [activeDot, setActiveDot] = useState(null);
 
@@ -70,38 +70,46 @@ export default function DetailedChartsPage() {
     }
 
     // Filter muscle
-    if (muscle !== "All") {
-      filtered = filtered.filter(s => s.muscle === muscle);
+    if (muscle) {
+      filtered = filtered.filter(s => s.muscle?.toLowerCase() === muscle.toLowerCase());
     }
 
     // Filter exercise
-    if (exercise !== "All") {
-      filtered = filtered.filter(s => s.exercise === exercise);
+    if (exercise) {
+      filtered = filtered.filter(s => s.exercise?.toLowerCase() === exercise.toLowerCase());
     }
 
     return filtered;
   }, [allSets, range, muscle, exercise]);
 
   // Derived filter options
-  const muscleOptions = useMemo(() => ["All", ...Object.keys(MUSCLE_RECOVERY).map(m => m.charAt(0).toUpperCase() + m.slice(1))], []);
+  const muscleOptions = useMemo(() => Object.keys(MUSCLE_RECOVERY).map(m => m.charAt(0).toUpperCase() + m.slice(1)), []);
   
-  const [dbExercises, setDbExercises] = useState([]);
-  useEffect(() => {
-    const url = muscle !== "All"
-      ? `http://localhost:5000/exercises?muscle=${muscle}`
-      : "http://localhost:5000/exercises";
-    fetch(url)
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setDbExercises(data))
-      .catch(() => setDbExercises([]));
-  }, [muscle]);
+  // Dynamically extract distinct exercises from user's actual workout history for the active muscle
+  const exerciseOptions = useMemo(() => {
+    const opts = new Set();
+    allSets.forEach(s => {
+      if (s.muscle && muscle && s.muscle.toLowerCase() === muscle.toLowerCase()) {
+        opts.add(s.exercise);
+      }
+    });
+    return Array.from(opts);
+  }, [allSets, muscle]);
 
-  const exerciseOptions = useMemo(() => ["All", ...dbExercises.map(e => e.name)], [dbExercises]);
+  // Sync selected exercise ensuring we default safely anytime options shift
+  useEffect(() => {
+    if (exerciseOptions.length > 0) {
+      if (!exerciseOptions.includes(exercise)) {
+        setExercise(exerciseOptions[0]);
+      }
+    } else {
+      setExercise("");
+    }
+  }, [exerciseOptions, exercise]);
 
   // Handle cascading dropdowns
   const handleMuscleChange = (e) => {
     setMuscle(e.target.value);
-    setExercise("All"); // Reset child when parent changes
     setActiveDot(null);
   };
 
@@ -141,7 +149,7 @@ export default function DetailedChartsPage() {
           onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
           style={{ background: "var(--bg-card)", border: isOpen ? "1px solid var(--accent-blue)" : "1px solid var(--border-strong)", padding: "12px 14px", borderRadius: "14px", color: "var(--text-primary)", fontWeight: 700, fontSize: "13px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", transition: "all 0.2s" }}
         >
-          {value === "All" ? defaultLabel : value}
+          {!value ? defaultLabel : value}
           <div style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "flex" }}>
             <ChevronIcon />
           </div>
@@ -159,7 +167,7 @@ export default function DetailedChartsPage() {
                   onClick={(e) => { e.stopPropagation(); onChange({ target: { value: opt }}); setIsOpen(false); }}
                   style={{ padding: "12px 14px", fontSize: "13px", fontWeight: 600, color: opt === value ? "var(--accent-blue)" : "var(--text-primary)", cursor: "pointer", borderBottom: i === options.length - 1 ? "none" : "1px solid var(--border)", background: opt === value ? "rgba(10,132,255,0.05)" : "transparent" }}
                 >
-                  {opt === "All" ? defaultLabel : opt}
+                  {opt}
                 </div>
               ))}
             </div>
@@ -183,13 +191,13 @@ export default function DetailedChartsPage() {
             value={muscle} 
             options={muscleOptions} 
             onChange={handleMuscleChange} 
-            defaultLabel="All Muscles" 
+            defaultLabel="Select Muscle" 
           />
           <CustomSelect 
             value={exercise} 
             options={exerciseOptions} 
             onChange={handleExerciseChange} 
-            defaultLabel="All Exercises" 
+            defaultLabel="Loading Exercises..." 
           />
         </div>
 

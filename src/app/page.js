@@ -79,6 +79,73 @@ function StatCard({ label, value, unit, color = "var(--text-primary)", delay }) 
   );
 }
 
+/* --- Last Workout Accordion Row ------------------------------ */
+function WorkoutExerciseRow({ ex, unit }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 0, background: "rgba(255,255,255,0.03)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", transition: "all 0.2s" }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "10px 12px",
+          cursor: "pointer",
+        }}
+      >
+        <div
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            background: ex.accentColor,
+            boxShadow: `0 0 6px ${ex.accentColor}80`,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontSize: "13px", fontWeight: 500, flex: 1, color: "var(--text-primary)" }}>
+          {ex.name}
+        </span>
+        <span
+          style={{
+            fontSize: "11px",
+            color: "var(--text-tertiary)",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "4px"
+          }}
+        >
+          {ex.setsLength} sets
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </span>
+      </div>
+
+      {open && (
+        <div className="animate-fade-up" style={{ padding: "0 12px 10px 28px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          {ex.sets.map((s, i) => {
+            const displayWeight = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            return (
+              <div key={s.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", padding: "4px 8px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
+                <span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Set {s.set_order || i + 1}</span>
+                <div style={{ display: "flex", gap: "6px", fontWeight: 600, alignItems: "center" }}>
+                  <span style={{ color: "var(--text-primary)" }}>{displayWeight} {unit}</span>
+                  <span style={{ color: "var(--text-secondary)" }}>×</span>
+                  <span style={{ color: "var(--text-primary)" }}>{s.reps} reps</span>
+                  <span style={{ color: "#FF9F0A", marginLeft: "4px" }}>({s.rir ?? 0} rir)</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* --- Page -------------------------------------------------- */
 export default function HomePage() {
   const router = useRouter();
@@ -193,8 +260,9 @@ export default function HomePage() {
             const w = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
             lwVol += (s.reps * w);
             const nm = s.name || s.exercise_name || "Unknown Exercise";
-            if (!exMap[nm]) { exMap[nm] = 0; }
-            exMap[nm]++;
+            if (!exMap[nm]) { exMap[nm] = { length: 0, sets: [] }; }
+            exMap[nm].length++;
+            exMap[nm].sets.push(s);
           });
 
           // Check if completion time was written in notes string securely
@@ -208,10 +276,11 @@ export default function HomePage() {
             duration: dStr,
             volume: `${lwVol.toLocaleString()} ${unit}`,
             sets: lw.sets?.length || 0,
-            exercises: Object.entries(exMap).map(([nm, ct], idx) => ({
+            exercises: Object.entries(exMap).map(([nm, obj], idx) => ({
               id: `ex-${idx}`,
               name: nm,
-              setsLength: ct,
+              setsLength: obj.length,
+              sets: obj.sets,
               accentColor: ["#0A84FF", "#FF2D55", "#FFD60A", "#30D158", "#BF5AF2"][idx % 5]
             }))
           });
@@ -384,47 +453,10 @@ export default function HomePage() {
         {/* Exercise list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {lastWorkout.exercises.map((ex) => (
-            <div
-              key={ex.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                padding: "10px 12px",
-                borderRadius: "12px",
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-              }}
-            >
-              <div
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "50%",
-                  background: ex.accentColor,
-                  boxShadow: `0 0 6px ${ex.accentColor}80`,
-                  flexShrink: 0,
-                }}
-              />
-              <span style={{ fontSize: "13px", fontWeight: 500, flex: 1 }}>
-                {ex.name}
-              </span>
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text-tertiary)",
-                  fontWeight: 500,
-                }}
-              >
-                {ex.setsLength} sets
-              </span>
-            </div>
+            <WorkoutExerciseRow key={ex.id} ex={ex} unit={unit} />
           ))}
         </div>
       </div>
-
 
       {showPlateCalc && <PlateCalculator />}
     </PageShell>

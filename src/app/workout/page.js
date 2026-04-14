@@ -1,6 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { motion, useAnimation, useMotionValue } from "framer-motion";
+import { Trash2 } from "lucide-react";
 import { useSettings } from "../../contexts/SettingsContext";
 import PageShell from "../../components/PageShell";
 import { WORKOUT_EXERCISES } from "../../lib/data";
@@ -42,29 +44,85 @@ function completedCount(exercises, completed) {
 
 /* ─── SetRow ────────────────────────────────────────────────── */
 // prevSet: { reps, weight, rir } from last session, or null
-function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
+function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet, prevSet }) {
   const ctx = useSettings();
   const unit = ctx?.weightUnit || "lbs";
 
+  const x = useMotionValue(0);
+  const controls = useAnimation();
+  const [showDelete, setShowDelete] = useState(false);
+
+  const handleDragEnd = (event, info) => {
+    if (info.offset.x < -40) {
+      controls.start({ x: -70 });
+      setShowDelete(true);
+    } else {
+      controls.start({ x: 0 });
+      setShowDelete(false);
+    }
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    onRemoveSet && onRemoveSet(exIdx, setIdx);
+  };
+
   return (
-    <button
-      onClick={() => onToggle(exIdx, setIdx)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-        width: "100%",
-        padding: "11px 14px",
-        borderRadius: "12px",
-        background: isDone ? "rgba(48,209,88,0.12)" : "rgba(255,255,255,0.03)",
-        border: `1px solid ${isDone ? "rgba(48,209,88,0.3)" : "rgba(255,255,255,0.06)"}`,
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        cursor: "pointer",
-        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-        textAlign: "left",
-      }}
-    >
+    <div style={{ position: "relative", width: "100%", overflow: "hidden", borderRadius: "12px" }}>
+      {/* Background Delete Button */}
+      <div 
+        onClick={handleDelete}
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "70px",
+          background: "#FF3B30",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "12px",
+          color: "white",
+          cursor: "pointer",
+        }}
+      >
+        <Trash2 size={20} />
+      </div>
+
+      <motion.div
+        drag={isDone ? false : "x"}
+        dragConstraints={{ left: -70, right: 0 }}
+        dragElastic={0.1}
+        onDragEnd={handleDragEnd}
+        animate={controls}
+        style={{ x, position: "relative", zIndex: 1, backgroundColor: "#0F0F12", borderRadius: "12px" }}
+      >
+        <div
+          onClick={() => {
+            if (showDelete) {
+              controls.start({ x: 0 });
+              setShowDelete(false);
+            } else if (!isDone) {
+              onToggle(exIdx, setIdx);
+            }
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "15px",
+            width: "100%",
+            padding: "11px 14px",
+            borderRadius: "12px",
+            background: isDone ? "rgba(48,209,88,0.12)" : "rgba(255,255,255,0.03)",
+            border: `1px solid ${isDone ? "rgba(48,209,88,0.3)" : "rgba(255,255,255,0.06)"}`,
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            cursor: "pointer",
+            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+            textAlign: "left",
+          }}
+        >
       {/* Set number */}
       <span
         style={{
@@ -91,6 +149,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
           paddingRight: "10px",
           borderRight: "1px solid rgba(255,255,255,0.07)",
           gap: "1px",
+          position: "relative", right: "15px"
         }}
       >
         {prevSet ? (
@@ -108,7 +167,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
               <span style={{ fontWeight: 500, fontSize: "9px" }}>{unit}</span>
             </span>
             <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>
-              {prevSet.reps}r
+              {prevSet.reps}
               {prevSet.rir != null && prevSet.rir !== undefined && (
                 <span style={{ marginLeft: "3px" }}>{prevSet.rir}rir</span>
               )}
@@ -121,36 +180,101 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
         )}
       </div>
 
-      {/* Weight */}
-      <div style={{ flex: 1, display: "flex", alignItems: "baseline", gap: "3px" }}>
-        <span
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: "19px",
-            fontWeight: 800,
-            color: isDone ? "#30D158" : "var(--text-primary)",
-            transition: "color 0.2s",
-          }}
-        >
-          {set.weight}
-        </span>
-        <span style={{ fontSize: "11px", color: "var(--text-tertiary)", fontWeight: 500 }}>{unit}</span>
-      </div>
+      {/* Middle Section (Weight & Reps aligned at top) */}
+      <div style={{ flex: 1, display: "flex" }}>
 
-      {/* Reps + RIR */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-        <span style={{ fontSize: "13px", color: "var(--text-secondary)", fontWeight: 500 }}>
-          {set.reps} reps
-        </span>
-        {set.rir !== undefined && (
-          <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 600 }}>
-            {set.rir} RIR
+        {/* Weight */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: "6px", position: "relative", right: "18px", marginTop: "12px", }}>
+          <input
+            type="number"
+            value={set.weight === 0 ? "" : set.weight}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => onUpdateSet && onUpdateSet(exIdx, setIdx, "weight", e.target.value)}
+            placeholder="0"
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "15px",
+              fontWeight: 800,
+              color: isDone ? "#30D158" : "var(--text-primary)",
+              background: isDone ? "transparent" : "rgba(255,255,255,0.06)",
+              border: isDone ? "1px solid transparent" : "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "6px",
+              outline: "none",
+              width: "48px",
+              padding: "2px 6px",
+              pointerEvents: isDone ? "none" : "auto",
+              transition: "all 0.2s",
+              boxShadow: isDone ? "none" : "inset 0 2px 4px rgba(0,0,0,0.2)",
+              textAlign: "center"
+            }}
+          />
+          <span style={{ fontSize: "11px", color: "var(--text-tertiary)", fontWeight: 500 }}>{unit}</span>
+        </div>
+
+        {/* Reps + RIR */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          <span style={{ fontSize: "13px", color: "var(--text-secondary)", fontWeight: 500, display: "flex", gap: "4px", alignItems: "baseline" }}>
+            <input
+              type="number"
+              value={set.reps === 0 ? "" : set.reps}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => onUpdateSet && onUpdateSet(exIdx, setIdx, "reps", e.target.value)}
+              placeholder="0"
+              style={{
+                fontSize: "13px",
+                color: isDone ? "var(--text-secondary)" : "var(--text-primary)",
+                fontFamily: "inherit",
+                fontWeight: isDone ? "inherit" : 700,
+                background: isDone ? "transparent" : "rgba(255,255,255,0.06)",
+                border: isDone ? "1px solid transparent" : "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "4px",
+                outline: "none",
+                width: "32px",
+                textAlign: "center",
+                padding: "2px 4px",
+                pointerEvents: isDone ? "none" : "auto",
+                boxShadow: isDone ? "none" : "inset 0 2px 4px rgba(0,0,0,0.2)",
+                transition: "all 0.2s",
+                marginTop: "3px"
+              }}
+            />
+            reps
           </span>
-        )}
+          <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 600, display: "flex", gap: "4px", alignItems: "baseline", marginTop: "4px", }}>
+            <input
+              type="number"
+              value={set.rir === undefined ? 0 : set.rir}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => onUpdateSet && onUpdateSet(exIdx, setIdx, "rir", e.target.value)}
+              placeholder="0"
+              style={{
+                fontSize: "10px",
+                color: isDone ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "inherit",
+                fontWeight: isDone ? "inherit" : 700,
+                background: isDone ? "transparent" : "rgba(255,255,255,0.06)",
+                border: isDone ? "1px solid transparent" : "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "4px",
+                outline: "none",
+                width: "28px",
+                textAlign: "center",
+                padding: "2px 4px",
+                pointerEvents: isDone ? "none" : "auto",
+                boxShadow: isDone ? "none" : "inset 0 1px 2px rgba(0,0,0,0.2)",
+                transition: "all 0.2s",
+                position: "relative", right: "10px"
+              }}
+            />
+            RIR
+          </span>
+        </div>
       </div>
 
       {/* Check circle */}
-      <div
+
+
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(exIdx, setIdx); }}
         style={{
           width: "24px",
           height: "24px",
@@ -162,6 +286,8 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
           justifyContent: "center",
           flexShrink: 0,
           transition: "all 0.2s",
+          cursor: "pointer",
+          padding: 0,
         }}
       >
         {isDone && (
@@ -169,13 +295,17 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, prevSet }) {
             <path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
-      </div>
-    </button>
+      </button>
+
+    </div>
+    </motion.div>
+    </div>
+
   );
 }
 
 /* ─── ExerciseCard ──────────────────────────────────────────── */
-function ExerciseCard({ exercise, exIdx, completed, onToggle, animDelay }) {
+function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet, animDelay }) {
   const [prevSets, setPrevSets] = useState([]); // last session sets for this exercise
 
   // Fetch previous sets from backend when the card mounts
@@ -282,13 +412,31 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, animDelay }) {
             set={set}
             isDone={!!completed[`${exIdx}-${si}`]}
             onToggle={onToggle}
+            onUpdateSet={onUpdateSet}
+            onRemoveSet={onRemoveSet}
             prevSet={prevSets[si] ?? null}   // null if no matching set index last time
           />
         ))}
       </div>
+      <button 
+        onClick={() => onAddSet && onAddSet(exIdx)}
+        onMouseOver={(e) => { e.currentTarget.style.background = "rgba(48, 209, 88, 0.2)"; e.currentTarget.style.color = "#30d158"; e.currentTarget.style.borderColor = "#30d158"; }}
+        onMouseOut={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "var(--text-primary)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+        style={{ marginTop: "15px", display: "block", margin: "10px auto -8px", padding: "0 12px", minWidth: "100px", height: "32px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "var(--text-primary)", fontWeight: 700, fontSize: "13px", cursor: "pointer", transition: "all 0.2s", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)" }}
+      >
+        Add set
+      </button>
     </div>
   );
 }
+
+/* ─── Muscle groups for the "Add New" form ─────────────────── */
+const MUSCLE_OPTIONS = [
+  "abdominals", "abductors", "adductors", "biceps", "calves",
+  "chest", "forearms", "glutes", "hamstrings", "lats",
+  "lower_back", "middle_back", "neck", "quadriceps",
+  "shoulders", "traps", "triceps",
+];
 
 /* ─── ExerciseSearch ────────────────────────────────────────── */
 function ExerciseSearch({ onAdd }) {
@@ -297,10 +445,41 @@ function ExerciseSearch({ onAdd }) {
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedEx, setSelectedEx] = useState(null);
+  const [doneSearching, setDoneSearching] = useState(false);
+
+  // "Add New" form state
+  const [showAddNew, setShowAddNew] = useState(false);
+  const [newMuscle, setNewMuscle] = useState("");
+  const [addError, setAddError] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [muscleDropOpen, setMuscleDropOpen] = useState(false);
+  const [muscleFilter, setMuscleFilter] = useState("");
+  const muscleDropRef = useRef(null);
+
+  // Derived: filter muscle options based on typed text
+  const filteredMuscles = MUSCLE_OPTIONS.filter((m) =>
+    m.replace(/_/g, " ").includes(muscleFilter.toLowerCase())
+  );
+
+  // Close muscle dropdown on outside click
+  useEffect(() => {
+    if (!muscleDropOpen) return;
+    const handler = (e) => {
+      if (muscleDropRef.current && !muscleDropRef.current.contains(e.target)) {
+        setMuscleDropOpen(false);
+        setMuscleFilter("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [muscleDropOpen]);
 
   const handleBlur = () => setTimeout(() => setOpen(false), 200);
 
   useEffect(() => {
+    setDoneSearching(false);
+    setShowAddNew(false);
+    setAddError("");
     // Only search if user typed something new and it's not just the selected exercise name
     if (query.trim() === "" || (selectedEx && query === selectedEx.name)) {
       setResults([]);
@@ -310,123 +489,340 @@ function ExerciseSearch({ onAdd }) {
       setIsLoading(true);
       try {
         const res = await fetch(`http://localhost:5000/exercises/search?name=${encodeURIComponent(query)}`);
-        setResults(res.ok ? await res.json() : []);
-      } catch { setResults([]); }
+        const data = res.ok ? await res.json() : [];
+        setResults(data);
+        setDoneSearching(true);
+      } catch { setResults([]); setDoneSearching(true); }
       finally { setIsLoading(false); }
     }, 500);
     return () => clearTimeout(t);
   }, [query, selectedEx]);
 
+  const handleAddNew = async () => {
+    setAddError("");
+    if (!newMuscle) {
+      setAddError("Please select a muscle group.");
+      return;
+    }
+    setIsAdding(true);
+    try {
+      const res = await fetch("http://localhost:5000/exercises", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: query.trim(), muscle: newMuscle }),
+      });
+      if (!res.ok) throw new Error("Failed to create exercise");
+      const created = await res.json();
+      // Add to workout immediately
+      onAdd(created);
+      // Reset state
+      setQuery("");
+      setSelectedEx(null);
+      setShowAddNew(false);
+      setNewMuscle("");
+    } catch (err) {
+      setAddError("Failed to save exercise. Please try again.");
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
   return (
-    <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", zIndex: 50 }}>
-      {/* Search Input Container */}
-      <div style={{ flex: 1, position: "relative" }}>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelectedEx(null);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={handleBlur}
-          placeholder="Type to search exercises..."
-          style={{
-            width: "100%",
-            padding: "12px",
-            borderRadius: "10px",
-            border: "1px solid rgba(255,255,255,0.15)",
-            background: "rgba(0,0,0,0.5)",
-            color: "#fff",
-            outline: "none",
-            fontFamily: "var(--font-display)",
-            fontWeight: 600,
-          }}
-        />
-        {open && query.trim() !== "" && !selectedEx && (
-          <div
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              right: 0,
-              background: "#1c1c1e",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "10px",
-              marginTop: "6px",
-              zIndex: 100,
-              maxHeight: "160px",
-              overflowY: "auto",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px", zIndex: 50 }}>
+      <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+        {/* Search Input Container */}
+        <div style={{ flex: 1, position: "relative" }}>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelectedEx(null);
+              setOpen(true);
             }}
-          >
-            {isLoading ? (
-              <div style={{ padding: "12px", color: "var(--text-tertiary)", fontSize: "13px", textAlign: "center" }}>
-                Searching...
-              </div>
-            ) : results.length > 0 ? (
-              results.map((ex) => (
-                <div
-                  key={ex.id}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setSelectedEx(ex);
-                    setQuery(ex.name);
-                    setOpen(false);
-                  }}
-                  style={{
-                    padding: "12px",
-                    cursor: "pointer",
-                    borderBottom: "1px solid rgba(255,255,255,0.05)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
-                  onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "#fff", fontSize: "14px" }}>
-                    {ex.name}
-                  </div>
-                  <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
-                    {ex.muscle_group || ex.muscle}
-                  </div>
+            onFocus={() => setOpen(true)}
+            onBlur={handleBlur}
+            placeholder="Type to search exercises..."
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: "10px",
+              border: "1px solid rgba(255,255,255,0.15)",
+              background: "rgba(0,0,0,0.5)",
+              color: "#fff",
+              outline: "none",
+              fontFamily: "var(--font-display)",
+              fontWeight: 600,
+            }}
+          />
+          {open && query.trim() !== "" && !selectedEx && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                right: 0,
+                background: "#1c1c1e",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "10px",
+                marginTop: "6px",
+                zIndex: 100,
+                maxHeight: "200px",
+                overflowY: "auto",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              }}
+            >
+              {isLoading ? (
+                <div style={{ padding: "12px", color: "var(--text-tertiary)", fontSize: "13px", textAlign: "center" }}>
+                  Searching...
                 </div>
-              ))
-            ) : (
-              <div style={{ padding: "12px", color: "var(--text-tertiary)", fontSize: "13px", textAlign: "center" }}>
-                No exercises found.
+              ) : results.length > 0 ? (
+                results.map((ex) => (
+                  <div
+                    key={ex.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setSelectedEx(ex);
+                      setQuery(ex.name);
+                      setOpen(false);
+                    }}
+                    style={{
+                      padding: "12px",
+                      cursor: "pointer",
+                      borderBottom: "1px solid rgba(255,255,255,0.05)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                    onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "#fff", fontSize: "14px" }}>
+                      {ex.name}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
+                      {ex.muscle_group || ex.muscle}
+                    </div>
+                  </div>
+                ))
+              ) : doneSearching ? (
+                <div style={{ padding: "14px", textAlign: "center" }}>
+                  <div style={{ color: "var(--text-tertiary)", fontSize: "13px", marginBottom: "8px" }}>
+                    No exercises found.
+                  </div>
+                  <button
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setOpen(false);
+                      setShowAddNew(true);
+                    }}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "8px",
+                      background: "linear-gradient(135deg, #0A84FF, #5E5CE6)",
+                      color: "#fff",
+                      border: "none",
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      transition: "transform 0.15s",
+                    }}
+                  >
+                    + Add New Exercise
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        {/* Add Button (existing flow) */}
+        <button
+          onClick={() => {
+            if (selectedEx) {
+              onAdd(selectedEx);
+              setQuery("");
+              setSelectedEx(null);
+            }
+          }}
+          disabled={!selectedEx}
+          style={{
+            padding: "12px 20px",
+            borderRadius: "10px",
+            background: selectedEx ? "#30D158" : "rgba(255,255,255,0.1)",
+            color: selectedEx ? "#000" : "rgba(255,255,255,0.3)",
+            border: "none",
+            fontFamily: "var(--font-display)",
+            fontWeight: 800,
+            cursor: selectedEx ? "pointer" : "not-allowed",
+            transition: "all 0.2s",
+          }}
+        >
+          Add
+        </button>
+      </div>
+
+      {/* ── "Add New" inline form ── */}
+      {showAddNew && (
+        <div
+          style={{
+            padding: "16px",
+            borderRadius: "12px",
+            background: "rgba(10,132,255,0.08)",
+            border: "1px solid rgba(10,132,255,0.25)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "13px", color: "#0A84FF" }}>
+            Add "{query.trim()}" as a new exercise
+          </div>
+
+          <div style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: "1.4" }}>
+            Select the target muscle. The exercise name must contain the muscle name (e.g. "Iso-Lateral <strong>Chest</strong> Press" → Chest).
+          </div>
+
+          {/* Custom muscle group dropdown */}
+          <div ref={muscleDropRef} style={{ position: "relative" }}>
+            <div style={{ position: "relative" }}>
+              <input
+                type="text"
+                value={muscleDropOpen ? muscleFilter : (newMuscle ? newMuscle.replace(/_/g, " ") : "")}
+                onChange={(e) => {
+                  setMuscleFilter(e.target.value);
+                  setNewMuscle("");
+                  if (!muscleDropOpen) setMuscleDropOpen(true);
+                }}
+                onFocus={() => { setMuscleDropOpen(true); setMuscleFilter(""); }}
+                placeholder="Search or select muscle group…"
+                style={{
+                  width: "100%",
+                  padding: "10px 30px 10px 12px",
+                  borderRadius: "8px",
+                  border: `1px solid ${muscleDropOpen ? "#0AF" : "rgba(255,255,255,0.12)"}`,
+                  background: "rgba(0,0,0,0.6)",
+                  color: "#fff",
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  outline: "none",
+                  cursor: "text",
+                  textTransform: "capitalize",
+                  transition: "border-color 0.2s",
+                }}
+              />
+              <span
+                onClick={() => setMuscleDropOpen(!muscleDropOpen)}
+                style={{
+                  position: "absolute",
+                  right: "10px",
+                  top: "50%",
+                  transform: `translateY(-50%) ${muscleDropOpen ? "rotate(180deg)" : "rotate(0)"}`,
+                  fontSize: "10px",
+                  color: "var(--text-tertiary)",
+                  cursor: "pointer",
+                  transition: "transform 0.2s",
+                  pointerEvents: "auto",
+                }}
+              >▼</span>
+            </div>
+            {muscleDropOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  marginTop: "4px",
+                  background: "#0d0d0f",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "10px",
+                  maxHeight: "180px",
+                  overflowY: "auto",
+                  zIndex: 200,
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+                }}
+              >
+                {filteredMuscles.length > 0 ? filteredMuscles.map((m) => (
+                  <div
+                    key={m}
+                    onClick={() => { setNewMuscle(m); setAddError(""); setMuscleDropOpen(false); setMuscleFilter(""); }}
+                    style={{
+                      padding: "10px 14px",
+                      cursor: "pointer",
+                      color: newMuscle === m ? "#0AF" : "#fff",
+                      fontFamily: "var(--font-display)",
+                      fontWeight: newMuscle === m ? 700 : 500,
+                      fontSize: "13px",
+                      textTransform: "capitalize",
+                      borderRadius: "6px",
+                      margin: "2px 4px",
+                      border: "1px solid transparent",
+                      transition: "border-color 0.15s",
+                      background: "transparent",
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = "#0AF"; e.currentTarget.style.boxShadow = "0 0 8px rgba(0,170,255,0.25)"; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.boxShadow = "none"; }}
+                  >
+                    {m.replace(/_/g, " ")}
+                  </div>
+                )) : (
+                  <div style={{ padding: "12px 14px", color: "var(--text-tertiary)", fontSize: "13px", textAlign: "center" }}>
+                    No matching muscles
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* Add Button */}
-      <button
-        onClick={() => {
-          if (selectedEx) {
-            onAdd(selectedEx);
-            setQuery("");
-            setSelectedEx(null);
-          }
-        }}
-        disabled={!selectedEx}
-        style={{
-          padding: "12px 20px",
-          borderRadius: "10px",
-          background: selectedEx ? "#30D158" : "rgba(255,255,255,0.1)",
-          color: selectedEx ? "#000" : "rgba(255,255,255,0.3)",
-          border: "none",
-          fontFamily: "var(--font-display)",
-          fontWeight: 800,
-          cursor: selectedEx ? "pointer" : "not-allowed",
-          transition: "all 0.2s",
-        }}
-      >
-        Add
-      </button>
+          {addError && (
+            <div style={{ fontSize: "12px", color: "#FF453A", fontWeight: 600 }}>
+              {addError}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={() => { setShowAddNew(false); setNewMuscle(""); setAddError(""); }}
+              style={{
+                flex: 1,
+                padding: "10px",
+                borderRadius: "8px",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "var(--text-secondary)",
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                fontSize: "13px",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddNew}
+              disabled={isAdding}
+              style={{
+                flex: 1,
+                padding: "10px",
+                borderRadius: "8px",
+                background: isAdding ? "rgba(48,209,88,0.4)" : "linear-gradient(135deg, #30D158, #28a745)",
+                border: "none",
+                color: "#000",
+                fontFamily: "var(--font-display)",
+                fontWeight: 800,
+                fontSize: "13px",
+                cursor: isAdding ? "wait" : "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              {isAdding ? "Saving..." : "Save & Add"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -465,8 +861,8 @@ export default function WorkoutPage() {
       const formattedR = dataR.map(r => ({ ...r, isPastWorkout: false }));
 
       // Sort by creation date
-      const combined = [...formattedR].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-      
+      const combined = [...formattedR].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
       setRoutines(combined);
     } catch (e) {
       console.error("Failed to fetch routines:", e);
@@ -617,8 +1013,8 @@ export default function WorkoutPage() {
   };
 
   const selectRoutine = (item) => {
-    if (isManagingRoutines) return; 
-    
+    if (isManagingRoutines) return;
+
     let plan = [];
 
     if (item.isPastWorkout) {
@@ -647,7 +1043,7 @@ export default function WorkoutPage() {
         }));
         return {
           ...ex,
-          id: ex.exercise_id, 
+          id: ex.exercise_id,
           sets: setsObj,
           accentColor: "#0A84FF", // Default color
         };
@@ -665,17 +1061,17 @@ export default function WorkoutPage() {
   if (!activeRoutine) {
     return (
       <PageShell title="Workouts" subtitle="Choose or build a routine">
-        
+
         {/* Routines Header & Actions */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <button 
+          <button
             onClick={() => setIsManagingRoutines(!isManagingRoutines)}
             style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: isManagingRoutines ? "#FF2D55" : "var(--text-secondary)", padding: "6px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
           >
             {isManagingRoutines ? "Done Editing" : "Edit List"}
           </button>
-          
-          <button 
+
+          <button
             onClick={() => setIsCreatingRoutine(true)}
             style={{ background: "#30D158", border: "none", color: "#000", padding: "6px 14px", borderRadius: "8px", fontSize: "16px", fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
@@ -690,11 +1086,11 @@ export default function WorkoutPage() {
               <h2 style={{ margin: 0, fontFamily: "var(--font-display)" }}>New Routine</h2>
               <button onClick={() => setIsCreatingRoutine(false)} style={{ background: "none", border: "none", color: "var(--text-tertiary)", fontSize: "24px" }}>×</button>
             </div>
-            
-            <input 
+
+            <input
               value={newRoutineName}
               onChange={e => setNewRoutineName(e.target.value)}
-              placeholder="Workout Name (e.g. Pull Day)" 
+              placeholder="Workout Name (e.g. Pull Day)"
               style={{ width: "100%", padding: "14px", borderRadius: "10px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", color: "var(--text-primary)", marginBottom: "20px", fontSize: "16px", fontFamily: "var(--font-display)", fontWeight: 700 }}
             />
 
@@ -724,26 +1120,26 @@ export default function WorkoutPage() {
         {/* Existing Routines & Workouts */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", flex: 1, paddingBottom: "20px" }}>
           {routines.map(r => (
-            <div 
-              key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`} 
-              className="glass-card transition-all active:scale-[0.98]" 
+            <div
+              key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`}
+              className="glass-card transition-all active:scale-[0.98]"
               onClick={() => selectRoutine(r)}
               style={{ padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: isManagingRoutines ? "default" : "pointer", position: "relative" }}
             >
               <div>
                 <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, marginBottom: "4px" }}>
-                  {r.name} 
+                  {r.name}
                   {r.isPastWorkout && <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 500, marginLeft: "8px", textTransform: "uppercase" }}>Completed Session</span>}
                 </div>
                 <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-                  {r.isPastWorkout 
-                    ? `${new Date(r.created_at).toLocaleDateString()} · ${[...new Set(r.sets?.map(s => s.exercise_id))].length} exercises` 
+                  {r.isPastWorkout
+                    ? `${new Date(r.created_at).toLocaleDateString()} · ${[...new Set(r.sets?.map(s => s.exercise_id))].length} exercises`
                     : `${r.exercises?.length || 0} exercises`}
                 </div>
               </div>
-              
+
               {isManagingRoutines && !r.isPastWorkout ? (
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); deleteRoutine(r.id); }}
                   style={{ background: "#FF2D55", border: "none", borderRadius: "50%", width: "24px", height: "24px", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontWeight: 800 }}
                 >
@@ -824,10 +1220,18 @@ export default function WorkoutPage() {
   /* ── Pre-workout screen ──────────────────────────────────────── */
   if (!started) {
     const totalSets = workoutPlan.reduce((a, ex) => a + ex.sets.length, 0);
-    const estMins = Math.round(totalSets * 1.8);
+    const COMPOUND_NAMES = ["squat", "bench", "deadlift"];
+    const estMins = Math.round(workoutPlan.reduce((total, ex) => {
+      const n = ex.sets.length;
+      const isCompound = COMPOUND_NAMES.some(c => ex.name.toLowerCase().includes(c));
+      const restPerSet = isCompound ? 5 : 3; // minutes
+      const liftTime = n * 0.5;              // 30 sec per set
+      const restTime = n * restPerSet;               // rest after each set
+      return total + liftTime + restTime;
+    }, 0));
     return (
-      <PageShell 
-        title={activeRoutine.name} 
+      <PageShell
+        title={activeRoutine.name}
         subtitle="Workout Overview"
         backAction={() => setActiveRoutine(null)}
       >
@@ -851,39 +1255,40 @@ export default function WorkoutPage() {
           {workoutPlan.map((ex, ei) => {
             const isExpanded = expandedOverviewEx === ei;
             return (
-            <div 
-              key={ex.id || ei} 
-              className={`glass-card animate-fade-up delay-${Math.min(ei + 2, 6)}`} 
-              style={{ padding: "14px 16px", marginBottom: "8px", cursor: "pointer", transition: "all 0.2s" }}
-              onClick={() => setExpandedOverviewEx(isExpanded ? null : ei)}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: ex.accentColor, boxShadow: `0 0 8px ${ex.accentColor}80`, flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, marginBottom: "2px" }}>{ex.name}</div>
-                  <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{ex.muscle}</div>
+              <div
+                key={ex.id || ei}
+                className={`glass-card animate-fade-up delay-${Math.min(ei + 2, 6)}`}
+                style={{ padding: "14px 16px", marginBottom: "8px", cursor: "pointer", transition: "all 0.2s" }}
+                onClick={() => setExpandedOverviewEx(isExpanded ? null : ei)}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: ex.accentColor, boxShadow: `0 0 8px ${ex.accentColor}80`, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: "14px", fontWeight: 700, marginBottom: "2px" }}>{ex.name}</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{ex.muscle}</div>
+                  </div>
+                  <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>
+                    {ex.sets.length} sets
+                    <span style={{ marginLeft: "6px", opacity: 0.5 }}>{isExpanded ? '▲' : '▼'}</span>
+                  </span>
                 </div>
-                <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>
-                  {ex.sets.length} sets 
-                  <span style={{ marginLeft: "6px", opacity: 0.5 }}>{isExpanded ? '▲' : '▼'}</span>
-                </span>
+
+                {isExpanded && (
+                  <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                    {ex.sets.map((set, si) => (
+                      <div key={si} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 600 }}>Set {si + 1}</span>
+                        <span>
+                          <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{set.weight}</span> {unit} × <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{set.reps}</span> reps
+                          {set.rir > 0 && <span style={{ marginLeft: "8px", color: "var(--text-tertiary)" }}>(RIR: {set.rir})</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              
-              {isExpanded && (
-                <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                  {ex.sets.map((set, si) => (
-                    <div key={si} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "8px" }}>
-                      <span style={{ fontWeight: 600 }}>Set {si + 1}</span>
-                      <span>
-                        <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{set.weight}</span> {unit} × <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{set.reps}</span> reps
-                        {set.rir > 0 && <span style={{ marginLeft: "8px", color: "var(--text-tertiary)" }}>(RIR: {set.rir})</span>}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )})}
+            )
+          })}
         </div>
 
         <button
@@ -910,10 +1315,10 @@ export default function WorkoutPage() {
 
   /* ── Active workout screen ───────────────────────────────────── */
   return (
-    <PageShell 
-      title={activeRoutine.name} 
-      subtitle="Tracker Active" 
-      badge="LIVE" 
+    <PageShell
+      title={activeRoutine.name}
+      subtitle="Tracker Active"
+      badge="LIVE"
       badgeColor="badge-red"
     >
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
@@ -958,7 +1363,7 @@ export default function WorkoutPage() {
       <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1.4px", color: "var(--text-tertiary)", marginBottom: "12px" }}>Exercises</div>
 
       {workoutPlan.map((ex, ei) => (
-        <ExerciseCard key={ex.id} exercise={ex} exIdx={ei} completed={completed} onToggle={toggle} animDelay={Math.min(ei + 2, 6)} />
+        <ExerciseCard key={ex.id} exercise={ex} exIdx={ei} completed={completed} onToggle={toggle} onUpdateSet={updateSet} onAddSet={addSet} onRemoveSet={removeSet} animDelay={Math.min(ei + 2, 6)} />
       ))}
 
       <button

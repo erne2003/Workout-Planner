@@ -14,29 +14,26 @@ router.get("/search", async (req, res) => {
         // 1. Search database first
         let exercises = await searchExercises(name);
 
-        // 2. Fallback to ExerciseDB (via RapidAPI) if no results in DB
+        // 2. Fallback to API Ninjas if no results in DB
         if (exercises.length === 0) {
-            const apiKey = process.env.EXERCISE_DB_KEY;
+            const apiKey = process.env.API_NINJAS_KEY;
             
-            if (!apiKey || apiKey === "your_api_key_here") {
-                console.warn("EXERCISE_DB_KEY is missing or invalid in environment variables.");
-                return res.status(500).json({ error: "Server configuration error - missing ExerciseDB key" });
+            if (!apiKey) {
+                console.warn("API_NINJAS_KEY is missing in environment variables.");
+                return res.status(500).json({ error: "Server configuration error - missing API Ninjas key" });
             }
 
-            const response = await axios.get(`https://exercisedb.p.rapidapi.com/exercises/name/${encodeURIComponent(name)}`, {
-                headers: { 
-                  'x-rapidapi-host': 'exercisedb.p.rapidapi.com',
-                  'x-rapidapi-key': apiKey 
-                }
+            const response = await axios.get(`https://api.api-ninjas.com/v1/exercises`, {
+                params: { name },
+                headers: { 'X-Api-Key': apiKey }
             });
 
             const apiData = response.data;
 
             if (apiData && apiData.length > 0) {
-                // ExerciseDB uses `target` instead of `muscle`. We map it to our DB schema constraint.
                 const mappedData = apiData.map(ex => ({
                     name: ex.name,
-                    muscle: ex.target || ex.bodyPart
+                    muscle: ex.muscle
                 }));
                 // 3. Save new exercises to the database
                 const inserted = await insertExercises(mappedData);
@@ -83,6 +80,18 @@ router.patch("/:id", async (req, res) => {
     } catch (err) {
         console.error("PATCH /exercises/:id error:", err.message);
         res.status(500).json({ error: "Failed to update exercise" });
+    }
+});
+
+router.post("/", async (req, res) => {
+    try {
+        const { name, muscle } = req.body;
+        if (!name || !muscle) return res.status(400).json({ error: "name and muscle are required" });
+        const inserted = await insertExercises([{ name, muscle }]);
+        res.status(201).json(inserted[0]);
+    } catch (err) {
+        console.error("POST /exercises error:", err.message);
+        res.status(500).json({ error: "Failed to create exercise" });
     }
 });
 
