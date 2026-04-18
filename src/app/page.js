@@ -2,16 +2,17 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import PageShell from "../components/PageShell";
+import { useSettings } from "../contexts/SettingsContext";
+import PlateCalculator from "../components/PlateCalculator";
 import { OVERALL_STRENGTH_SCORE, WORKOUT_EXERCISES } from "../lib/data";
 import {
   RECOVERY_COLOR,
-  RECOVERY_LABEL,
-  getLastWorkoutTime,
+  getStatusFromPct,
   getMuscleSoreness,
-  computeRecovery,
+  computeDynamicRecovery,
 } from "../lib/recovery";
 
-/* ─── Helpers ─────────────────────────────────────────────── */
+/* --- Helpers ----------------------------------------------- */
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -27,19 +28,12 @@ function formatDate() {
   });
 }
 
-const LAST_WORKOUT = {
-  name: "Push Day",
-  subtitle: "Chest · Triceps · Shoulders",
-  date: "Yesterday",
-  duration: "52 min",
-  volume: "8,420 lbs",
-  sets: WORKOUT_EXERCISES.reduce((acc, ex) => acc + ex.sets.length, 0),
-};
+
 
 const RECOVERY_MUSCLES = ["chest", "shoulders", "quads", "lats"];
 
-/* ─── Stat Card ───────────────────────────────────────────── */
-function StatCard({ label, value, unit, color = "#fff", delay }) {
+/* --- Stat Card --------------------------------------------- */
+function StatCard({ label, value, unit, color = "var(--text-primary)", delay }) {
   return (
     <div
       className={`glass-card animate-fade-up delay-${delay}`}
@@ -85,28 +79,259 @@ function StatCard({ label, value, unit, color = "#fff", delay }) {
   );
 }
 
-/* ─── Page ────────────────────────────────────────────────── */
+/* --- Last Workout Accordion Row ------------------------------ */
+function WorkoutExerciseRow({ ex, unit }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 0, background: "rgba(255,255,255,0.03)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", transition: "all 0.2s" }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "10px 12px",
+          cursor: "pointer",
+        }}
+      >
+        <div
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            background: ex.accentColor,
+            boxShadow: `0 0 6px ${ex.accentColor}80`,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontSize: "13px", fontWeight: 500, flex: 1, color: "var(--text-primary)" }}>
+          {ex.name}
+        </span>
+        <span
+          style={{
+            fontSize: "11px",
+            color: "var(--text-tertiary)",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "4px"
+          }}
+        >
+          {ex.setsLength} sets
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </span>
+      </div>
+
+      {open && (
+        <div className="animate-fade-up" style={{ padding: "0 12px 10px 28px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          {ex.sets.map((s, i) => {
+            const displayWeight = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            return (
+              <div key={s.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", padding: "4px 8px", background: "rgba(255,255,255,0.02)", borderRadius: "6px" }}>
+                <span style={{ color: "var(--text-tertiary)", fontWeight: 600 }}>Set {s.set_order || i + 1}</span>
+                <div style={{ display: "flex", gap: "6px", fontWeight: 600, alignItems: "center" }}>
+                  <span style={{ color: "var(--text-primary)" }}>{displayWeight} {unit}</span>
+                  <span style={{ color: "var(--text-secondary)" }}>×</span>
+                  <span style={{ color: "var(--text-primary)" }}>{s.reps} reps</span>
+                  <span style={{ color: "#FF9F0A", marginLeft: "4px" }}>({s.rir ?? 0} rir)</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --- Page -------------------------------------------------- */
 export default function HomePage() {
   const router = useRouter();
+  const ctx = useSettings();
+  const unit = ctx?.weightUnit || "lbs";
+  const showPlateCalc = ctx?.plateCalc ?? true;
 
-  // ── Recovery state (time-based, refreshed each render) ──
+  const [sessionCount, setSessionCount] = useState(0);
+  const [strengthScore, setStrengthScore] = useState(0);
+  const [recoveryScore, setRecoveryScore] = useState(0);
+  const [lastWorkout, setLastWorkout] = useState({
+    name: "No Sessions Logged",
+    subtitle: "Start a workout to see stats here",
+    date: "-",
+    duration: "0 min",
+    volume: `0 ${unit}`,
+    sets: 0,
+    exercises: [] // populated by name and sets mapping
+  });
+
+  const [strengthData, setStrengthData] = useState({});
   const [recoveryData, setRecoveryData] = useState({});
+
   useEffect(() => {
-    const lastTime = getLastWorkoutTime();
-    const overrides = getMuscleSoreness();
-    setRecoveryData(computeRecovery(RECOVERY_MUSCLES, lastTime, overrides));
+    const fetchDashboardDetails = async () => {
+      try {
+
+        
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        if (!apiUrl) {
+            console.warn("NEXT_PUBLIC_API_URL is missing; skipping dashboard pull.");
+            return;
+        }
+
+        // Fetch Body Weight
+        const metReq = await fetch(`${apiUrl}/metrics`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
+        const metData = metReq.ok ? await metReq.json() : [];
+        let bw = 1;
+        if (metData.length > 0) {
+            bw = parseFloat(metData[metData.length - 1].weight) || 1;
+        }
+
+        // Fetch PRs for Strength calculation
+        const prReq = await fetch(`${apiUrl}/prs`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
+        const prData = prReq.ok ? await prReq.json() : [];
+        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+        prData.forEach(p => {
+            const e = p.exercise_name?.toLowerCase();
+            const w = parseFloat(p.weight);
+            if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
+            else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
+            else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
+            else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
+            else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
+        });
+
+        const ELITE = { bench: 1.5, deadlift: 2.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
+        const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
+
+        const benchScore = calcScore(rawMaxes.bench, ELITE.bench);
+        const dlScore = calcScore(rawMaxes.deadlift, ELITE.deadlift);
+        const ohpScore = calcScore(rawMaxes.ohp, ELITE.ohp);
+        const squatScore = calcScore(rawMaxes.squat, ELITE.squat);
+        const rowScore = calcScore(rawMaxes.rows, ELITE.rows);
+
+        const muscleScores = [
+            benchScore,
+            dlScore,
+            ohpScore,
+            squatScore,
+            Math.round((benchScore * 0.5) + (rowScore * 0.5)), // Arms proxy
+            Math.max(0, squatScore - 15) // Core proxy
+        ];
+        
+        const avgPerf = Math.round(muscleScores.reduce((a, b) => a + b, 0) / muscleScores.length);
+        const rawIndex = ((rawMaxes.bench / bw) + (rawMaxes.squat / bw) + (rawMaxes.deadlift / bw)) / 3;
+        const perfBasis = (rawIndex / 1.5) * 100;
+        
+        setStrengthScore(Math.min(100, Math.round((perfBasis * 0.7) + (avgPerf * 0.3))));
+
+        const res = await fetch(`${apiUrl}/workouts`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Recovery Logic
+        const ALL_MUSCLES = [
+            "chest", "shoulders", "biceps", "triceps",
+            "lats", "abdominals", "quadriceps", "hamstrings", "glutes", "calves",
+        ];
+        const overrides = getMuscleSoreness();
+        const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
+        setRecoveryData(recData);
+        
+        const avgRec = Math.round(Object.values(recData).reduce((a, b) => a + b.pct, 0) / ALL_MUSCLES.length);
+        setRecoveryScore(avgRec);
+
+        if (data.length > 0) {
+          // -- Aggregates: the Last 7 Days --
+          const now = new Date();
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(now.getDate() - 7);
+
+          let weekSessions = 0;
+          data.forEach(w => {
+            const wDate = new Date(w.created_at);
+            if (wDate >= oneWeekAgo) {
+              weekSessions++;
+            }
+          });
+          setSessionCount(weekSessions);
+
+          // -- Profile: The Last Workout --
+          const lw = data[0];
+          let lwVol = 0;
+          const exMap = {};
+
+          lw.sets?.forEach(s => {
+            const w = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            lwVol += (s.reps * w);
+            const nm = s.name || s.exercise_name || "Unknown Exercise";
+            if (!exMap[nm]) { exMap[nm] = { length: 0, sets: [] }; }
+            exMap[nm].length++;
+            exMap[nm].sets.push(s);
+          });
+
+          // Check if completion time was written in notes string securely
+          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (\d+:\d+)/) : null;
+          const dStr = dMatch ? `${dMatch[1]} min` : "N/A";
+
+          setLastWorkout({
+            name: lw.name || "Workout Session",
+            subtitle: Object.keys(exMap).slice(0, 3).join(" · ") || "-",
+            date: new Date(lw.created_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
+            duration: dStr,
+            volume: `${lwVol.toLocaleString()} ${unit}`,
+            sets: lw.sets?.length || 0,
+            exercises: Object.entries(exMap).map(([nm, obj], idx) => ({
+              id: `ex-${idx}`,
+              name: nm,
+              setsLength: obj.length,
+              sets: obj.sets,
+              accentColor: ["#0A84FF", "#FF2D55", "#FFD60A", "#30D158", "#BF5AF2"][idx % 5]
+            }))
+          });
+        }
+      } catch (e) {
+        console.error("Dashboard pull failed", e);
+      }
+    };
+
+    fetchDashboardDetails();
   }, []);
 
   return (
-    <PageShell title={`${greeting()}, JD`} subtitle={formatDate()}>
-      {/* ── Quick Stats ──────────────────────────────────── */}
+    <PageShell 
+      title={`${greeting()}, ${localStorage.getItem("userName")?.split(" ")[0] || "User"}`} 
+      subtitle={formatDate()}
+      onSettingsClick={() => router.push("/settings")}
+    >
+      {/* Quick Stats */}
+      {/* -- Quick Stats ------------------------------------ */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-        <StatCard label="This Week" value="4" unit="sessions" color="#0A84FF" delay={1} />
-        <StatCard label="Volume" value="34.2" unit="k lbs" color="#FFD60A" delay={2} />
-        <StatCard label="Strength" value={OVERALL_STRENGTH_SCORE} unit="/ 100" color="#30D158" delay={3} />
+        <StatCard label="This Week" value={sessionCount} unit="sessions" color="#0A84FF" delay={1} />
+        <StatCard 
+          label="Recovery" 
+          value={recoveryScore} 
+          unit="%" 
+          color={RECOVERY_COLOR[getStatusFromPct(recoveryScore)]} 
+          delay={2} 
+        />
+        <StatCard 
+          label="Strength" 
+          value={strengthScore} 
+          unit="/ 100" 
+          color={strengthScore >= 90 ? "#FFD60A" : strengthScore >= 75 ? "#30D158" : strengthScore >= 60 ? "#0A84FF" : "#FF9F0A"} 
+          delay={3} 
+        />
       </div>
 
-      {/* ── Start Workout CTA ─────────────────────────────── */}
+      {/* -- Start Workout CTA ------------------------------- */}
       <button
         onClick={() => router.push("/workout")}
         className="animate-fade-up delay-4"
@@ -139,7 +364,7 @@ export default function HomePage() {
         Start Today's Workout
       </button>
 
-      {/* ── Section label ─────────────────────────────────── */}
+      {/* -- Section label ----------------------------------- */}
       <div
         style={{
           fontSize: "11px",
@@ -153,7 +378,7 @@ export default function HomePage() {
         Last Workout
       </div>
 
-      {/* ── Last Workout Card ─────────────────────────────── */}
+      {/* -- Last Workout Card ------------------------------- */}
       <div
         className="glass-card animate-fade-up delay-5"
         style={{ padding: "16px", marginBottom: "20px" }}
@@ -174,7 +399,7 @@ export default function HomePage() {
               fontWeight: 800,
             }}
           >
-            {LAST_WORKOUT.name}
+            {lastWorkout.name}
           </span>
           <span
             style={{
@@ -183,7 +408,7 @@ export default function HomePage() {
               fontWeight: 500,
             }}
           >
-            {LAST_WORKOUT.date}
+            {lastWorkout.date}
           </span>
         </div>
         <div
@@ -195,15 +420,15 @@ export default function HomePage() {
             marginBottom: "14px",
           }}
         >
-          {LAST_WORKOUT.subtitle}
+          {lastWorkout.subtitle}
         </div>
 
         {/* Stats row */}
         <div style={{ display: "flex", gap: "0", marginBottom: "14px" }}>
           {[
-            { label: "Duration", value: LAST_WORKOUT.duration },
-            { label: "Volume",   value: LAST_WORKOUT.volume },
-            { label: "Sets",     value: `${LAST_WORKOUT.sets} sets` },
+            { label: "Duration", value: lastWorkout.duration },
+            { label: "Volume", value: lastWorkout.volume },
+            { label: "Sets", value: `${lastWorkout.sets} sets` },
           ].map(({ label, value }, i) => (
             <div
               key={label}
@@ -228,7 +453,7 @@ export default function HomePage() {
                   fontFamily: "var(--font-display)",
                   fontSize: "15px",
                   fontWeight: 700,
-                  color: "#fff",
+                  color: "var(--text-primary)",
                 }}
               >
                 {value}
@@ -239,133 +464,13 @@ export default function HomePage() {
 
         {/* Exercise list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {WORKOUT_EXERCISES.map((ex) => (
-            <div
-              key={ex.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "8px 10px",
-                borderRadius: "10px",
-                background: "rgba(255,255,255,0.025)",
-              }}
-            >
-              <div
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "50%",
-                  background: ex.accentColor,
-                  boxShadow: `0 0 6px ${ex.accentColor}80`,
-                  flexShrink: 0,
-                }}
-              />
-              <span style={{ fontSize: "13px", fontWeight: 500, flex: 1 }}>
-                {ex.name}
-              </span>
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text-tertiary)",
-                  fontWeight: 500,
-                }}
-              >
-                {ex.sets.length} sets
-              </span>
-            </div>
+          {lastWorkout.exercises.map((ex) => (
+            <WorkoutExerciseRow key={ex.id} ex={ex} unit={unit} />
           ))}
         </div>
       </div>
 
-      {/* ── Section label ─────────────────────────────────── */}
-      <div
-        style={{
-          fontSize: "11px",
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "1.4px",
-          color: "var(--text-tertiary)",
-          marginBottom: "10px",
-        }}
-      >
-        Recovery
-      </div>
-
-      {/* ── Recovery Snapshot ─────────────────────────────── */}
-      <div
-        className="glass-card animate-fade-up delay-6"
-        style={{ padding: "14px 16px" }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {RECOVERY_MUSCLES.map((muscle) => {
-            const d = recoveryData[muscle];
-            if (!d) return null;
-            const color = RECOVERY_COLOR[d.status];
-            return (
-              <div
-                key={muscle}
-                style={{ display: "flex", alignItems: "center", gap: "10px" }}
-              >
-                {/* Dot */}
-                <div
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: color,
-                    boxShadow: `0 0 6px ${color}80`,
-                    flexShrink: 0,
-                  }}
-                />
-                {/* Name */}
-                <span
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    flex: 1,
-                    textTransform: "capitalize",
-                  }}
-                >
-                  {muscle}
-                </span>
-                {/* Bar */}
-                <div
-                  className="bar-track"
-                  style={{ width: "80px", flexShrink: 0 }}
-                >
-                  <div
-                    className="bar-fill"
-                    style={{
-                      width: `${d.pct}%`,
-                      background: color,
-                    }}
-                  />
-                </div>
-                {/* Label + manual indicator */}
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color,
-                    fontWeight: 700,
-                    width: d.isManual ? "62px" : "52px",
-                    textAlign: "right",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "3px",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  {d.isManual && (
-                    <span style={{ fontSize: "9px", opacity: 0.6 }}>✎</span>
-                  )}
-                  {RECOVERY_LABEL[d.status]}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {showPlateCalc && <PlateCalculator />}
     </PageShell>
   );
 }
