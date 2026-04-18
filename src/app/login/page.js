@@ -1,19 +1,19 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginPage() {
     const router = useRouter();
     const [isRegister, setIsRegister] = useState(false);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
     // If already logged in, skip straight to home
     useEffect(() => {
-        if (typeof window !== "undefined" && localStorage.getItem("userId")) {
+        if (typeof window !== "undefined" && localStorage.getItem("token")) {
             router.replace("/");
         }
     }, [router]);
@@ -25,44 +25,31 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            let result;
-            if (isRegister) {
-                // Register with Supabase
-                result = await supabase.auth.signUp({
-                    email,
-                    password: "no-auth-required", // Placeholder since current logic is email-only
-                    options: { data: { name } }
-                });
-            } else {
-                // Login with Supabase
-                result = await supabase.auth.signInWithPassword({
-                    email,
-                    password: "no-auth-required"
-                });
+            const endpoint = isRegister ? "/auth/register" : "/auth/login";
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, email, password }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                return setError(data.error || "Authentication failed.");
             }
 
-            if (result.error) {
-                return setError(result.error.message);
-            }
+            const { token, user } = data;
+            if (!token) throw new Error("No token returned");
 
-            const { user } = result.data;
-            if (!user) throw new Error("No user returned");
-
-            // Sync with backend if register
-            if (isRegister) {
-                await fetch(`http://localhost:5000/auth/register`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name, email, id: user.id }),
-                });
-            }
-
-            localStorage.setItem("userId", user.id);
-            localStorage.setItem("userName", name || user.user_metadata?.name || email);
+            localStorage.setItem("token", token);
+            localStorage.setItem("userName", user.name);
+            localStorage.removeItem("userId"); // Clean up old storage
             
             // Check metrics via backend
             try {
-                const metricsReq = await fetch(`http://localhost:5000/metrics?userId=${user.id}`);
+                const metricsReq = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics`, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
                 const metrics = await metricsReq.json();
                 if (Array.isArray(metrics) && metrics.length === 0) {
                     router.replace("/onboarding");
@@ -150,6 +137,19 @@ export default function LoginPage() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@example.com"
+                        style={inputStyle}
+                    />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.8px" }}>
+                        Password
+                    </label>
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
                         onKeyDown={(e) => e.key === "Enter" && handle()}
                         style={inputStyle}
                     />

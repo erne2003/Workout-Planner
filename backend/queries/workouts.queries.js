@@ -35,10 +35,10 @@ const getWorkoutsByUser = async (userId) => {
     return workouts;
 };
 
-const getWorkoutById = async (workoutId) => {
+const getWorkoutById = async (userId, workoutId) => {
     const workoutResult = await pool.query(
-        `SELECT * FROM workouts WHERE id = $1`,
-        [workoutId]
+        `SELECT * FROM workouts WHERE id = $1 AND user_id = $2`,
+        [workoutId, userId]
     );
     const workout = workoutResult.rows[0];
     if (!workout) return null;
@@ -55,22 +55,22 @@ const getWorkoutById = async (workoutId) => {
     return workout;
 };
 
-const updateWorkout = async (workoutId, { name, notes }) => {
+const updateWorkout = async (userId, workoutId, { name, notes }) => {
     const result = await pool.query(
         `UPDATE workouts
          SET name  = COALESCE($1, name),
              notes = COALESCE($2, notes)
-         WHERE id = $3
+         WHERE id = $3 AND user_id = $4
          RETURNING *`,
-        [name, notes, workoutId]
+        [name, notes, workoutId, userId]
     );
     return result.rows[0];
 };
 
-const deleteWorkout = async (id) => {
+const deleteWorkout = async (userId, id) => {
     const result = await pool.query(
-        `DELETE FROM workouts WHERE id = $1 RETURNING *`,
-        [id]
+        `DELETE FROM workouts WHERE id = $1 AND user_id = $2 RETURNING *`,
+        [id, userId]
     );
     return result.rows[0];
 };
@@ -99,24 +99,32 @@ const createWorkoutSet = async ({ workoutId, exerciseId, setOrder, reps, weight,
     return result.rows[0];
 };
 
-const updateWorkoutSet = async (setId, { reps, weight, rir, setOrder }) => {
+const updateWorkoutSet = async (userId, setId, { reps, weight, rir, setOrder }) => {
     const result = await pool.query(
-        `UPDATE workout_sets
-         SET reps      = COALESCE($1, reps),
-             weight    = COALESCE($2, weight),
-             rir       = COALESCE($3, rir),
-             set_order = COALESCE($4, set_order)
-         WHERE id = $5
-         RETURNING *`,
-        [reps, weight, rir, setOrder, setId]
+        `UPDATE workout_sets ws
+         SET reps      = COALESCE($1, ws.reps),
+             weight    = COALESCE($2, ws.weight),
+             rir       = COALESCE($3, ws.rir),
+             set_order = COALESCE($4, ws.set_order)
+         FROM workouts w
+         WHERE ws.id = $5 
+           AND ws.workout_id = w.id 
+           AND w.user_id = $6
+         RETURNING ws.*`,
+        [reps, weight, rir, setOrder, setId, userId]
     );
     return result.rows[0];
 };
 
-const deleteWorkoutSet = async (setId) => {
+const deleteWorkoutSet = async (userId, setId) => {
     const result = await pool.query(
-        `DELETE FROM workout_sets WHERE id = $1 RETURNING *`,
-        [setId]
+        `DELETE FROM workout_sets ws
+         USING workouts w
+         WHERE ws.id = $1
+           AND ws.workout_id = w.id
+           AND w.user_id = $2
+         RETURNING ws.*`,
+        [setId, userId]
     );
     return result.rows[0];
 };

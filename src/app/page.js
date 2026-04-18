@@ -172,10 +172,18 @@ export default function HomePage() {
   useEffect(() => {
     const fetchDashboardDetails = async () => {
       try {
-        const uId = localStorage.getItem("userId") || 1;
+
         
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        if (!apiUrl) {
+            console.warn("NEXT_PUBLIC_API_URL is missing; skipping dashboard pull.");
+            return;
+        }
+
         // Fetch Body Weight
-        const metReq = await fetch(`http://localhost:5000/metrics?userId=${uId}`);
+        const metReq = await fetch(`${apiUrl}/metrics`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const metData = metReq.ok ? await metReq.json() : [];
         let bw = 1;
         if (metData.length > 0) {
@@ -183,7 +191,9 @@ export default function HomePage() {
         }
 
         // Fetch PRs for Strength calculation
-        const prReq = await fetch(`http://localhost:5000/prs?userId=${uId}`);
+        const prReq = await fetch(`${apiUrl}/prs`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const prData = prReq.ok ? await prReq.json() : [];
         const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
         prData.forEach(p => {
@@ -220,7 +230,9 @@ export default function HomePage() {
         
         setStrengthScore(Math.min(100, Math.round((perfBasis * 0.7) + (avgPerf * 0.3))));
 
-        const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+        const res = await fetch(`${apiUrl}/workouts`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         if (!res.ok) return;
         const data = await res.json();
 

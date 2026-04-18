@@ -20,7 +20,7 @@ export default function OnboardingPage() {
         e.preventDefault();
         setLoading(true);
 
-        const userId = localStorage.getItem("userId");
+
 
         let finalHeight = "Not Selected";
         if (hUnit === "ft" && (feet || inches)) {
@@ -30,11 +30,13 @@ export default function OnboardingPage() {
         }
 
         try {
-            await fetch("http://localhost:5000/metrics", {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${localStorage.getItem("token")}`
+                },
                 body: JSON.stringify({
-                    userId: userId,
                     trainingYears: parseFloat(years) || 0,
                     weight: parseFloat(weight),
                     height: finalHeight,

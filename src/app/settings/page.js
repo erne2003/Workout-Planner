@@ -39,6 +39,7 @@ export default function SettingsPage() {
 
   const logout = () => {
     localStorage.removeItem("userId");
+    localStorage.removeItem("token");
     localStorage.removeItem("userName");
     localStorage.removeItem("userEmail");
     router.push("/login");

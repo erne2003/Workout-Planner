@@ -485,16 +485,20 @@ export default function StrengthPage() {
   useEffect(() => {
     const fetchAllData = async () => {
       try {
-        const uId = localStorage.getItem("userId") || 1;
+
         
         // Fetch Workouts for Recovery
-        const workoutsRes = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+        const workoutsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const workoutsData = workoutsRes.ok ? await workoutsRes.json() : [];
         const overrides = getMuscleSoreness();
         setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, workoutsData, overrides));
 
         // Dynamically track body weight
-        const metReq = await fetch(`http://localhost:5000/metrics?userId=${uId}`);
+        const metReq = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const metData = metReq.ok ? await metReq.json() : [];
         let bw = 1;
         if (metData.length > 0) {
@@ -505,7 +509,9 @@ export default function StrengthPage() {
         }
         
         // Fetch PRs
-        const prReq = await fetch(`http://localhost:5000/prs?userId=${uId}`);
+        const prReq = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/prs`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const prData = prReq.ok ? await prReq.json() : [];
         
         const liftHistory = { bench: [], squat: [], deadlift: [] };

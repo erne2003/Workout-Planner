@@ -5,8 +5,7 @@ const { getRoutinesByUser, createRoutine, deleteRoutine } = require("../queries/
 // GET /routines - Fetch all routines for a user
 router.get("/", async (req, res) => {
     try {
-        const userId = req.query.userId || 1; // Default to user 1 for now
-        const routines = await getRoutinesByUser(userId);
+        const routines = await getRoutinesByUser(req.userId);
         res.json(routines);
     } catch (e) {
         console.error("GET /routines error:", e.message);
@@ -17,12 +16,12 @@ router.get("/", async (req, res) => {
 // POST /routines - Create a new routine
 router.post("/", async (req, res) => {
     try {
-        const { userId = 1, name, exercises } = req.body;
+        const { name, exercises } = req.body;
         if (!name || !exercises || !exercises.length) {
             return res.status(400).json({ error: "Missing name or exercises" });
         }
         
-        const newRoutine = await createRoutine({ userId, name, exercises });
+        const newRoutine = await createRoutine({ userId: req.userId, name, exercises });
         res.status(201).json(newRoutine);
     } catch (e) {
         console.error("POST /routines error:", e.message);

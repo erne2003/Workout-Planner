@@ -311,12 +311,27 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAdd
   // Fetch previous sets from backend when the card mounts
   useEffect(() => {
     const exerciseId = exercise.exerciseId || exercise.id;
-    if (!exerciseId || String(exerciseId).startsWith("e")) return; // skip local mock IDs
+    if (!exerciseId || String(exerciseId).startsWith("e")) return; 
 
-    fetch(`http://localhost:5000/workouts/history/${exerciseId}?userId=1`)
-      .then((r) => (r.ok ? r.json() : []))
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+      console.warn("NEXT_PUBLIC_API_URL is missing; skipping history fetch.");
+      return;
+    }
+
+    const fullUrl = `${apiUrl}/workouts/history/${exerciseId}`;
+    fetch(fullUrl, {
+        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+    })
+      .then((r) => {
+        if (!r.ok) console.warn(`History fetch failed for ${fullUrl}: ${r.status}`);
+        return r.ok ? r.json() : [];
+      })
       .then((data) => setPrevSets(Array.isArray(data) ? data : []))
-      .catch(() => setPrevSets([]));
+      .catch((err) => {
+        console.error(`History fetch error for ${fullUrl}:`, err);
+        setPrevSets([]);
+      });
   }, [exercise.exerciseId, exercise.id]);
 
   const done = exercise.sets.filter((_, si) => completed[`${exIdx}-${si}`]).length;
@@ -488,7 +503,9 @@ function ExerciseSearch({ onAdd }) {
     const t = setTimeout(async () => {
       setIsLoading(true);
       try {
-        const res = await fetch(`http://localhost:5000/exercises/search?name=${encodeURIComponent(query)}`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/exercises/search?name=${encodeURIComponent(query)}`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const data = res.ok ? await res.json() : [];
         setResults(data);
         setDoneSearching(true);
@@ -505,23 +522,36 @@ function ExerciseSearch({ onAdd }) {
       return;
     }
     setIsAdding(true);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+      setAddError("API configuration error. Please contact support.");
+      console.error("NEXT_PUBLIC_API_URL is missing.");
+      setIsAdding(false);
+      return;
+    }
+
     try {
-      const res = await fetch("http://localhost:5000/exercises", {
+      const res = await fetch(`${apiUrl}/exercises`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify({ name: query.trim(), muscle: newMuscle }),
       });
-      if (!res.ok) throw new Error("Failed to create exercise");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to create exercise");
+      }
       const created = await res.json();
-      // Add to workout immediately
       onAdd(created);
-      // Reset state
       setQuery("");
       setSelectedEx(null);
       setShowAddNew(false);
       setNewMuscle("");
     } catch (err) {
-      setAddError("Failed to save exercise. Please try again.");
+      console.error("Save exercise error:", err);
+      setAddError(err.message || "Failed to save exercise. Please try again.");
     } finally {
       setIsAdding(false);
     }
@@ -854,7 +884,9 @@ export default function WorkoutPage() {
   // Fetch Routines on mount / refresh
   const fetchRoutines = async () => {
     try {
-      const resR = await fetch("http://localhost:5000/routines?userId=1");
+      const resR = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/routines`, {
+          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      });
       const dataR = resR.ok ? await resR.json() : [];
 
       // Tag routines specifically
@@ -940,11 +972,13 @@ export default function WorkoutPage() {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const workoutRes = await fetch("http://localhost:5000/workouts", {
+      const workoutRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify({
-          userId: localStorage.getItem("userId") || 1,
           name: activeRoutine?.name || "Workout Session",
           notes: `Finished with ${Math.round(overallPct)}% completion in ${fmt(elapsed)}`,
         }),
@@ -958,9 +992,12 @@ export default function WorkoutPage() {
         for (let si = 0; si < exercise.sets.length; si++) {
           if (completed[`${ei}-${si}`]) {
             const set = exercise.sets[si];
-            await fetch(`http://localhost:5000/workouts/${workoutId}/sets`, {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts/${workoutId}/sets`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${localStorage.getItem("token")}`
+              },
               body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) * 2.205) : Number(set.weight), rir: set.rir || 0 }),
             });
           }
@@ -987,7 +1024,10 @@ export default function WorkoutPage() {
   const deleteRoutine = async (rId) => {
     if (!confirm("Delete this routine?")) return;
     try {
-      await fetch(`http://localhost:5000/routines/${rId}`, { method: "DELETE" });
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/routines/${rId}`, { 
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      });
       fetchRoutines();
     } catch (e) {
       console.error(e);
@@ -997,10 +1037,13 @@ export default function WorkoutPage() {
   const saveNewRoutine = async () => {
     if (!newRoutineName.trim() || newRoutineConfig.length === 0) return alert("Add a name and exercises!");
     try {
-      await fetch("http://localhost:5000/routines", {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/routines`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: 1, name: newRoutineName, exercises: newRoutineConfig }),
+        headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
+        body: JSON.stringify({ name: newRoutineName, exercises: newRoutineConfig }),
       });
       setIsCreatingRoutine(false);
       setNewRoutineName("");

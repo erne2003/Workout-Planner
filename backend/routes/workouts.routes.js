@@ -12,14 +12,21 @@ const {
     deleteWorkoutSet,
     getLastSetsForExercise,
 } = require("../queries/workouts.queries");
+const { body, param, validationResult } = require("express-validator");
+
+const validate = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+    next();
+};
 
 // ── Workouts ──────────────────────────────────────────────────────────────────
 
 router.get("/", async (req, res) => {
-    const { userId } = req.query;
-    if (!userId) return res.status(400).json({ error: "userId query param is required" });
     try {
-        res.json(await getWorkoutsByUser(userId));
+        res.json(await getWorkoutsByUser(req.userId));
     } catch (err) {
         console.error("GET /workouts error:", err.message);
         res.status(500).json({ error: "Failed to fetch workouts" });
@@ -28,7 +35,7 @@ router.get("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
     try {
-        const workout = await getWorkoutById(req.params.id);
+        const workout = await getWorkoutById(req.userId, req.params.id);
         if (!workout) return res.status(404).json({ error: "Workout not found" });
         res.json(workout);
     } catch (err) {
@@ -37,22 +44,31 @@ router.get("/:id", async (req, res) => {
     }
 });
 
-router.post("/", async (req, res) => {
-    const { userId, name, notes } = req.body;
-    if (!userId || !name) return res.status(400).json({ error: "userId and name are required" });
+router.post("/", [
+    body("name").isString().isLength({ min: 1, max: 255 }).withMessage("Name must be 1-255 characters"),
+    body("notes").optional().isString().isLength({ max: 255 }),
+    validate
+], async (req, res) => {
+    const { name, notes } = req.body;
+
     try {
-        res.status(201).json(await createWorkout({ userId, name, notes }));
+        res.status(201).json(await createWorkout({ userId: req.userId, name, notes }));
     } catch (err) {
         console.error("POST /workouts error:", err.message);
         res.status(500).json({ error: "Failed to create workout" });
     }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", [
+    param("id").isInt(),
+    body("name").optional().isString().isLength({ min: 1, max: 255 }),
+    body("notes").optional().isString().isLength({ max: 255 }),
+    validate
+], async (req, res) => {
     const { name, notes } = req.body;
     if (!name && notes === undefined) return res.status(400).json({ error: "Provide name or notes to update" });
     try {
-        const updated = await updateWorkout(req.params.id, { name, notes });
+        const updated = await updateWorkout(req.userId, req.params.id, { name, notes });
         if (!updated) return res.status(404).json({ error: "Workout not found" });
         res.json(updated);
     } catch (err) {
@@ -63,7 +79,7 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
     try {
-        const deleted = await deleteWorkout(req.params.id);
+        const deleted = await deleteWorkout(req.userId, req.params.id);
         if (!deleted) return res.status(404).json({ error: "Workout not found" });
         res.json({ message: "Workout deleted", workout: deleted });
     } catch (err) {
@@ -76,18 +92,30 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/:id/sets", async (req, res) => {
     try {
-        res.json(await getWorkoutSets(req.params.id));
+        const workout = await getWorkoutById(req.userId, req.params.id);
+        if (!workout) return res.status(404).json({ error: "Workout not found" });
+        res.json(workout.sets);
     } catch (err) {
         console.error("GET /workouts/:id/sets error:", err.message);
         res.status(500).json({ error: "Failed to fetch workout sets" });
     }
 });
 
-router.post("/:id/sets", async (req, res) => {
+router.post("/:id/sets", [
+    param("id").isInt(),
+    body("exerciseId").isInt(),
+    body("setOrder").isInt(),
+    body("reps").isInt(),
+    body("weight").isFloat(),
+    body("rir").optional({ nullable: true }).isFloat(),
+    validate
+], async (req, res) => {
     const { exerciseId, setOrder, reps, weight, rir } = req.body;
-    if (!exerciseId || !setOrder || !reps || weight === undefined)
-        return res.status(400).json({ error: "exerciseId, setOrder, reps, and weight are required" });
+
     try {
+        const workout = await getWorkoutById(req.userId, req.params.id);
+        if (!workout) return res.status(404).json({ error: "Workout not found" });
+
         res.status(201).json(await createWorkoutSet({
             workoutId: req.params.id, exerciseId, setOrder, reps, weight, rir: rir ?? null,
         }));
@@ -97,12 +125,20 @@ router.post("/:id/sets", async (req, res) => {
     }
 });
 
-router.put("/:id/sets/:setId", async (req, res) => {
+router.put("/:id/sets/:setId", [
+    param("id").isInt(),
+    param("setId").isInt(),
+    body("reps").optional().isInt(),
+    body("weight").optional().isFloat(),
+    body("rir").optional({ nullable: true }).isFloat(),
+    body("setOrder").optional().isInt(),
+    validate
+], async (req, res) => {
     const { reps, weight, rir, setOrder } = req.body;
     if ([reps, weight, rir, setOrder].every(v => v === undefined))
         return res.status(400).json({ error: "Provide at least one field: reps, weight, rir, setOrder" });
     try {
-        const updated = await updateWorkoutSet(req.params.setId, { reps, weight, rir, setOrder });
+        const updated = await updateWorkoutSet(req.userId, req.params.setId, { reps, weight, rir, setOrder });
         if (!updated) return res.status(404).json({ error: "Set not found" });
         res.json(updated);
     } catch (err) {
@@ -113,7 +149,7 @@ router.put("/:id/sets/:setId", async (req, res) => {
 
 router.delete("/:id/sets/:setId", async (req, res) => {
     try {
-        const deleted = await deleteWorkoutSet(req.params.setId);
+        const deleted = await deleteWorkoutSet(req.userId, req.params.setId);
         if (!deleted) return res.status(404).json({ error: "Set not found" });
         res.json({ message: "Set deleted", set: deleted });
     } catch (err) {
@@ -127,11 +163,9 @@ router.delete("/:id/sets/:setId", async (req, res) => {
 // Returns the sets from the last time this user did this exercise.
 
 router.get("/history/:exerciseId", async (req, res) => {
-    const { userId } = req.query;
     const { exerciseId } = req.params;
-    if (!userId) return res.status(400).json({ error: "userId query param is required" });
     try {
-        res.json(await getLastSetsForExercise(userId, exerciseId));
+        res.json(await getLastSetsForExercise(req.userId, exerciseId));
     } catch (err) {
         console.error("GET /workouts/history/:exerciseId error:", err.message);
         res.status(500).json({ error: "Failed to fetch exercise history" });

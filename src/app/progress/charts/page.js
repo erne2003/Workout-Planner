@@ -22,8 +22,10 @@ export default function DetailedChartsPage() {
   useEffect(() => {
     const fetchAllWorkouts = async () => {
       try {
-        const uId = localStorage.getItem("userId") || 1;
-        const res = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const workouts = res.ok ? await res.json() : [];
         
         const flatSets = [];

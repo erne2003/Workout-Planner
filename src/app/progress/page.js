@@ -339,13 +339,15 @@ function LogPRCard() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const uId = localStorage.getItem("userId") || 1;
+
     try {
-      await fetch("http://localhost:5000/prs", {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/prs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify({
-          userId: uId,
           exerciseName: exercise,
           weight: unit === "kg" ? Math.round(parseFloat(weight) * 2.205) : parseFloat(weight)
         })
@@ -510,13 +512,22 @@ function LogMetricsCard() {
         finalHeight = `${cm}cm`;
     }
 
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+        console.error("NEXT_PUBLIC_API_URL is missing.");
+        alert("API configuration error.");
+        setLoading(false);
+        return;
+    }
+
     try {
-      const uId = localStorage.getItem("userId") || 1;
-      await fetch("http://localhost:5000/metrics", {
+      await fetch(`${apiUrl}/metrics`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify({
-          userId: uId,
           trainingYears: 0,
           weight: unit === "kg" ? Math.round(parseFloat(weight) * 2.205) : parseFloat(weight),
           height: finalHeight,
@@ -631,11 +642,17 @@ export default function ProgressPage() {
 
   useEffect(() => {
     const fetchAnalytics = async () => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        console.warn("NEXT_PUBLIC_API_URL is missing; skipping analytics fetch.");
+        return;
+      }
+
       try {
-        const uId = localStorage.getItem("userId") || 1;
-        
         // 1. Fetch PRs (Existing Logic)
-        const prRes = await fetch(`http://localhost:5000/prs?userId=${uId}`);
+        const prRes = await fetch(`${apiUrl}/prs`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const prData = prRes.ok ? await prRes.json() : [];
         setRawPrs(prData);
         if (prData.length > 0) {
@@ -657,7 +674,9 @@ export default function ProgressPage() {
         }
 
         // 2. Fetch All Workouts for Activity & Volume
-        const wRes = await fetch(`http://localhost:5000/workouts?userId=${uId}`);
+        const wRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts`, {
+            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
         const workoutsData = wRes.ok ? await wRes.json() : [];
         
         // Filter: ONLY COMPLETED

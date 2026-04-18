@@ -66,6 +66,7 @@ export default function BottomNav() {
 
   const logout = () => {
     localStorage.removeItem("userId");
+    localStorage.removeItem("token");
     localStorage.removeItem("userName");
     router.replace("/login");
   };
