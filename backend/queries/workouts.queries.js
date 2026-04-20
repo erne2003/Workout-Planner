@@ -17,7 +17,7 @@ const getWorkoutsByUser = async (userId) => {
     const result = await pool.query(
         `SELECT 
             w.id AS workout_id, w.name AS workout_name, w.notes, w.status, w.created_at AS workout_created_at,
-            ws.id AS set_id, ws.set_order, ws.reps, ws.weight, ws.rir, ws.created_at AS set_created_at,
+            ws.id AS set_id, ws.set_order, ws.reps, ws.weight, ws.rir,
             e.id AS exercise_id, e.name AS exercise_name, e.muscle_group
          FROM workouts w
          LEFT JOIN workout_sets ws ON w.id = ws.workout_id
@@ -51,7 +51,6 @@ const getWorkoutsByUser = async (userId) => {
                 reps: row.reps,
                 weight: row.weight,
                 rir: row.rir,
-                created_at: row.set_created_at,
                 exercise_name: row.exercise_name,
                 muscle_group: row.muscle_group,
                 name: row.exercise_name // For frontend compatibility
