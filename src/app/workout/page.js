@@ -886,18 +886,11 @@ export default function WorkoutPage() {
   const { workouts, routines: templateRoutines, loading: dataLoading, refresh } = useData();
 
   useEffect(() => {
-    let combined = [];
     if (templateRoutines) {
-      combined = [...templateRoutines];
+      const sorted = [...templateRoutines].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      setRoutines(sorted);
     }
-    if (workouts) {
-      const sessionList = workouts.map(w => ({ ...w, isPastWorkout: true }));
-      combined = [...combined, ...sessionList];
-    }
-    // Sort by creation date
-    combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    setRoutines(combined);
-  }, [workouts, templateRoutines]);
+  }, [templateRoutines]);
 
   useEffect(() => {
     if (!started) return;
