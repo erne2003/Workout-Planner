@@ -12,6 +12,12 @@ export default function DetailedChartsPage() {
 
   const [allSets, setAllSets] = useState([]);
   
+  const COMPOUND_MAP = {
+    "Bench Press": ["bench press", "bench", "chest press"],
+    "Squat": ["squat", "barbell squat", "back squat"],
+    "Deadlift": ["deadlift", "barbell deadlift", "rdl"]
+  };
+  
   // Filters
   const [range, setRange] = useState("3M");
   const [muscle, setMuscle] = useState("Chest");
@@ -72,29 +78,57 @@ export default function DetailedChartsPage() {
     }
 
     // Filter muscle
-    if (muscle) {
+    if (muscle === "Compound Lifts") {
+      // Find which compound lift mapping contains the exercise name
+      filtered = filtered.filter(s => {
+        const exNm = s.exercise?.toLowerCase();
+        return Object.values(COMPOUND_MAP).flat().some(target => exNm.includes(target));
+      });
+    } else if (muscle) {
       filtered = filtered.filter(s => s.muscle?.toLowerCase() === muscle.toLowerCase());
     }
 
     // Filter exercise
     if (exercise) {
-      filtered = filtered.filter(s => s.exercise?.toLowerCase() === exercise.toLowerCase());
+      if (muscle === "Compound Lifts" && COMPOUND_MAP[exercise]) {
+         const targets = COMPOUND_MAP[exercise];
+         filtered = filtered.filter(s => {
+           const exNm = s.exercise?.toLowerCase();
+           return targets.some(target => exNm.includes(target));
+         });
+      } else {
+         filtered = filtered.filter(s => s.exercise?.toLowerCase() === exercise.toLowerCase());
+      }
     }
 
     return filtered;
   }, [allSets, range, muscle, exercise]);
 
   // Derived filter options
-  const muscleOptions = useMemo(() => Object.keys(MUSCLE_RECOVERY).map(m => m.charAt(0).toUpperCase() + m.slice(1)), []);
+  const muscleOptions = useMemo(() => {
+    const raw = Object.keys(MUSCLE_RECOVERY).map(m => m.charAt(0).toUpperCase() + m.slice(1));
+    return ["Compound Lifts", ...raw];
+  }, []);
   
   // Dynamically extract distinct exercises from user's actual workout history for the active muscle
   const exerciseOptions = useMemo(() => {
     const opts = new Set();
-    allSets.forEach(s => {
-      if (s.muscle && muscle && s.muscle.toLowerCase() === muscle.toLowerCase()) {
-        opts.add(s.exercise);
-      }
-    });
+    if (muscle === "Compound Lifts") {
+      allSets.forEach(s => {
+        const exNm = s.exercise?.toLowerCase();
+        Object.keys(COMPOUND_MAP).forEach(compound => {
+          if (COMPOUND_MAP[compound].some(target => exNm.includes(target))) {
+            opts.add(compound);
+          }
+        });
+      });
+    } else {
+      allSets.forEach(s => {
+        if (s.muscle && muscle && s.muscle.toLowerCase() === muscle.toLowerCase()) {
+          opts.add(s.exercise);
+        }
+      });
+    }
     return Array.from(opts);
   }, [allSets, muscle]);
 
