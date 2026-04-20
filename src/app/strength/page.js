@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import PageShell from "../../components/PageShell";
 import { useSettings } from "../../contexts/SettingsContext";
+import { useData } from "../../contexts/DataContext";
 import { OVERALL_STRENGTH_SCORE, PERSONAL_RECORDS } from "../../lib/data";
 import {
   RECOVERY_COLOR,
@@ -481,110 +482,96 @@ export default function StrengthPage() {
     "lats", "core", "quads", "hamstrings", "glutes", "calves",
   ];
 
-  // 1. Fetch data for strength analytics
+  const { workouts, prs: prData, metrics: metData, loading } = useData();
+
+  // 1. Process data for strength analytics when available
   useEffect(() => {
-    const fetchAllData = async () => {
       try {
+        if (workouts) {
+            const overrides = getMuscleSoreness();
+            setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, workouts, overrides));
+        }
 
-        
-        // Fetch Workouts for Recovery
-        const workoutsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        const workoutsData = workoutsRes.ok ? await workoutsRes.json() : [];
-        const overrides = getMuscleSoreness();
-        setRecoveryData(computeDynamicRecovery(ALL_MUSCLES, workoutsData, overrides));
-
-        // Dynamically track body weight
-        const metReq = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        const metData = metReq.ok ? await metReq.json() : [];
         let bw = 1;
-        if (metData.length > 0) {
+        if (metData && metData.length > 0) {
             const latest = metData[metData.length - 1];
             const rawBw = parseFloat(latest.weight) || 1;
             bw = unit === "kg" ? Math.round(rawBw / 2.205) : rawBw;
             setMetrics({ weight: bw, trainingYears: latest.training_years || 0 });
         }
         
-        // Fetch PRs
-        const prReq = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/prs`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        const prData = prReq.ok ? await prReq.json() : [];
-        
-        const liftHistory = { bench: [], squat: [], deadlift: [] };
-        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
-        if (prData.length > 0) {
-            prData.forEach(p => {
-                const e = p.exercise_name?.toLowerCase();
-                const rawW = parseFloat(p.weight);
-                const w = unit === "kg" ? Math.round(rawW / 2.205) : rawW;
-                if (["bench press", "bench", "chest press"].includes(e)) {
-                    liftHistory.bench.push(w);
-                    rawMaxes.bench = Math.max(rawMaxes.bench, w);
-                }
-                else if (["squat", "barbell squat", "back squat"].includes(e)) {
-                    liftHistory.squat.push(w);
-                    rawMaxes.squat = Math.max(rawMaxes.squat, w);
-                }
-                else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) {
-                    liftHistory.deadlift.push(w);
-                    rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
-                }
-                else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
-                else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
-            });
-            const getGain = (arr) => {
-                const a = arr || [];
-                if (a.length < 2) return "±0";
-                const diff = a[a.length - 1] - a[a.length - 2];
-                return diff >= 0 ? `+${diff.toFixed(0)}` : `${diff.toFixed(0)}`;
+        if (prData) {
+            const liftHistory = { bench: [], squat: [], deadlift: [] };
+            const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+            
+            if (prData.length > 0) {
+                prData.forEach(p => {
+                    const e = p.exercise_name?.toLowerCase();
+                    const rawW = parseFloat(p.weight);
+                    const w = unit === "kg" ? Math.round(rawW / 2.205) : rawW;
+                    if (["bench press", "bench", "chest press"].includes(e)) {
+                        liftHistory.bench.push(w);
+                        rawMaxes.bench = Math.max(rawMaxes.bench, w);
+                    }
+                    else if (["squat", "barbell squat", "back squat"].includes(e)) {
+                        liftHistory.squat.push(w);
+                        rawMaxes.squat = Math.max(rawMaxes.squat, w);
+                    }
+                    else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) {
+                        liftHistory.deadlift.push(w);
+                        rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
+                    }
+                    else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
+                    else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
+                });
+                const getGain = (arr) => {
+                    const a = arr || [];
+                    if (a.length < 2) return "±0";
+                    const diff = a[a.length - 1] - a[a.length - 2];
+                    return diff >= 0 ? `+${diff.toFixed(0)}` : `${diff.toFixed(0)}`;
+                };
+
+                setPrs({
+                    bench: { weight: liftHistory.bench[liftHistory.bench.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.bench) },
+                    squat: { weight: liftHistory.squat[liftHistory.squat.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.squat) },
+                    deadlift: { weight: liftHistory.deadlift[liftHistory.deadlift.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.deadlift) }
+                });
+            }
+
+            // 2. Define Elite Standards (100% Score)
+            const ELITE = {
+                bench: 1.5,
+                deadlift: 2.5,
+                ohp: 0.9,
+                squat: 2.0,
+                rows: 1.2
             };
 
-            setPrs({
-                bench: { weight: liftHistory.bench[liftHistory.bench.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.bench) },
-                squat: { weight: liftHistory.squat[liftHistory.squat.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.squat) },
-                deadlift: { weight: liftHistory.deadlift[liftHistory.deadlift.length - 1] || 0, unit: "lbs", gain: getGain(liftHistory.deadlift) }
-            });
+            const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
+
+            const scores = [
+                { muscle: "Chest",     score: calcScore(rawMaxes.bench, ELITE.bench), color: "#0A84FF", prev: 0 },
+                { muscle: "Back",      score: calcScore(rawMaxes.deadlift, ELITE.deadlift), color: "#BF5AF2", prev: 0 },
+                { muscle: "Shoulders", score: calcScore(rawMaxes.ohp, ELITE.ohp), color: "#FF9F0A", prev: 0 },
+                { muscle: "Legs",      score: calcScore(rawMaxes.squat, ELITE.squat), color: "#FFD60A", prev: 0 },
+                { 
+                  muscle: "Arms",      
+                  score: Math.round((calcScore(rawMaxes.bench, ELITE.bench) * 0.5) + (calcScore(rawMaxes.rows, ELITE.rows) * 0.5)), 
+                  color: "#30D158", prev: 0 
+                },
+                { 
+                  muscle: "Core",      
+                  score: Math.max(0, calcScore(rawMaxes.squat, ELITE.squat) - 15), // Proxy from squat stability
+                  color: "#FF3B30", prev: 0 
+                },
+            ];
+
+            setDynamicScores(scores);
         }
-
-        // 2. Define Elite Standards (100% Score)
-        const ELITE = {
-            bench: 1.5,
-            deadlift: 2.5,
-            ohp: 0.9,
-            squat: 2.0,
-            rows: 1.2
-        };
-
-        const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
-
-        const scores = [
-            { muscle: "Chest",     score: calcScore(rawMaxes.bench, ELITE.bench), color: "#0A84FF", prev: 0 },
-            { muscle: "Back",      score: calcScore(rawMaxes.deadlift, ELITE.deadlift), color: "#BF5AF2", prev: 0 },
-            { muscle: "Shoulders", score: calcScore(rawMaxes.ohp, ELITE.ohp), color: "#FF9F0A", prev: 0 },
-            { muscle: "Legs",      score: calcScore(rawMaxes.squat, ELITE.squat), color: "#FFD60A", prev: 0 },
-            { 
-              muscle: "Arms",      
-              score: Math.round((calcScore(rawMaxes.bench, ELITE.bench) * 0.5) + (calcScore(rawMaxes.rows, ELITE.rows) * 0.5)), 
-              color: "#30D158", prev: 0 
-            },
-            { 
-              muscle: "Core",      
-              score: Math.max(0, calcScore(rawMaxes.squat, ELITE.squat) - 15), // Proxy from squat stability
-              color: "#FF3B30", prev: 0 
-            },
-        ];
-
-        setDynamicScores(scores);
       } catch (e) {
-        console.error("Failed fetching strength profiles", e);
+        console.error("Failed processing strength profiles", e);
       }
-    };
-    fetchAllData();
-  }, [unit]);
+  }, [unit, workouts, prData, metData]);
 
   const handleMuscleClick = (muscle) => {
     setSelectedMuscle(muscle);
@@ -617,7 +604,11 @@ export default function StrengthPage() {
   return (
     <PageShell title="Strength" subtitle="Analytics · Big Lifts & Recovery">
       {/* -- Overall Score ----------------------------------- */}
-      <OverallRing score={derivedOverall} bw={metrics.weight} age={metrics.trainingYears} index={strengthIndex} />
+      {loading.prs || loading.metrics ? (
+        <div className="glass-card skeleton" style={{ height: "420px", marginBottom: "12px", borderRadius: "22px" }} />
+      ) : (
+        <OverallRing score={derivedOverall} bw={metrics.weight} age={metrics.trainingYears} index={strengthIndex} />
+      )}
       {/* -- Lift Cards --------------------------------------- */}
       <div
         style={{
@@ -633,13 +624,27 @@ export default function StrengthPage() {
         Big Lifts vs Bodyweight
       </div>
 
-      <LiftCard liftName="bench" weight={prs.bench.weight} bw={metrics.weight} delay={3} />
-      <LiftCard liftName="squat" weight={prs.squat.weight} bw={metrics.weight} delay={4} />
-      <LiftCard liftName="deadlift" weight={prs.deadlift.weight} bw={metrics.weight} delay={5} />
+      {loading.prs || loading.metrics ? (
+        <>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="glass-card skeleton" style={{ height: "92px", marginBottom: "12px", borderRadius: "22px" }} />
+          ))}
+        </>
+      ) : (
+        <>
+          <LiftCard liftName="bench" weight={prs.bench.weight} bw={metrics.weight} delay={3} />
+          <LiftCard liftName="squat" weight={prs.squat.weight} bw={metrics.weight} delay={4} />
+          <LiftCard liftName="deadlift" weight={prs.deadlift.weight} bw={metrics.weight} delay={5} />
+        </>
+      )}
 
       {/* -- PRs -------------------------------------------- */}
       <div style={{ marginTop: "12px" }}>
-        <PRCard prData={prs} />
+        {loading.prs ? (
+          <div className="glass-card skeleton" style={{ height: "130px", marginBottom: "12px", borderRadius: "22px" }} />
+        ) : (
+          <PRCard prData={prs} />
+        )}
       </div>
 
       {/* -- Section label ----------------------------------- */}
@@ -659,9 +664,17 @@ export default function StrengthPage() {
 
       {/* -- Strength rows ----------------------------------- */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {[...dynamicScores].map((item, i) => (
-          <StrengthRow key={item.muscle} item={item} delay={Math.min(i + 6, 8)} />
-        ))}
+        {loading.prs || loading.metrics ? (
+          <>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="glass-card skeleton" style={{ height: "50px", borderRadius: "16px" }} />
+            ))}
+          </>
+        ) : (
+          [...dynamicScores].map((item, i) => (
+            <StrengthRow key={item.muscle} item={item} delay={Math.min(i + 6, 8)} />
+          ))
+        )}
       </div>
     </PageShell>
   );

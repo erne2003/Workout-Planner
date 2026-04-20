@@ -13,26 +13,53 @@ const createWorkout = async ({ userId, name, notes, status }) => {
 };
 
 const getWorkoutsByUser = async (userId) => {
-    const workoutsRes = await pool.query(
-        `SELECT * FROM workouts
-         WHERE user_id = $1
-         ORDER BY created_at DESC`,
+    // Single query to get all workouts and their sets for a user
+    const result = await pool.query(
+        `SELECT 
+            w.id AS workout_id, w.name AS workout_name, w.notes, w.status, w.created_at AS workout_created_at,
+            ws.id AS set_id, ws.set_order, ws.reps, ws.weight, ws.rir, ws.created_at AS set_created_at,
+            e.id AS exercise_id, e.name AS exercise_name, e.muscle_group
+         FROM workouts w
+         LEFT JOIN workout_sets ws ON w.id = ws.workout_id
+         LEFT JOIN exercises e ON ws.exercise_id = e.id
+         WHERE w.user_id = $1
+         ORDER BY w.created_at DESC, ws.set_order ASC`,
         [userId]
     );
-    const workouts = workoutsRes.rows;
 
-    for (let workout of workouts) {
-        const setsResult = await pool.query(
-            `SELECT ws.*, e.name AS exercise_name, e.muscle_group, e.name
-             FROM workout_sets ws
-             JOIN exercises e ON ws.exercise_id = e.id
-             WHERE ws.workout_id = $1
-             ORDER BY ws.set_order ASC`,
-            [workout.id]
-        );
-        workout.sets = setsResult.rows;
+    const workoutsMap = new Map();
+
+    for (const row of result.rows) {
+        if (!workoutsMap.has(row.workout_id)) {
+            workoutsMap.set(row.workout_id, {
+                id: row.workout_id,
+                user_id: userId,
+                name: row.workout_name,
+                notes: row.notes,
+                status: row.status,
+                created_at: row.workout_created_at,
+                sets: []
+            });
+        }
+
+        if (row.set_id) {
+            workoutsMap.get(row.workout_id).sets.push({
+                id: row.set_id,
+                workout_id: row.workout_id,
+                exercise_id: row.exercise_id,
+                set_order: row.set_order,
+                reps: row.reps,
+                weight: row.weight,
+                rir: row.rir,
+                created_at: row.set_created_at,
+                exercise_name: row.exercise_name,
+                muscle_group: row.muscle_group,
+                name: row.exercise_name // For frontend compatibility
+            });
+        }
     }
-    return workouts;
+
+    return Array.from(workoutsMap.values());
 };
 
 const getWorkoutById = async (userId, workoutId) => {

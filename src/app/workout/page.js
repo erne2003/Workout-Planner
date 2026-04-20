@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion, useAnimation, useMotionValue } from "framer-motion";
 import { Trash2 } from "lucide-react";
 import { useSettings } from "../../contexts/SettingsContext";
+import { useData } from "../../contexts/DataContext";
 import PageShell from "../../components/PageShell";
 import { WORKOUT_EXERCISES } from "../../lib/data";
 import { setLastWorkoutTime } from "../../lib/recovery";
@@ -881,31 +882,16 @@ export default function WorkoutPage() {
   const [newRoutineConfig, setNewRoutineConfig] = useState([]);
   const [expandedOverviewEx, setExpandedOverviewEx] = useState(null);
 
-  // Fetch Routines on mount / refresh
-  const fetchRoutines = async () => {
-    try {
-      const resR = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/routines`, {
-          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-      });
-      const dataR = resR.ok ? await resR.json() : [];
-
-      // Tag routines specifically
-      const formattedR = dataR.map(r => ({ ...r, isPastWorkout: false }));
-
-      // Sort by creation date
-      const combined = [...formattedR].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-      setRoutines(combined);
-    } catch (e) {
-      console.error("Failed to fetch routines:", e);
-    }
-  };
-
   const pathname = usePathname();
+  const { workouts, loading: dataLoading, refresh } = useData();
 
   useEffect(() => {
-    fetchRoutines();
-  }, [pathname]);
+    if (workouts) {
+      // Sort by creation date
+      const combined = [...workouts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      setRoutines(combined);
+    }
+  }, [workouts]);
 
   useEffect(() => {
     if (!started) return;
@@ -1004,7 +990,7 @@ export default function WorkoutPage() {
         }
       }
       setLastWorkoutTime(new Date());
-      fetchRoutines();
+      refresh("workouts");
       setActiveRoutine(null);
       setStarted(false);
       setElapsed(0);
@@ -1028,7 +1014,7 @@ export default function WorkoutPage() {
           method: "DELETE",
           headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
       });
-      fetchRoutines();
+      refresh("workouts");
     } catch (e) {
       console.error(e);
     }
@@ -1048,7 +1034,7 @@ export default function WorkoutPage() {
       setIsCreatingRoutine(false);
       setNewRoutineName("");
       setNewRoutineConfig([]);
-      fetchRoutines();
+      refresh("workouts");
     } catch (e) {
       console.error(e);
       alert("Failed to save routine");
@@ -1162,41 +1148,51 @@ export default function WorkoutPage() {
 
         {/* Existing Routines & Workouts */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto", flex: 1, paddingBottom: "20px" }}>
-          {routines.map(r => (
-            <div
-              key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`}
-              className="glass-card transition-all active:scale-[0.98]"
-              onClick={() => selectRoutine(r)}
-              style={{ padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: isManagingRoutines ? "default" : "pointer", position: "relative" }}
-            >
-              <div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, marginBottom: "4px" }}>
-                  {r.name}
-                  {r.isPastWorkout && <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 500, marginLeft: "8px", textTransform: "uppercase" }}>Completed Session</span>}
-                </div>
-                <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-                  {r.isPastWorkout
-                    ? `${new Date(r.created_at).toLocaleDateString()} · ${[...new Set(r.sets?.map(s => s.exercise_id))].length} exercises`
-                    : `${r.exercises?.length || 0} exercises`}
-                </div>
-              </div>
-
-              {isManagingRoutines && !r.isPastWorkout ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); deleteRoutine(r.id); }}
-                  style={{ background: "#FF2D55", border: "none", borderRadius: "50%", width: "24px", height: "24px", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontWeight: 800 }}
+          {dataLoading.workouts ? (
+            <>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="glass-card skeleton" style={{ height: "82px", padding: "20px", borderRadius: "22px" }} />
+              ))}
+            </>
+          ) : (
+            <>
+              {routines.map(r => (
+                <div
+                  key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`}
+                  className="glass-card transition-all active:scale-[0.98]"
+                  onClick={() => selectRoutine(r)}
+                  style={{ padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: isManagingRoutines ? "default" : "pointer", position: "relative" }}
                 >
-                  -
-                </button>
-              ) : (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                  <div>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, marginBottom: "4px" }}>
+                      {r.name}
+                      {r.isPastWorkout && <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 500, marginLeft: "8px", textTransform: "uppercase" }}>Completed Session</span>}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+                      {r.isPastWorkout
+                        ? `${new Date(r.created_at).toLocaleDateString()} · ${[...new Set(r.sets?.map(s => s.exercise_id))].length} exercises`
+                        : `${r.exercises?.length || 0} exercises`}
+                    </div>
+                  </div>
+
+                  {isManagingRoutines && !r.isPastWorkout ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteRoutine(r.id); }}
+                      style={{ background: "#FF2D55", border: "none", borderRadius: "50%", width: "24px", height: "24px", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontWeight: 800 }}
+                    >
+                      -
+                    </button>
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                  )}
+                </div>
+              ))}
+              {routines.length === 0 && !isCreatingRoutine && (
+                <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-tertiary)" }}>
+                  No routines yet. Click + to build one!
+                </div>
               )}
-            </div>
-          ))}
-          {routines.length === 0 && !isCreatingRoutine && (
-            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-tertiary)" }}>
-              No routines yet. Click + to build one!
-            </div>
+            </>
           )}
         </div>
 

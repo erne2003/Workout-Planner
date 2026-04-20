@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import PageShell from "../../components/PageShell";
 import { useSettings } from "../../contexts/SettingsContext";
+import { useData } from "../../contexts/DataContext";
 import { PROGRESS_DATA, PERSONAL_RECORDS } from "../../lib/data";
 import Link from "next/link";
 
@@ -356,7 +357,13 @@ function LogPRCard() {
       setWeight("");
       setReps("");
       setRir("0");
-      window.location.reload();
+      
+      // Attempt to refresh instead of full reload using our new logic
+      if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("refresh-data"));
+      } else {
+          window.location.reload();
+      }
     } catch (err) {
       console.error(err);
       alert("Failed to save PR");
@@ -540,7 +547,10 @@ function LogMetricsCard() {
       setCm("");
       setBodyFat("");
       alert("Body metrics successfully logged!");
-      window.location.reload(); // Quick refresh to update any graphs if utilized natively
+      // Dispatch refresh event
+      if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("refresh-data"));
+      }
     } catch (err) {
       console.error(err);
       alert("Failed logging body metrics.");
@@ -638,78 +648,69 @@ export default function ProgressPage() {
   // -- Real Data States --
   const [workoutStats, setWorkoutStats] = useState({ workouts: 0, avg: 0, rest: 0, activity: [] });
   const [muscleSelection, setMuscleSelection] = useState("Total");
-  const [allWorkouts, setAllWorkouts] = useState([]);
+
+  // Allow triggering refresh from children
+  useEffect(() => {
+    const handleRefresh = () => {
+       const uData = require('../../contexts/DataContext');
+       // This feels a bit hacky to require here, but the better 
+       // way is to pass `refresh` down to the forms.
+       // For speed, let's just reload as before if needed, or pass it down.
+       setTimeout(() => window.location.reload(), 500); 
+    };
+    window.addEventListener("refresh-data", handleRefresh);
+    return () => window.removeEventListener("refresh-data", handleRefresh);
+  }, []);
+  const { workouts: allWorkouts, prs, refresh, loading: dataLoading } = useData();
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (!apiUrl) {
-        console.warn("NEXT_PUBLIC_API_URL is missing; skipping analytics fetch.");
-        return;
-      }
-
-      try {
-        // 1. Fetch PRs (Existing Logic)
-        const prRes = await fetch(`${apiUrl}/prs`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+    if (prs) {
+      setRawPrs(prs);
+      if (prs.length > 0) {
+        const sorted = [...prs].sort((a, b) => new Date(a.achieved_at) - new Date(b.achieved_at));
+        let runningMax = { bench: 0, squat: 0, deadlift: 0 };
+        const formatted = [];
+        sorted.forEach((pr) => {
+          const exName = pr.exercise_name?.toLowerCase();
+          const wOriginal = parseFloat(pr.weight);
+          const w = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+          if (exName in runningMax) runningMax[exName] = w;
+          formatted.push({
+            week: new Date(pr.achieved_at).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
+            bench: runningMax.bench, squat: runningMax.squat, deadlift: runningMax.deadlift,
+          });
         });
-        const prData = prRes.ok ? await prRes.json() : [];
-        setRawPrs(prData);
-        if (prData.length > 0) {
-          const sorted = [...prData].sort((a, b) => new Date(a.achieved_at) - new Date(b.achieved_at));
-          let runningMax = { bench: 0, squat: 0, deadlift: 0 };
-          const formatted = [];
-          sorted.forEach((pr) => {
-            const exName = pr.exercise_name?.toLowerCase();
-            const wOriginal = parseFloat(pr.weight);
-            const w = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
-            if (exName in runningMax) runningMax[exName] = w;
-            formatted.push({
-              week: new Date(pr.achieved_at).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
-              bench: runningMax.bench, squat: runningMax.squat, deadlift: runningMax.deadlift,
-            });
-          });
-          if (formatted.length === 1) formatted.push({ ...formatted[0], week: "--" });
-          setGraphData(formatted);
-        }
-
-        // 2. Fetch All Workouts for Activity & Volume
-        const wRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        const workoutsData = wRes.ok ? await wRes.json() : [];
-        
-        // Filter: ONLY COMPLETED
-        const completed = workoutsData.filter(w => w.status === 'completed' || w.sets?.length > 0);
-        setAllWorkouts(completed);
-        
-        if (completed.length > 0) {
-          // -- A. Calculate Activity Grid (70 cells) --
-          const now = new Date();
-          const activity = Array.from({ length: 70 }, (_, i) => {
-             const d = new Date();
-             d.setDate(now.getDate() - (69 - i));
-             const dateStr = d.toISOString().split('T')[0];
-             const count = completed.filter(w => w.created_at.startsWith(dateStr)).length;
-             return Math.min(count, 2); // cap intensity at 2
-          });
-
-          // -- B. Calculate Stats --
-          const start = new Date(completed[completed.length - 1].created_at);
-          const weeks = Math.max(1, Math.ceil((now - start) / (7 * 24 * 3600 * 1000)));
-          setWorkoutStats({
-            workouts: completed.length,
-            avg: (completed.length / weeks).toFixed(1),
-            rest: (weeks * 7) - completed.length,
-            activity
-          });
-        }
-      } catch (err) {
-        console.error("Progress fetch failed", err);
+        if (formatted.length === 1) formatted.push({ ...formatted[0], week: "--" });
+        setGraphData(formatted);
       }
-    };
-    fetchAnalytics();
-  }, [unit]);
+    }
+
+    if (allWorkouts) {
+      const completed = allWorkouts.filter(w => w.status === 'completed' || w.sets?.length > 0);
+      
+      if (completed.length > 0) {
+        // -- A. Calculate Activity Grid (70 cells) --
+        const now = new Date();
+        const activity = Array.from({ length: 70 }, (_, i) => {
+            const d = new Date();
+            d.setDate(now.getDate() - (69 - i));
+            const dateStr = d.toISOString().split('T')[0];
+            const count = completed.filter(w => w.created_at.startsWith(dateStr)).length;
+            return Math.min(count, 2); // cap intensity at 2
+        });
+
+        // -- B. Calculate Stats --
+        const start = new Date(completed[completed.length - 1].created_at);
+        const weeks = Math.max(1, Math.ceil((now - start) / (7 * 24 * 3600 * 1000)));
+        setWorkoutStats({
+          workouts: completed.length,
+          avg: (completed.length / weeks).toFixed(1),
+          rest: (weeks * 7) - completed.length,
+          activity
+        });
+      }
+    }
+  }, [prs, allWorkouts, unit]);
 
   const lift = LIFTS.find((l) => l.key === selectedLift);
 
@@ -722,41 +723,49 @@ export default function ProgressPage() {
     <PageShell title="Progress" subtitle="Historical · 8 Weeks">
       {/* -- Top Summary Cards ------------------------------- */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
-        {LIFTS.map((l, i) => {
-          const pr = PERSONAL_RECORDS[l.key];
-          const vals = graphData.map((d) => d[l.key]);
-          const gain = vals[vals.length - 1] - vals[0];
-          const latestWeight = vals[vals.length - 1];
-          return (
-            <div
-              key={l.key}
-              className={`glass-card animate-fade-up delay-${i + 1}`}
-              style={{ flex: 1, padding: "12px" }}
-            >
-              <div style={{ fontSize: "9px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "4px" }}>
-                {l.label.split(" ")[0]}
-              </div>
+        {dataLoading.prs ? (
+          <>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="glass-card skeleton" style={{ flex: 1, padding: "12px", height: "135px", borderRadius: "22px" }} />
+            ))}
+          </>
+        ) : (
+          LIFTS.map((l, i) => {
+            const pr = PERSONAL_RECORDS[l.key];
+            const vals = graphData.map((d) => d[l.key]);
+            const gain = vals[vals.length - 1] - vals[0];
+            const latestWeight = vals[vals.length - 1];
+            return (
               <div
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: "20px",
-                  fontWeight: 800,
-                  color: l.color,
-                  letterSpacing: "-1px",
-                  lineHeight: 1,
-                  marginBottom: "4px",
-                }}
+                key={l.key}
+                className={`glass-card animate-fade-up delay-${i + 1}`}
+                style={{ flex: 1, padding: "12px" }}
               >
-                {latestWeight}
-                <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-body)", fontWeight: 500, letterSpacing: 0 }}> {unit}</span>
+                <div style={{ fontSize: "9px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "4px" }}>
+                  {l.label.split(" ")[0]}
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontSize: "20px",
+                    fontWeight: 800,
+                    color: l.color,
+                    letterSpacing: "-1px",
+                    lineHeight: 1,
+                    marginBottom: "4px",
+                  }}
+                >
+                  {latestWeight}
+                  <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-body)", fontWeight: 500, letterSpacing: 0 }}> {unit}</span>
+                </div>
+                <Sparkline data={graphData} dataKey={l.key} color={l.color} />
+                <div style={{ fontSize: "10px", color: "#30D158", fontWeight: 600, marginTop: "2px" }}>
+                  +{gain} {unit}
+                </div>
               </div>
-              <Sparkline data={graphData} dataKey={l.key} color={l.color} />
-              <div style={{ fontSize: "10px", color: "#30D158", fontWeight: 600, marginTop: "2px" }}>
-                +{gain} {unit}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* -- Log PR Form ------------------------------------- */}
@@ -766,24 +775,35 @@ export default function ProgressPage() {
       </div>
 
       {/* -- Unified Muscle Analytics Section (NEW) ---------- */}
-      <MuscleGroupStats 
-        workouts={allWorkouts} 
-        selected={muscleSelection} 
-        onSelect={setMuscleSelection} 
-      />
+      {dataLoading.workouts ? (
+        <div className="glass-card skeleton" style={{ height: "180px", marginBottom: "16px", borderRadius: "22px" }} />
+      ) : (
+        <MuscleGroupStats 
+          workouts={allWorkouts || []} 
+          selected={muscleSelection} 
+          onSelect={setMuscleSelection} 
+        />
+      )}
 
       {/* -- Activity Grid ----------------------------------- */}
-      <ActivityCard workoutStats={workoutStats} />
+      {dataLoading.workouts ? (
+        <div className="glass-card skeleton" style={{ height: "190px", marginBottom: "12px", borderRadius: "22px" }} />
+      ) : (
+        <ActivityCard workoutStats={workoutStats} />
+      )}
 
       {/* -- Insight Card ------------------------------------ */}
-      <div
-        className="glass-card animate-fade-up delay-5"
-        style={{
-          padding: "16px",
-          borderColor: "rgba(255,214,10,0.2)",
-          background: "rgba(255,214,10,0.04)",
-        }}
-      >
+      {dataLoading.prs ? (
+          <div className="glass-card skeleton" style={{ height: "90px", borderRadius: "22px" }} />
+      ) : (
+          <div
+            className="glass-card animate-fade-up delay-5"
+            style={{
+              padding: "16px",
+              borderColor: "rgba(255,214,10,0.2)",
+              background: "rgba(255,214,10,0.04)",
+            }}
+          >
         <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
           <div
             style={{
@@ -830,6 +850,7 @@ export default function ProgressPage() {
           </div>
         </div>
       </div>
+      )}
 
       <Link 
         href="/progress/charts"

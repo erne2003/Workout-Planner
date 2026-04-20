@@ -5,7 +5,7 @@ const rateLimit = require("express-rate-limit");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
+app.set('trust proxy', 1);
 // Rate Limiters
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -25,8 +25,7 @@ const globalLimiter = rateLimit({
 
 app.use(globalLimiter);
 app.use(cors({
-    ///origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    origin: "https://www.apextracker.dev",
+    origin: [process.env.FRONTEND_URL || "http://localhost:3000", "https://www.apextracker.dev"],
     credentials: true
 }));
 
@@ -39,6 +38,8 @@ const prsRoutes = require("./routes/prs.routes");
 const metricsRoutes = require("./routes/metrics.routes");
 
 app.use(express.json());
+
+app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.use("/auth", authLimiter, authRoutes);
 

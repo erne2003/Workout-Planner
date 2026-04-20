@@ -12,6 +12,7 @@ import {
   computeDynamicRecovery,
   parseLocalISO,
 } from "../../lib/recovery";
+import { useData } from "../../contexts/DataContext";
 import MuscleMap from "../../components/MuscleMap";
 import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "../../lib/muscle-paths";
 
@@ -303,15 +304,11 @@ export default function RecoveryPage() {
   const [muscleData, setMuscleData] = useState({});
   const [view, setView] = useState("front");
 
-  const updateHeatmap = useCallback(async () => {
+  const { workouts: data, loading } = useData();
+
+  const updateHeatmap = useCallback(() => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workouts`, {
-          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (!res.ok) return;
-      const data = await res.json();
+      if (!data) return;
 
       const overrides = getMuscleSoreness();
       setManualOverrides(overrides);
@@ -326,9 +323,9 @@ export default function RecoveryPage() {
       const dynData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
       setMuscleData(dynData);
     } catch (e) {
-      console.error("Failed to fetch heatmap data", e);
+      console.error("Failed to compute heatmap data", e);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => { updateHeatmap(); }, [updateHeatmap]);
 
@@ -354,57 +351,65 @@ export default function RecoveryPage() {
   return (
     <PageShell title="Recovery" subtitle="Muscle Readiness · Today">
       {/* ── Last workout banner ───────────────────────────── */}
-      <LastWorkoutBanner lastTime={lastTime} onReset={handleReset} />
+      {loading.workouts ? (
+        <div className="glass-card skeleton" style={{ height: "40px", marginBottom: "14px", borderRadius: "12px" }} />
+      ) : (
+        <LastWorkoutBanner lastTime={lastTime} onReset={handleReset} />
+      )}
 
       {/* ── Hero Card: Body Map + Score ───────────────────── */}
-      <div className="glass-card animate-fade-up delay-1" style={{ padding: "20px", marginBottom: "12px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-          <div>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, marginBottom: "2px" }}>
-              Muscle Readiness
+      {loading.workouts ? (
+        <div className="glass-card skeleton" style={{ height: "450px", padding: "20px", marginBottom: "12px", borderRadius: "22px" }} />
+      ) : (
+        <div className="glass-card animate-fade-up delay-1" style={{ padding: "20px", marginBottom: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+            <div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: "15px", fontWeight: 700, marginBottom: "2px" }}>
+                Muscle Readiness
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
+                Tap a muscle row to set soreness
+              </div>
+              <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: "8px", padding: "4px", width: "fit-content" }}>
+                <button 
+                  onClick={() => setView("front")}
+                  style={{
+                    background: view === "front" ? "#0A84FF" : "transparent",
+                    border: "none", color: view === "front" ? "#fff" : "var(--text-primary)", padding: "4px 12px", borderRadius: "6px",
+                    fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
+                  }}
+                >
+                  Front
+                </button>
+                <button 
+                  onClick={() => setView("back")}
+                  style={{
+                    background: view === "back" ? "#0A84FF" : "transparent",
+                    border: "none", color: view === "back" ? "#fff" : "var(--text-primary)", padding: "4px 12px", borderRadius: "6px",
+                    fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
+                  }}
+                >
+                  Back
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "12px" }}>
-              Tap a muscle row to set soreness
-            </div>
-            <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: "8px", padding: "4px", width: "fit-content" }}>
-              <button 
-                onClick={() => setView("front")}
-                style={{
-                  background: view === "front" ? "#0A84FF" : "transparent",
-                  border: "none", color: view === "front" ? "#fff" : "var(--text-primary)", padding: "4px 12px", borderRadius: "6px",
-                  fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
-                }}
-              >
-                Front
-              </button>
-              <button 
-                onClick={() => setView("back")}
-                style={{
-                  background: view === "back" ? "#0A84FF" : "transparent",
-                  border: "none", color: view === "back" ? "#fff" : "var(--text-primary)", padding: "4px 12px", borderRadius: "6px",
-                  fontSize: "12px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease"
-                }}
-              >
-                Back
-              </button>
-            </div>
+            <OverallScore muscleData={muscleData} />
           </div>
-          <OverallScore muscleData={muscleData} />
-        </div>
 
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: "32px", width: "100%", overflow: "visible" }}>
-          <MuscleMap muscleData={muscleData} view={view} onSelect={(id) => {
-              const el = document.getElementById(`muscle-row-${id}`);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }} />
-        </div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "32px", width: "100%", overflow: "visible" }}>
+            <MuscleMap muscleData={muscleData} view={view} onSelect={(id) => {
+                const el = document.getElementById(`muscle-row-${id}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }} />
+          </div>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
-          <LegendDot color="#30D158" label="Fresh" />
-          <LegendDot color="#FF9F0A" label="Recovering" />
-          <LegendDot color="#FF2D55" label="Taxed" />
+          <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
+            <LegendDot color="#30D158" label="Fresh" />
+            <LegendDot color="#FF9F0A" label="Recovering" />
+            <LegendDot color="#FF2D55" label="Taxed" />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── AI Recommendation Card ────────────────────────── */}
       <div
@@ -434,19 +439,27 @@ export default function RecoveryPage() {
       </div>
 
       {/* ── Muscle Rows ───────────────────────────────────── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {sortedMuscles.map((name, i) => (
-          <MuscleRow
-            key={name}
-            id={`muscle-row-${name}`}
-            name={name}
-            data={muscleData[name] ?? { status: "fresh", pct: 0, isManual: false, hours: 0 }}
-            manualLevel={manualOverrides[name] ?? null}
-            onSelect={handleSelect}
-            onClear={handleClear}
-            delay={Math.min(i + 1, 6)}
-          />
-        ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "30px" }}>
+        {loading.workouts ? (
+          <>
+             {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="glass-card skeleton" style={{ height: "64px", borderRadius: "16px" }} />
+             ))}
+          </>
+        ) : (
+          sortedMuscles.map((name, i) => (
+            <MuscleRow
+              key={name}
+              id={`muscle-row-${name}`}
+              name={name}
+              data={muscleData[name] ?? { status: "fresh", pct: 0, isManual: false, hours: 0 }}
+              manualLevel={manualOverrides[name] ?? null}
+              onSelect={handleSelect}
+              onClear={handleClear}
+              delay={Math.min(i + 1, 6)}
+            />
+          ))
+        )}
       </div>
     </PageShell>
   );

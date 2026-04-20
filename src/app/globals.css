@@ -281,6 +281,16 @@ body {
   }
 }
 
+@keyframes skeleton-pulse {
+  0% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+.skeleton {
+  background: rgba(255, 255, 255, 0.06);
+  animation: skeleton-pulse 1s ease-in-out infinite alternate;
+}
+
 .animate-fade-up {
   animation: fadeUp 0.45s ease both;
 }
