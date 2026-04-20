@@ -24,9 +24,10 @@ const globalLimiter = rateLimit({
 });
 
 app.use(globalLimiter);
-app.use(cors({ 
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    credentials: true 
+app.use(cors({
+    ///origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: "https://www.apextracker.dev",
+    credentials: true
 }));
 
 const workoutRoutes = require("./routes/workouts.routes");
