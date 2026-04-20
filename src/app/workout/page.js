@@ -1046,6 +1046,9 @@ export default function WorkoutPage() {
     if (isManagingRoutines) return;
 
     let plan = [];
+    
+    // Attempt to find the most recent completed session of this routine to pre-fill data
+    const lastSession = workouts.find(w => w.name === item.name);
 
     if (item.isPastWorkout) {
       // It's a past workout with individual sets. Group them by exercise.
@@ -1062,6 +1065,27 @@ export default function WorkoutPage() {
         }
         exercisesMap[set.exercise_id].sets.push({
           reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) / 2.205) : Number(set.weight), rir: set.rir !== null ? set.rir : 0
+        });
+      });
+      plan = Object.values(exercisesMap);
+    } else if (lastSession) {
+      // Pre-fill a new workout from the last time this routine was performed
+      const exercisesMap = {};
+      lastSession.sets.forEach(set => {
+        if (!exercisesMap[set.exercise_id]) {
+          exercisesMap[set.exercise_id] = {
+            exerciseId: set.exercise_id,
+            id: set.exercise_id,
+            name: set.name || set.exercise_name,
+            muscle: set.muscle_group,
+            accentColor: "#0A84FF",
+            sets: []
+          };
+        }
+        exercisesMap[set.exercise_id].sets.push({
+          reps: set.reps, 
+          weight: unit === "kg" ? Math.round(Number(set.weight) / 2.205) : Number(set.weight), 
+          rir: set.rir !== null ? set.rir : 0
         });
       });
       plan = Object.values(exercisesMap);
@@ -1157,37 +1181,49 @@ export default function WorkoutPage() {
             </>
           ) : (
             <>
-              {routines.map(r => (
-                <div
-                  key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`}
-                  className="glass-card transition-all active:scale-[0.98]"
-                  onClick={() => selectRoutine(r)}
-                  style={{ padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: isManagingRoutines ? "default" : "pointer", position: "relative" }}
-                >
-                  <div>
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, marginBottom: "4px" }}>
-                      {r.name}
-                      {r.isPastWorkout && <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 500, marginLeft: "8px", textTransform: "uppercase" }}>Completed Session</span>}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-                      {r.isPastWorkout
-                        ? `${new Date(r.created_at).toLocaleDateString()} · ${[...new Set(r.sets?.map(s => s.exercise_id))].length} exercises`
-                        : `${r.exercises?.length || 0} exercises`}
-                    </div>
-                  </div>
+              {routines.map(r => {
+                const ls = workouts.find(w => w.name === r.name);
+                const lsDate = ls ? new Date(ls.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
 
-                  {isManagingRoutines && !r.isPastWorkout ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteRoutine(r.id); }}
-                      style={{ background: "#FF2D55", border: "none", borderRadius: "50%", width: "24px", height: "24px", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontWeight: 800 }}
-                    >
-                      -
-                    </button>
-                  ) : (
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                  )}
-                </div>
-              ))}
+                return (
+                  <div
+                    key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`}
+                    className="glass-card transition-all active:scale-[0.98]"
+                    onClick={() => selectRoutine(r)}
+                    style={{ padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: isManagingRoutines ? "default" : "pointer", position: "relative" }}
+                  >
+                    <div>
+                      <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, marginBottom: "4px" }}>
+                        {r.name}
+                        {r.isPastWorkout && <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontWeight: 500, marginLeft: "8px", textTransform: "uppercase" }}>Completed Session</span>}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "var(--text-tertiary)", display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <div>
+                          {r.isPastWorkout
+                            ? `${new Date(r.created_at).toLocaleDateString()} · ${[...new Set(r.sets?.map(s => s.exercise_id))].length} exercises`
+                            : `${r.exercises?.length || 0} exercises`}
+                        </div>
+                        {ls && !r.isPastWorkout && (
+                          <div style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 600 }}>
+                            Last Session: {lsDate} · {ls.sets?.length || 0} sets
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {isManagingRoutines && !r.isPastWorkout ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteRoutine(r.id); }}
+                        style={{ background: "#FF2D55", border: "none", borderRadius: "50%", width: "24px", height: "24px", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontWeight: 800 }}
+                      >
+                        -
+                      </button>
+                    ) : (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    )}
+                  </div>
+                );
+              })}
               {routines.length === 0 && !isCreatingRoutine && (
                 <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-tertiary)" }}>
                   No routines yet. Click + to build one!
