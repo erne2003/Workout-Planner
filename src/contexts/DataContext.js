@@ -8,18 +8,21 @@ export const useData = () => useContext(DataContext);
 export function DataProvider({ children }) {
   const [data, setData] = useState({
     workouts: null,
+    routines: null,
     prs: null,
     metrics: null,
   });
 
   const [loading, setLoading] = useState({
     workouts: true,
+    routines: true,
     prs: true,
     metrics: true,
   });
 
   const [errors, setErrors] = useState({
     workouts: null,
+    routines: null,
     prs: null,
     metrics: null,
   });
@@ -57,8 +60,8 @@ export function DataProvider({ children }) {
         return;
     }
 
-    setLoading({ workouts: true, prs: true, metrics: true });
-    setErrors({ workouts: null, prs: null, metrics: null });
+    setLoading({ workouts: true, routines: true, prs: true, metrics: true });
+    setErrors({ workouts: null, routines: null, prs: null, metrics: null });
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const fetchWithAuth = (endpoint) =>
@@ -70,22 +73,24 @@ export function DataProvider({ children }) {
       });
 
     try {
-      const [workouts, prs, metrics] = await Promise.all([
+      const [workouts, routines, prs, metrics] = await Promise.all([
         fetchWithAuth("/workouts"),
+        fetchWithAuth("/routines"),
         fetchWithAuth("/prs"),
         fetchWithAuth("/metrics"),
       ]);
 
-      setData({ workouts, prs, metrics });
+      setData({ workouts, routines, prs, metrics });
     } catch (err) {
       console.error("Prefetch error:", err);
       setErrors({
           workouts: err.message,
+          routines: err.message,
           prs: err.message,
           metrics: err.message,
       });
     } finally {
-      setLoading({ workouts: false, prs: false, metrics: false });
+      setLoading({ workouts: false, routines: false, prs: false, metrics: false });
     }
   }, []);
 
@@ -96,6 +101,7 @@ export function DataProvider({ children }) {
   const refresh = useCallback((key) => {
     const endpoints = {
       workouts: "/workouts",
+      routines: "/routines",
       prs: "/prs",
       metrics: "/metrics",
     };

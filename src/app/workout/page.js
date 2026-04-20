@@ -883,15 +883,21 @@ export default function WorkoutPage() {
   const [expandedOverviewEx, setExpandedOverviewEx] = useState(null);
 
   const pathname = usePathname();
-  const { workouts, loading: dataLoading, refresh } = useData();
+  const { workouts, routines: templateRoutines, loading: dataLoading, refresh } = useData();
 
   useEffect(() => {
-    if (workouts) {
-      // Sort by creation date
-      const combined = [...workouts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      setRoutines(combined);
+    let combined = [];
+    if (templateRoutines) {
+      combined = [...templateRoutines];
     }
-  }, [workouts]);
+    if (workouts) {
+      const sessionList = workouts.map(w => ({ ...w, isPastWorkout: true }));
+      combined = [...combined, ...sessionList];
+    }
+    // Sort by creation date
+    combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    setRoutines(combined);
+  }, [workouts, templateRoutines]);
 
   useEffect(() => {
     if (!started) return;
@@ -1015,6 +1021,7 @@ export default function WorkoutPage() {
           headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
       });
       refresh("workouts");
+      refresh("routines");
     } catch (e) {
       console.error(e);
     }
@@ -1035,6 +1042,7 @@ export default function WorkoutPage() {
       setNewRoutineName("");
       setNewRoutineConfig([]);
       refresh("workouts");
+      refresh("routines");
     } catch (e) {
       console.error(e);
       alert("Failed to save routine");

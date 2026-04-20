@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import PageShell from "../components/PageShell";
 import { useSettings } from "../contexts/SettingsContext";
+import { useData } from "../contexts/DataContext";
 import PlateCalculator from "../components/PlateCalculator";
 import { OVERALL_STRENGTH_SCORE, WORKOUT_EXERCISES } from "../lib/data";
 import {
@@ -169,32 +170,18 @@ export default function HomePage() {
   const [strengthData, setStrengthData] = useState({});
   const [recoveryData, setRecoveryData] = useState({});
 
+  const { workouts: data, prs: prData, metrics: metData, loading: dataLoading } = useData();
+
   useEffect(() => {
-    const fetchDashboardDetails = async () => {
-      try {
+    if (!data || !prData || !metData) return;
 
-        
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-        if (!apiUrl) {
-            console.warn("NEXT_PUBLIC_API_URL is missing; skipping dashboard pull.");
-            return;
-        }
-
-        // Fetch Body Weight
-        const metReq = await fetch(`${apiUrl}/metrics`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        const metData = metReq.ok ? await metReq.json() : [];
+    try {
+        // --- Calculate Strength Score ---
         let bw = 1;
         if (metData.length > 0) {
             bw = parseFloat(metData[metData.length - 1].weight) || 1;
         }
 
-        // Fetch PRs for Strength calculation
-        const prReq = await fetch(`${apiUrl}/prs`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        const prData = prReq.ok ? await prReq.json() : [];
         const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
         prData.forEach(p => {
             const e = p.exercise_name?.toLowerCase();
@@ -230,13 +217,7 @@ export default function HomePage() {
         
         setStrengthScore(Math.min(100, Math.round((perfBasis * 0.7) + (avgPerf * 0.3))));
 
-        const res = await fetch(`${apiUrl}/workouts`, {
-            headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-
-        // Recovery Logic
+        // --- Recovery Logic ---
         const ALL_MUSCLES = [
             "chest", "shoulders", "biceps", "triceps",
             "lats", "abdominals", "quadriceps", "hamstrings", "glutes", "calves",
@@ -297,13 +278,10 @@ export default function HomePage() {
             }))
           });
         }
-      } catch (e) {
-        console.error("Dashboard pull failed", e);
-      }
-    };
-
-    fetchDashboardDetails();
-  }, []);
+    } catch (e) {
+        console.error("Dashboard calculation failed", e);
+    }
+  }, [data, prData, metData, unit]);
 
   return (
     <PageShell 
