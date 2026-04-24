@@ -1,6 +1,7 @@
 import "./globals.css";
 import AuthGuard from "../components/AuthGuard";
 import { SettingsProvider } from "../contexts/SettingsContext";
+import { Analytics } from "@vercel/analytics/next";
 export const metadata = {
   title: "APEX — Fitness Dashboard",
   description: "Premium AI-powered fitness tracking dashboard",
