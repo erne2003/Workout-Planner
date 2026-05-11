@@ -1,98 +1,469 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from "react";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import PageShell from "@/components/PageShell";
+import PlateCalculator from "@/components/PlateCalculator";
+import { useSettings, useData } from "@apex/core";
+import { getStatusFromPct, getMuscleSoreness, computeDynamicRecovery, RECOVERY_COLOR } from "@apex/core/src/recovery";
+import Svg, { Polygon, Polyline } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+/* --- Helpers ----------------------------------------------- */
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
 
-export default function HomeScreen() {
+function formatDate() {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+const RECOVERY_MUSCLES = ["chest", "shoulders", "quads", "lats"];
+
+/* --- Stat Card --------------------------------------------- */
+function StatCard({ label, value, unit, color = "#fff", delay }: any) {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={styles.statCard}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, { color }]}>
+        {value}
+        {unit && <Text style={styles.statUnit}> {unit}</Text>}
+      </Text>
+    </View>
+  );
+}
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+/* --- Last Workout Accordion Row ------------------------------ */
+function WorkoutExerciseRow({ ex, unit }: any) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={[styles.exerciseRowContainer, open && styles.exerciseRowOpen]}>
+      <TouchableOpacity onPress={() => setOpen(!open)} style={styles.exerciseRowHeader}>
+        <View style={[styles.exerciseDot, { backgroundColor: ex.accentColor, shadowColor: ex.accentColor }]} />
+        <Text style={styles.exerciseName}>{ex.name}</Text>
+        <View style={styles.exerciseSetsInfo}>
+          <Text style={styles.exerciseSetsText}>{ex.setsLength} sets</Text>
+          <View style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}>
+            <Svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Polyline points="6 9 12 15 18 9" />
+            </Svg>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {open && (
+        <View style={styles.exerciseSetsList}>
+          {ex.sets.map((s: any, i: number) => {
+            const displayWeight = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            return (
+              <View key={s.id || i} style={styles.setRow}>
+                <Text style={styles.setLabel}>Set {s.set_order || i + 1}</Text>
+                <View style={styles.setDetails}>
+                  <Text style={styles.setDetailPrimary}>{displayWeight} {unit}</Text>
+                  <Text style={styles.setDetailSecondary}>×</Text>
+                  <Text style={styles.setDetailPrimary}>{s.reps} reps</Text>
+                  <Text style={styles.setDetailRir}>({s.rir ?? 0} rir)</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+/* --- Page -------------------------------------------------- */
+export default function HomePage() {
+  const router = useRouter();
+  const ctx = useSettings() as any;
+  const unit = ctx?.weightUnit || "lbs";
+  const showPlateCalc = ctx?.plateCalc ?? true;
+
+  const [sessionCount, setSessionCount] = useState(0);
+  const [strengthScore, setStrengthScore] = useState(0);
+  const [recoveryScore, setRecoveryScore] = useState(0);
+  const [lastWorkout, setLastWorkout] = useState({
+    name: "No Sessions Logged",
+    subtitle: "Start a workout to see stats here",
+    date: "-",
+    duration: "0 min",
+    volume: `0 ${unit}`,
+    sets: 0,
+    exercises: [] as any[]
+  });
+
+  const { workouts: data, prs: prData, metrics: metData } = useData() as any;
+
+  useEffect(() => {
+    if (!data || !prData || !metData) return;
+
+    try {
+        let bw = 1;
+        if (metData.length > 0) {
+            bw = parseFloat(metData[metData.length - 1].weight) || 1;
+        }
+
+        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+        prData.forEach((p: any) => {
+            const e = p.exercise_name?.toLowerCase();
+            const w = parseFloat(p.weight);
+            if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
+            else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
+            else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
+            else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
+            else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
+        });
+
+        const ELITE = { bench: 1.5, deadlift: 2.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
+        const calcScore = (cur: number, target: number) => Math.min(100, Math.round(((cur / bw) / target) * 100));
+
+        const benchScore = calcScore(rawMaxes.bench, ELITE.bench);
+        const dlScore = calcScore(rawMaxes.deadlift, ELITE.deadlift);
+        const ohpScore = calcScore(rawMaxes.ohp, ELITE.ohp);
+        const squatScore = calcScore(rawMaxes.squat, ELITE.squat);
+        const rowScore = calcScore(rawMaxes.rows, ELITE.rows);
+
+        const muscleScores = [
+            benchScore, dlScore, ohpScore, squatScore,
+            Math.round((benchScore * 0.5) + (rowScore * 0.5)),
+            Math.max(0, squatScore - 15)
+        ];
+        
+        const avgPerf = Math.round(muscleScores.reduce((a, b) => a + b, 0) / muscleScores.length);
+        const rawIndex = ((rawMaxes.bench / bw) + (rawMaxes.squat / bw) + (rawMaxes.deadlift / bw)) / 3;
+        const perfBasis = (rawIndex / 1.5) * 100;
+        
+        setStrengthScore(Math.min(100, Math.round((perfBasis * 0.7) + (avgPerf * 0.3))));
+
+        const ALL_MUSCLES = [
+            "chest", "shoulders", "biceps", "triceps",
+            "lats", "abdominals", "quadriceps", "hamstrings", "glutes", "calves",
+        ];
+        const overrides = getMuscleSoreness();
+        const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
+        
+        const avgRec = Math.round(Object.values(recData).reduce((a: any, b: any) => a + b.pct, 0) / ALL_MUSCLES.length);
+        setRecoveryScore(avgRec);
+
+        if (data.length > 0) {
+          const now = new Date();
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(now.getDate() - 7);
+
+          let weekSessions = 0;
+          data.forEach((w: any) => {
+            const wDate = new Date(w.created_at);
+            if (wDate >= oneWeekAgo) {
+              weekSessions++;
+            }
+          });
+          setSessionCount(weekSessions);
+
+          const lw = data[0];
+          let lwVol = 0;
+          const exMap: any = {};
+
+          lw.sets?.forEach((s: any) => {
+            const w = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            lwVol += (s.reps * w);
+            const nm = s.name || s.exercise_name || "Unknown Exercise";
+            if (!exMap[nm]) { exMap[nm] = { length: 0, sets: [] }; }
+            exMap[nm].length++;
+            exMap[nm].sets.push(s);
+          });
+
+          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (\d+:\d+)/) : null;
+          const dStr = dMatch ? `${dMatch[1]} min` : "N/A";
+
+          setLastWorkout({
+            name: lw.name || "Workout Session",
+            subtitle: Object.keys(exMap).slice(0, 3).join(" · ") || "-",
+            date: new Date(lw.created_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
+            duration: dStr,
+            volume: `${lwVol.toLocaleString()} ${unit}`,
+            sets: lw.sets?.length || 0,
+            exercises: Object.entries(exMap).map(([nm, obj]: any, idx) => ({
+              id: `ex-${idx}`,
+              name: nm,
+              setsLength: obj.length,
+              sets: obj.sets,
+              accentColor: ["#0A84FF", "#FF2D55", "#FFD60A", "#30D158", "#BF5AF2"][idx % 5]
+            }))
+          });
+        }
+    } catch (e) {
+        console.error("Dashboard calculation failed", e);
+    }
+  }, [data, prData, metData, unit]);
+
+  return (
+    <PageShell 
+      title={`${greeting()}, ${global.localStorage?.getItem("userName")?.split(" ")[0] || "User"}`} 
+      subtitle={formatDate()}
+      onSettingsClick={() => router.push("/settings" as any)}
+    >
+      <View style={styles.quickStats}>
+        <StatCard label="This Week" value={sessionCount} unit="sessions" color="#0A84FF" delay={1} />
+        <StatCard 
+          label="Recovery" 
+          value={recoveryScore} 
+          unit="%" 
+          color={(RECOVERY_COLOR as any)[getStatusFromPct(recoveryScore)]} 
+          delay={2} 
+        />
+        <StatCard 
+          label="Strength" 
+          value={strengthScore} 
+          unit="/ 100" 
+          color={strengthScore >= 90 ? "#FFD60A" : strengthScore >= 75 ? "#30D158" : strengthScore >= 60 ? "#0A84FF" : "#FF9F0A"} 
+          delay={3} 
+        />
+      </View>
+
+      <TouchableOpacity onPress={() => router.push("/workout" as any)}>
+        <LinearGradient colors={["#0A84FF", "#BF5AF2"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ctaButton}>
+          <Svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <Polygon points="6,3 17,10 6,17" fill="white" />
+          </Svg>
+          <Text style={styles.ctaButtonText}>Start Today's Workout</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+
+      <Text style={styles.sectionLabel}>Last Workout</Text>
+
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>{lastWorkout.name}</Text>
+          <Text style={styles.cardDate}>{lastWorkout.date}</Text>
+        </View>
+        <Text style={styles.cardSubtitle}>{lastWorkout.subtitle}</Text>
+
+        <View style={styles.cardStatsRow}>
+          {[
+            { label: "Duration", value: lastWorkout.duration, align: "flex-start" },
+            { label: "Volume", value: lastWorkout.volume, align: "center" },
+            { label: "Sets", value: `${lastWorkout.sets} sets`, align: "flex-end" },
+          ].map(({ label, value, align }) => (
+            <View key={label} style={[styles.cardStatCol, { alignItems: align as any }]}>
+              <Text style={styles.cardStatLabel}>{label}</Text>
+              <Text style={styles.cardStatValue}>{value}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.exercisesList}>
+          {lastWorkout.exercises.map((ex) => (
+            <WorkoutExerciseRow key={ex.id} ex={ex} unit={unit} />
+          ))}
+        </View>
+      </View>
+
+      {showPlateCalc && <PlateCalculator />}
+    </PageShell>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  quickStats: {
+    flexDirection: "row",
     gap: 8,
+    marginBottom: 16,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  statCard: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    borderRadius: 16,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  statLabel: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.4)",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 24,
+  },
+  statUnit: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.4)",
+    fontWeight: "500",
+  },
+  ctaButton: {
+    width: "100%",
+    paddingVertical: 18,
+    borderRadius: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 20,
+    shadowColor: "#0A84FF",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 5,
+  },
+  ctaButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1.4,
+    color: "rgba(255,255,255,0.4)",
+    marginBottom: 10,
+  },
+  card: {
+    padding: 16,
+    marginBottom: 20,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    borderRadius: 20,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  cardDate: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.4)",
+    fontWeight: "500",
+  },
+  cardSubtitle: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.4)",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 14,
+  },
+  cardStatsRow: {
+    flexDirection: "row",
+    marginBottom: 14,
+  },
+  cardStatCol: {
+    flex: 1,
+  },
+  cardStatLabel: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.4)",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  cardStatValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  exercisesList: {
+    gap: 6,
+  },
+  exerciseRowContainer: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    overflow: "hidden",
+  },
+  exerciseRowOpen: {
+    paddingBottom: 10,
+  },
+  exerciseRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  exerciseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  exerciseName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#fff",
+  },
+  exerciseSetsInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  exerciseSetsText: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.4)",
+    fontWeight: "500",
+  },
+  exerciseSetsList: {
+    paddingLeft: 28,
+    paddingRight: 12,
+    gap: 6,
+  },
+  setRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: 6,
+  },
+  setLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.4)",
+    fontWeight: "600",
+  },
+  setDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  setDetailPrimary: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  setDetailSecondary: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.4)",
+  },
+  setDetailRir: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#FF9F0A",
+    marginLeft: 4,
   },
 });
