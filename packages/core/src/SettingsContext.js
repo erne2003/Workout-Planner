@@ -22,10 +22,12 @@ export function SettingsProvider({ children }) {
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") || "dark";
     setThemeState(savedTheme);
-    if (savedTheme === "light") {
-      document.documentElement.classList.add("light");
-    } else {
-      document.documentElement.classList.remove("light");
+    if (typeof document !== 'undefined') {
+      if (savedTheme === "light") {
+        document.documentElement.classList.add("light");
+      } else {
+        document.documentElement.classList.remove("light");
+      }
     }
 
     setWeightUnitState(localStorage.getItem("weightUnit") || "lbs");
@@ -53,10 +55,12 @@ export function SettingsProvider({ children }) {
   const setTheme = (val) => {
     setThemeState(val);
     save("theme", val);
-    if (val === "light") {
-      document.documentElement.classList.add("light");
-    } else {
-      document.documentElement.classList.remove("light");
+    if (typeof document !== 'undefined') {
+      if (val === "light") {
+        document.documentElement.classList.add("light");
+      } else {
+        document.documentElement.classList.remove("light");
+      }
     }
   };
 
@@ -115,7 +119,7 @@ export function SettingsProvider({ children }) {
 
   // Prevent flicker by not rendering children until we have loaded from localStorage constraints
   if (!isLoaded) {
-    return <div style={{ width: "100%", height: "100vh", backgroundColor: "var(--bg-base)" }} />;
+    return null;
   }
 
   return (
