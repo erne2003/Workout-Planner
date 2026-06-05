@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "../lib/muscle-paths";
+import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "@apex/core";
 import { RECOVERY_COLOR } from "../lib/recovery";
 
 export default function MuscleMap({ view = "front", muscleData = {}, onSelect }) {

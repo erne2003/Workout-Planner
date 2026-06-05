@@ -14,7 +14,7 @@ import {
 } from "../../lib/recovery";
 import { useData } from "../../contexts/DataContext";
 import MuscleMap from "../../components/MuscleMap";
-import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "../../lib/muscle-paths";
+import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "@apex/core";
 
 const ALL_MUSCLES = [
   ...new Set([...ANTERIOR_PATHS, ...POSTERIOR_PATHS].map(p => p.id))
