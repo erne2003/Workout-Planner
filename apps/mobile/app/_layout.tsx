@@ -12,6 +12,23 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
+import { useTheme } from '../hooks/useTheme';
+
+function AppNavigator() {
+  const { colors, isLight } = useTheme();
+
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bgBase } }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="onboarding" />
+      </Stack>
+      <StatusBar style={isLight ? "dark" : "light"} />
+    </>
+  );
+}
+
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
 
@@ -71,12 +88,7 @@ export default function RootLayout() {
   return (
     <SettingsProvider>
       <DataProvider>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#07070F' } }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="onboarding" />
-        </Stack>
-        <StatusBar style="light" />
+        <AppNavigator />
       </DataProvider>
     </SettingsProvider>
   );

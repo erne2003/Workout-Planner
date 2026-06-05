@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal,
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import { useSettings, useData } from "@apex/core";
+import { useTheme } from "../../hooks/useTheme";
 import { setLastWorkoutTime } from "@apex/core/src/recovery";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
 
@@ -36,6 +37,7 @@ function ExerciseSearch({ onAdd }: any) {
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedEx, setSelectedEx] = useState<any>(null);
+  const { colors, isLight } = useTheme();
 
   useEffect(() => {
     if (query.trim() === "" || (selectedEx && query === selectedEx.name)) {
@@ -64,11 +66,11 @@ function ExerciseSearch({ onAdd }: any) {
             value={query}
             onChangeText={(t) => { setQuery(t); setSelectedEx(null); }}
             placeholder="Type to search exercises..."
-            placeholderTextColor="rgba(255,255,255,0.4)"
-            style={styles.searchInput}
+            placeholderTextColor={colors.textSecondary}
+            style={[styles.searchInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]}
           />
           {query.trim() !== "" && !selectedEx && results.length > 0 && (
-            <View style={styles.searchResults}>
+            <View style={[styles.searchResults, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
               <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
                 {results.map((ex: any) => (
                   <TouchableOpacity
@@ -77,10 +79,10 @@ function ExerciseSearch({ onAdd }: any) {
                       setSelectedEx(ex);
                       setQuery(ex.name);
                     }}
-                    style={styles.searchResultItem}
+                    style={[styles.searchResultItem, { borderBottomColor: colors.border }]}
                   >
-                    <Text style={styles.searchResultName}>{ex.name}</Text>
-                    <Text style={styles.searchResultMuscle}>{ex.muscle_group || ex.muscle}</Text>
+                    <Text style={[styles.searchResultName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                    <Text style={[styles.searchResultMuscle, { color: colors.textSecondary }]}>{ex.muscle_group || ex.muscle}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -97,9 +99,9 @@ function ExerciseSearch({ onAdd }: any) {
             }
           }}
           disabled={!selectedEx}
-          style={[styles.addBtn, { backgroundColor: selectedEx ? "#30D158" : "rgba(255,255,255,0.1)" }]}
+          style={[styles.addBtn, { backgroundColor: selectedEx ? "#30D158" : colors.border }]}
         >
-          <Text style={[styles.addBtnText, { color: selectedEx ? "#000" : "rgba(255,255,255,0.3)" }]}>Add</Text>
+          <Text style={[styles.addBtnText, { color: selectedEx ? "#000" : colors.textTertiary }]}>Add</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -110,6 +112,7 @@ function ExerciseSearch({ onAdd }: any) {
 function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet, prevSet }: any) {
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
+  const { colors, isLight } = useTheme();
 
   return (
     <View style={styles.setRowContainer}>
@@ -118,21 +121,21 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
         style={[
           styles.setRowInner,
           {
-            backgroundColor: isDone ? "rgba(48,209,88,0.12)" : "rgba(255,255,255,0.03)",
-            borderColor: isDone ? "rgba(48,209,88,0.3)" : "rgba(255,255,255,0.06)",
+            backgroundColor: isDone ? "rgba(48,209,88,0.12)" : (isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)"),
+            borderColor: isDone ? "rgba(48,209,88,0.3)" : colors.border,
           }
         ]}
       >
-        <Text style={styles.setRowIndex}>S{setIdx + 1}</Text>
+        <Text style={[styles.setRowIndex, { color: colors.textSecondary }]}>S{setIdx + 1}</Text>
 
-        <View style={styles.prevSetCol}>
+        <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
           {prevSet ? (
             <>
-              <Text style={styles.prevSetWeight}>{prevSet.weight}<Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text></Text>
-              <Text style={styles.prevSetReps}>{prevSet.reps}{prevSet.rir != null && prevSet.rir !== undefined && ` ${prevSet.rir}rir`}</Text>
+              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>{prevSet.weight}<Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text></Text>
+              <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.reps}{prevSet.rir != null && prevSet.rir !== undefined && ` ${prevSet.rir}rir`}</Text>
             </>
           ) : (
-            <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.12)" }}>—</Text>
+            <Text style={{ fontSize: 10, color: colors.textTertiary }}>—</Text>
           )}
         </View>
 
@@ -143,11 +146,11 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
               value={set.weight === 0 ? "" : String(set.weight)}
               onChangeText={(t) => onUpdateSet(exIdx, setIdx, "weight", t)}
               placeholder="0"
-              placeholderTextColor="rgba(255,255,255,0.2)"
+              placeholderTextColor={colors.textTertiary}
               editable={!isDone}
-              style={[styles.setNumInput, { color: isDone ? "#30D158" : "#fff", backgroundColor: isDone ? "transparent" : "rgba(255,255,255,0.06)", borderColor: isDone ? "transparent" : "rgba(255,255,255,0.1)" }]}
+              style={[styles.setNumInput, { color: isDone ? "#30D158" : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
             />
-            <Text style={styles.inputUnit}>{unit}</Text>
+            <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>{unit}</Text>
           </View>
 
           <View style={styles.inputGroup}>
@@ -156,15 +159,15 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
               value={set.reps === 0 ? "" : String(set.reps)}
               onChangeText={(t) => onUpdateSet(exIdx, setIdx, "reps", t)}
               placeholder="0"
-              placeholderTextColor="rgba(255,255,255,0.2)"
+              placeholderTextColor={colors.textTertiary}
               editable={!isDone}
-              style={[styles.setNumInput, { color: isDone ? "rgba(255,255,255,0.6)" : "#fff", backgroundColor: isDone ? "transparent" : "rgba(255,255,255,0.06)", borderColor: isDone ? "transparent" : "rgba(255,255,255,0.1)" }]}
+              style={[styles.setNumInput, { color: isDone ? colors.textSecondary : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
             />
-            <Text style={styles.inputUnit}>reps</Text>
+            <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>reps</Text>
           </View>
         </View>
 
-        <TouchableOpacity onPress={() => onToggle(exIdx, setIdx)} style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : "rgba(255,255,255,0.15)" }]}>
+        <TouchableOpacity onPress={() => onToggle(exIdx, setIdx)} style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}>
           {isDone && (
             <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <Path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -179,6 +182,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
 /* ─── ExerciseCard ──────────────────────────────────────────── */
 function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet }: any) {
   const [prevSets, setPrevSets] = useState([]);
+  const { colors, isLight } = useTheme();
 
   useEffect(() => {
     const exerciseId = exercise.exerciseId || exercise.id;
@@ -199,21 +203,21 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAdd
   const pct = (done / exercise.sets.length) * 100;
 
   return (
-    <View style={styles.exerciseCard}>
+    <View style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
       <View style={styles.exCardHeader}>
         <View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
-            <Text style={styles.exCardTitle}>{exercise.name}</Text>
+            <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
           </View>
-          <Text style={styles.exCardMuscle}>{exercise.muscle}</Text>
+          <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
         </View>
-        <Text style={[styles.exCardDoneCount, { color: done === exercise.sets.length ? "#30D158" : "rgba(255,255,255,0.6)" }]}>
+        <Text style={[styles.exCardDoneCount, { color: done === exercise.sets.length ? "#30D158" : colors.textSecondary }]}>
           {done}/{exercise.sets.length}
         </Text>
       </View>
 
-      <View style={styles.barTrack}>
+      <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
         <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: pct === 100 ? "#30D158" : (exercise.accentColor || "#30D158") }]} />
       </View>
 
@@ -233,8 +237,8 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAdd
         ))}
       </View>
 
-      <TouchableOpacity onPress={() => onAddSet && onAddSet(exIdx)} style={styles.addSetBtn}>
-        <Text style={styles.addSetBtnText}>Add set</Text>
+      <TouchableOpacity onPress={() => onAddSet && onAddSet(exIdx)} style={[styles.addSetBtn, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.06)", borderColor: colors.border }]}>
+        <Text style={[styles.addSetBtnText, { color: colors.textPrimary }]}>Add set</Text>
       </TouchableOpacity>
     </View>
   );
@@ -245,6 +249,7 @@ export default function WorkoutPage() {
   const router = useRouter();
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
+  const { colors, isLight } = useTheme();
 
   const [started, setStarted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -492,8 +497,8 @@ export default function WorkoutPage() {
     return (
       <PageShell title="Workouts" subtitle="Choose or build a routine" onSettingsClick={() => router.push("/settings" as any)}>
         <View style={styles.routinesHeaderRow}>
-          <TouchableOpacity onPress={() => setIsManagingRoutines(!isManagingRoutines)} style={styles.manageBtn}>
-            <Text style={[styles.manageBtnText, { color: isManagingRoutines ? "#FF2D55" : "rgba(255,255,255,0.6)" }]}>
+          <TouchableOpacity onPress={() => setIsManagingRoutines(!isManagingRoutines)} style={[styles.manageBtn, { borderColor: colors.border }]}>
+            <Text style={[styles.manageBtnText, { color: isManagingRoutines ? "#FF2D55" : colors.textSecondary }]}>
               {isManagingRoutines ? "Done Editing" : "Edit List"}
             </Text>
           </TouchableOpacity>
@@ -504,11 +509,11 @@ export default function WorkoutPage() {
         </View>
 
         <Modal visible={isCreatingRoutine} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
+          <View style={[styles.modalOverlay, { backgroundColor: isLight ? "rgba(255,255,255,0.98)" : "rgba(0,0,0,0.95)" }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Routine</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>New Routine</Text>
               <TouchableOpacity onPress={() => setIsCreatingRoutine(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>✕</Text>
               </TouchableOpacity>
             </View>
 
@@ -516,18 +521,18 @@ export default function WorkoutPage() {
               value={newRoutineName}
               onChangeText={setNewRoutineName}
               placeholder="Workout Name (e.g. Pull Day)"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              style={styles.routineNameInput}
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.routineNameInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.05)", borderColor: colors.border, color: colors.textPrimary }]}
             />
 
             <ExerciseSearch onAdd={(ex: any) => setNewRoutineConfig([...newRoutineConfig, { ...ex, sets: 3, reps: 10, weight: 0, rir: 0 }])} />
 
             <ScrollView style={{ flex: 1, marginTop: 10 }}>
               {newRoutineConfig.map((ex, idx) => (
-                <View key={idx} style={[styles.card, styles.newRoutineExRow]}>
+                <View key={idx} style={[styles.card, styles.newRoutineExRow, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
                   <View>
-                    <Text style={styles.newRoutineExName}>{ex.name}</Text>
-                    <Text style={styles.newRoutineExDetails}>{ex.sets} sets x {ex.reps} reps</Text>
+                    <Text style={[styles.newRoutineExName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                    <Text style={[styles.newRoutineExDetails, { color: colors.textSecondary }]}>{ex.sets} sets x {ex.reps} reps</Text>
                   </View>
                   <TouchableOpacity onPress={() => setNewRoutineConfig(newRoutineConfig.filter((_, i) => i !== idx))}>
                     <Text style={{ color: "#FF2D55", fontSize: 24, fontWeight: "600" }}>-</Text>
@@ -545,7 +550,7 @@ export default function WorkoutPage() {
         <View style={styles.routinesList}>
           {dataLoading.workouts ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <View key={i} style={[styles.card, { height: 82, padding: 20, marginBottom: 12 }]} />
+              <View key={i} style={[styles.card, { height: 82, padding: 20, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
             ))
           ) : (
             routines.map(r => {
@@ -555,17 +560,17 @@ export default function WorkoutPage() {
               return (
                 <TouchableOpacity
                   key={`item-${r.isPastWorkout ? 'w' : 'r'}-${r.id}`}
-                  style={[styles.card, styles.routineCard]}
+                  style={[styles.card, styles.routineCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
                   onPress={() => selectRoutine(r)}
                   disabled={isManagingRoutines}
                 >
                   <View>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Text style={styles.routineTitle}>{r.name}</Text>
-                      {r.isPastWorkout && <Text style={styles.pastWorkoutBadge}>Completed Session</Text>}
+                      <Text style={[styles.routineTitle, { color: colors.textPrimary }]}>{r.name}</Text>
+                      {r.isPastWorkout && <Text style={[styles.pastWorkoutBadge, { color: colors.textTertiary }]}>Completed Session</Text>}
                     </View>
                     <View style={styles.routineDetailsCol}>
-                      <Text style={styles.routineDetailsText}>
+                      <Text style={[styles.routineDetailsText, { color: colors.textSecondary }]}>
                         {r.isPastWorkout
                           ? `${new Date(r.created_at).toLocaleDateString()} · ${[...new Set(r.sets?.map((s: any) => s.exercise_id))].length} exercises`
                           : `${r.exercises?.length || 0} exercises`}
@@ -583,7 +588,7 @@ export default function WorkoutPage() {
                       <Text style={styles.deleteRoutineBtnText}>-</Text>
                     </TouchableOpacity>
                   ) : (
-                    <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
+                    <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.textSecondary} strokeWidth="2">
                       <Polyline points="9 18 15 12 9 6" />
                     </Svg>
                   )}
@@ -602,11 +607,11 @@ export default function WorkoutPage() {
       <PageShell title="Edit Workout" subtitle="Customize exercises & sets" onSettingsClick={() => router.push("/settings" as any)}>
         <View style={{ paddingBottom: 100 }}>
           {workoutPlan.map((ex, ei) => (
-            <View key={ex.id || ei} style={[styles.card, { padding: 20, marginBottom: 16 }]}>
+            <View key={ex.id || ei} style={[styles.card, { padding: 20, marginBottom: 16, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
               <View style={styles.editExHeader}>
                 <View>
-                  <Text style={styles.editExName}>{ex.name}</Text>
-                  <Text style={styles.editExMuscle}>{ex.muscle}</Text>
+                  <Text style={[styles.editExName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                  <Text style={[styles.editExMuscle, { color: colors.textSecondary }]}>{ex.muscle}</Text>
                 </View>
                 <TouchableOpacity onPress={() => removeExercise(ei)}>
                   <Text style={styles.removeExText}>Remove</Text>
@@ -615,21 +620,21 @@ export default function WorkoutPage() {
 
               {ex.sets.map((set: any, si: number) => (
                 <View key={si} style={styles.editSetRow}>
-                  <Text style={styles.editSetNum}>S{si + 1}</Text>
+                  <Text style={[styles.editSetNum, { color: colors.textSecondary }]}>S{si + 1}</Text>
                   
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.weight)} onChangeText={(t) => updateSet(ei, si, "weight", t)} style={styles.editSetInput} />
-                    <Text style={styles.editSetInputUnit}>{unit}</Text>
+                    <TextInput keyboardType="numeric" value={String(set.weight)} onChangeText={(t) => updateSet(ei, si, "weight", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>{unit}</Text>
                   </View>
                   
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.reps)} onChangeText={(t) => updateSet(ei, si, "reps", t)} style={styles.editSetInput} />
-                    <Text style={styles.editSetInputUnit}>reps</Text>
+                    <TextInput keyboardType="numeric" value={String(set.reps)} onChangeText={(t) => updateSet(ei, si, "reps", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>reps</Text>
                   </View>
 
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.rir !== undefined ? set.rir : 0)} onChangeText={(t) => updateSet(ei, si, "rir", t)} style={styles.editSetInputRir} />
-                    <Text style={styles.editSetInputUnit}>RIR</Text>
+                    <TextInput keyboardType="numeric" value={String(set.rir !== undefined ? set.rir : 0)} onChangeText={(t) => updateSet(ei, si, "rir", t)} style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
+                    <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>RIR</Text>
                   </View>
                   
                   <TouchableOpacity onPress={() => removeSet(ei, si)} style={styles.removeSetBtn}>
@@ -638,14 +643,14 @@ export default function WorkoutPage() {
                 </View>
               ))}
 
-              <TouchableOpacity onPress={() => addSet(ei)} style={styles.addSetInlineBtn}>
-                <Text style={styles.addSetInlineBtnText}>+ Add Set</Text>
+              <TouchableOpacity onPress={() => addSet(ei)} style={[styles.addSetInlineBtn, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.05)", borderColor: colors.border }]}>
+                <Text style={[styles.addSetInlineBtnText, { color: colors.textSecondary }]}>+ Add Set</Text>
               </TouchableOpacity>
             </View>
           ))}
 
-          <View style={[styles.card, { padding: 16, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.2)", marginBottom: 40 }]}>
-            <Text style={{ fontSize: 12, fontWeight: "700", marginBottom: 10, color: "rgba(255,255,255,0.6)" }}>Add Exercise to Workout</Text>
+          <View style={[styles.card, { padding: 16, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgCard, marginBottom: 40 }]}>
+            <Text style={{ fontSize: 12, fontWeight: "700", marginBottom: 10, color: colors.textSecondary }}>Add Exercise to Workout</Text>
             <ExerciseSearch onAdd={addExercise} />
           </View>
         </View>
@@ -667,42 +672,42 @@ export default function WorkoutPage() {
 
     return (
       <PageShell title={activeRoutine.name} subtitle="Workout Overview" backAction={() => setActiveRoutine(null)}>
-        <View style={[styles.card, { padding: 20, marginBottom: 16, flexDirection: "row", justifyContent: "space-between" }]}>
+        <View style={[styles.card, { padding: 20, marginBottom: 16, flexDirection: "row", justifyContent: "space-between", backgroundColor: colors.bgCard, borderColor: colors.border }]}>
           {[
             { label: "Exercises", value: workoutPlan.length },
             { label: "Total Sets", value: totalSets },
             { label: "Est. Time", value: `~${estMins}m` },
           ].map(({ label, value }) => (
             <View key={label} style={{ alignItems: "center" }}>
-              <Text style={styles.overviewStatLabel}>{label}</Text>
-              <Text style={styles.overviewStatValue}>{value}</Text>
+              <Text style={[styles.overviewStatLabel, { color: colors.textSecondary }]}>{label}</Text>
+              <Text style={[styles.overviewStatValue, { color: colors.textPrimary }]}>{value}</Text>
             </View>
           ))}
         </View>
 
-        <View style={styles.overviewListContainer}>
-          <Text style={styles.overviewSectionTitle}>Exercises</Text>
+        <View style={[styles.overviewListContainer, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(0,0,0,0.1)", borderColor: colors.border }]}>
+          <Text style={[styles.overviewSectionTitle, { color: colors.textSecondary }]}>Exercises</Text>
           {workoutPlan.map((ex, ei) => {
             const isExpanded = expandedOverviewEx === ei;
             return (
-              <TouchableOpacity key={ex.id || ei} style={[styles.card, styles.overviewExCard]} onPress={() => setExpandedOverviewEx(isExpanded ? null : ei)}>
+              <TouchableOpacity key={ex.id || ei} style={[styles.card, styles.overviewExCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]} onPress={() => setExpandedOverviewEx(isExpanded ? null : ei)}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View style={[styles.exColorDot, { backgroundColor: ex.accentColor || "#0A84FF" }]} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.overviewExName}>{ex.name}</Text>
-                    <Text style={styles.overviewExMuscle}>{ex.muscle}</Text>
+                    <Text style={[styles.overviewExName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                    <Text style={[styles.overviewExMuscle, { color: colors.textSecondary }]}>{ex.muscle}</Text>
                   </View>
-                  <Text style={styles.overviewExSetsText}>{ex.sets.length} sets {isExpanded ? '▲' : '▼'}</Text>
+                  <Text style={[styles.overviewExSetsText, { color: colors.textSecondary }]}>{ex.sets.length} sets {isExpanded ? '▲' : '▼'}</Text>
                 </View>
 
                 {isExpanded && (
-                  <View style={styles.overviewExExpandedArea}>
+                  <View style={[styles.overviewExExpandedArea, { borderTopColor: colors.border }]}>
                     {ex.sets.map((set: any, si: number) => (
                       <View key={si} style={styles.overviewSetRow}>
-                        <Text style={styles.overviewSetNum}>Set {si + 1}</Text>
-                        <Text style={styles.overviewSetDetails}>
-                          <Text style={{ color: "#fff", fontWeight: "700" }}>{set.weight}</Text> {unit} × <Text style={{ color: "#fff", fontWeight: "700" }}>{set.reps}</Text> reps
-                          {set.rir > 0 && <Text style={{ color: "rgba(255,255,255,0.4)" }}> (RIR: {set.rir})</Text>}
+                        <Text style={[styles.overviewSetNum, { color: colors.textSecondary }]}>Set {si + 1}</Text>
+                        <Text style={[styles.overviewSetDetails, { color: colors.textSecondary }]}>
+                          <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.weight}</Text> {unit} × <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.reps}</Text> reps
+                          {set.rir > 0 && <Text style={{ color: colors.textTertiary }}> (RIR: {set.rir})</Text>}
                         </Text>
                       </View>
                     ))}
@@ -717,8 +722,8 @@ export default function WorkoutPage() {
           <Text style={styles.startWorkoutBtnText}>Start Workout</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.editWorkoutBtn}>
-          <Text style={styles.editWorkoutBtnText}>✎ Edit Workout</Text>
+        <TouchableOpacity onPress={() => setIsEditing(true)} style={[styles.editWorkoutBtn, { borderColor: colors.border }]}>
+          <Text style={[styles.editWorkoutBtnText, { color: colors.textSecondary }]}>✎ Edit Workout</Text>
         </TouchableOpacity>
       </PageShell>
     );
@@ -728,27 +733,27 @@ export default function WorkoutPage() {
   return (
     <PageShell title={activeRoutine.name} subtitle="Tracker Active" badge="LIVE" badgeColor="badge-red" onSettingsClick={() => router.push("/settings" as any)}>
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-        <View style={[styles.card, styles.activeStatCard]}>
-          <Text style={styles.activeStatLabel}>Duration</Text>
-          <Text style={styles.activeStatValue}>{fmt(elapsed)}</Text>
+        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Duration</Text>
+          <Text style={[styles.activeStatValue, { color: colors.textPrimary }]}>{fmt(elapsed)}</Text>
         </View>
-        <View style={[styles.card, styles.activeStatCard]}>
-          <Text style={styles.activeStatLabel}>Volume</Text>
+        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Volume</Text>
           <Text style={[styles.activeStatValue, { color: "#FFD60A" }]}>{volume.toLocaleString()}</Text>
         </View>
-        <View style={[styles.card, styles.activeStatCard]}>
-          <Text style={styles.activeStatLabel}>Sets</Text>
-          <Text style={[styles.activeStatValue, { color: "#30D158" }]}>{done}<Text style={{ fontSize: 16, color: "rgba(255,255,255,0.4)" }}>/{total}</Text></Text>
+        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Sets</Text>
+          <Text style={[styles.activeStatValue, { color: "#30D158" }]}>{done}<Text style={{ fontSize: 16, color: colors.textTertiary }}>/{total}</Text></Text>
         </View>
       </View>
 
-      <View style={[styles.card, { padding: 14, marginBottom: 20 }]}>
+      <View style={[styles.card, { padding: 14, marginBottom: 20, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: "500" }}>Workout Progress</Text>
-          <Text style={{ fontSize: 12, fontWeight: "700", color: overallPct === 100 ? "#30D158" : "#0A84FF" }}>{Math.round(overallPct)}%</Text>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: "500" }}>Workout Progress</Text>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: overallPct === 100 ? "#30D158" : colors.accentBlue }}>{Math.round(overallPct)}%</Text>
         </View>
-        <View style={[styles.barTrack, { height: 8 }]}>
-          <View style={[styles.barFill, { width: `${overallPct}%`, backgroundColor: overallPct === 100 ? "#30D158" : "#0A84FF" }]} />
+        <View style={[styles.barTrack, { height: 8, backgroundColor: colors.border }]}>
+          <View style={[styles.barFill, { width: `${overallPct}%`, backgroundColor: overallPct === 100 ? "#30D158" : colors.accentBlue }]} />
         </View>
       </View>
 
@@ -764,7 +769,7 @@ export default function WorkoutPage() {
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>Exercises</Text>
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Exercises</Text>
 
       <View style={{ gap: 12 }}>
         {workoutPlan.map((ex, ei) => (
@@ -775,9 +780,9 @@ export default function WorkoutPage() {
       <TouchableOpacity
         onPress={finishWorkout}
         disabled={isSaving}
-        style={[styles.finishWorkoutBtn, { backgroundColor: overallPct === 100 ? "#30D158" : "rgba(255,255,255,0.06)", borderColor: overallPct === 100 ? "transparent" : "rgba(255,255,255,0.1)", opacity: isSaving ? 0.7 : 1 }]}
+        style={[styles.finishWorkoutBtn, { backgroundColor: overallPct === 100 ? "#30D158" : (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)"), borderColor: overallPct === 100 ? "transparent" : colors.border, opacity: isSaving ? 0.7 : 1 }]}
       >
-        <Text style={[styles.finishWorkoutBtnText, { color: overallPct === 100 ? "#000" : "#fff" }]}>
+        <Text style={[styles.finishWorkoutBtnText, { color: overallPct === 100 ? "#000" : colors.textPrimary }]}>
           {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
         </Text>
       </TouchableOpacity>

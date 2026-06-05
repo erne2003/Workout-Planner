@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, StyleSheet } from "react-native";
 import { useSettings } from "@apex/core";
+import { useTheme } from "../hooks/useTheme";
 
 export default function PlateCalculator() {
   const [targetWeight, setTargetWeight] = useState("135");
@@ -9,6 +10,7 @@ export default function PlateCalculator() {
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
   const barWeight = ctx?.barWeight || 45;
+  const { colors, isLight } = useTheme();
 
   useEffect(() => {
     calculatePlates(parseFloat(targetWeight) || 0, barWeight);
@@ -42,33 +44,33 @@ export default function PlateCalculator() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.labelTop}>Plate Calculator</Text>
-          <Text style={styles.title}>Load Your Bar</Text>
+          <Text style={[styles.labelTop, { color: colors.textSecondary }]}>Plate Calculator</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Load Your Bar</Text>
         </View>
 
         <View style={styles.inputContainer}>
-          <Text style={styles.targetLabel}>Target ({unit})</Text>
+          <Text style={[styles.targetLabel, { color: colors.textSecondary }]}>Target ({unit})</Text>
           <TextInput 
             keyboardType="numeric"
             value={targetWeight}
             onChangeText={setTargetWeight}
-            style={styles.input}
+            style={[styles.input, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(0,0,0,0.4)", borderColor: colors.border, color: colors.accentBlue }]}
           />
         </View>
       </View>
 
       {/* Visual Display Area */}
       <View style={styles.displayLabelContainer}>
-        <Text style={styles.displayLabel}>Plates Per Side</Text>
+        <Text style={[styles.displayLabel, { color: colors.textSecondary }]}>Plates Per Side</Text>
       </View>
       
-      <View style={styles.platesContainer}>
+      <View style={[styles.platesContainer, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(0,0,0,0.3)", borderColor: colors.border }]}>
         {plates.length === 0 ? (
-          <Text style={styles.emptyText}>
+          <Text style={[styles.emptyText, { color: colors.textTertiary }]}>
             Enter a weight higher than {barWeight}{unit}
           </Text>
         ) : (
@@ -80,10 +82,14 @@ export default function PlateCalculator() {
                 key={i} 
                 style={[
                   styles.plateBase,
-                  isLarge ? styles.plateLarge : isMedium ? styles.plateMedium : styles.plateSmall
+                  isLarge 
+                    ? [styles.plateLarge, { backgroundColor: isLight ? "#fff" : "#0a0a14" }] 
+                    : isMedium 
+                      ? [styles.plateMedium, { backgroundColor: isLight ? "#f2f2f7" : "#181825" }] 
+                      : [styles.plateSmall, { backgroundColor: isLight ? "#e5e5ea" : "#242435", borderColor: colors.borderStrong }]
                 ]}
               >
-                <Text style={styles.plateText}>{p}</Text>
+                <Text style={[styles.plateText, { color: colors.textPrimary }]}>{p}</Text>
               </View>
             );
           })
@@ -94,12 +100,15 @@ export default function PlateCalculator() {
       <View style={styles.footerRow}>
         <View style={styles.footerInfo}>
           <View>
-            <Text style={styles.footerLabel}>Bar</Text>
-            <Text style={styles.footerValue}>{barWeight} <Text style={styles.footerUnit}>{unit}</Text></Text>
+            <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>Bar</Text>
+            <Text style={[styles.footerValue, { color: colors.textPrimary }]}>{barWeight} <Text style={[styles.footerUnit, { color: colors.textSecondary }]}>{unit}</Text></Text>
           </View>
           <View style={styles.footerInfoSpacing}>
-            <Text style={styles.footerLabel}>One Side</Text>
-            <Text style={styles.footerValue}>{Math.max(0, (parseFloat(targetWeight) || 0 - barWeight) / 2).toFixed(1)} <Text style={styles.footerUnit}>{unit}</Text></Text>
+            <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>One Side</Text>
+            <Text style={[styles.footerValue, { color: colors.textPrimary }]}>
+              {Math.max(0, ((parseFloat(targetWeight) || 0) - barWeight) / 2).toFixed(1)}{" "}
+              <Text style={[styles.footerUnit, { color: colors.textSecondary }]}>{unit}</Text>
+            </Text>
           </View>
         </View>
 
@@ -118,10 +127,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 32,
     marginTop: 16,
-    backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
   },
   headerRow: {
     flexDirection: "row",
@@ -132,7 +139,6 @@ const styles = StyleSheet.create({
   labelTop: {
     fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.4)",
     textTransform: "uppercase",
     letterSpacing: 1.4,
     marginBottom: 4,
@@ -140,7 +146,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#fff",
     letterSpacing: -0.5,
   },
   inputContainer: {
@@ -149,23 +154,19 @@ const styles = StyleSheet.create({
   targetLabel: {
     fontSize: 10,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.4)",
     textTransform: "uppercase",
     letterSpacing: 0.8,
     marginBottom: 6,
   },
   input: {
     width: 90,
-    backgroundColor: "rgba(0,0,0,0.4)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
     textAlign: "right",
     fontSize: 22,
     fontWeight: "900",
-    color: "#0A84FF",
   },
   displayLabelContainer: {
     marginBottom: 8,
@@ -174,7 +175,6 @@ const styles = StyleSheet.create({
   displayLabel: {
     fontSize: 10,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.4)",
     textTransform: "uppercase",
     letterSpacing: 1.2,
   },
@@ -186,14 +186,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 80,
     padding: 20,
-    backgroundColor: "rgba(0,0,0,0.3)",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
   },
   emptyText: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.4)",
     fontStyle: "italic",
     fontWeight: "500",
   },
@@ -205,28 +202,23 @@ const styles = StyleSheet.create({
   plateLarge: {
     width: 54,
     height: 54,
-    backgroundColor: "#0a0a14",
     borderWidth: 2.5,
     borderColor: "#0A84FF",
   },
   plateMedium: {
     width: 48,
     height: 48,
-    backgroundColor: "#181825",
     borderWidth: 2.5,
     borderColor: "#BF5AF2",
   },
   plateSmall: {
     width: 42,
     height: 42,
-    backgroundColor: "#242435",
     borderWidth: 2.5,
-    borderColor: "rgba(255,255,255,0.2)",
   },
   plateText: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#fff",
   },
   footerRow: {
     flexDirection: "row",
@@ -244,18 +236,15 @@ const styles = StyleSheet.create({
   footerLabel: {
     fontSize: 9,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.4)",
     textTransform: "uppercase",
     letterSpacing: 1,
   },
   footerValue: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#fff",
   },
   footerUnit: {
     fontSize: 10,
-    color: "rgba(255,255,255,0.4)",
   },
   readyBadge: {
     flexDirection: "row",

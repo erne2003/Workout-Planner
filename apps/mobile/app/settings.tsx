@@ -4,36 +4,39 @@ import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import { useSettings } from "@apex/core";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
+import { useTheme } from "../hooks/useTheme";
 
 function Toggle({ active, onClick, color }: any) {
+  const { colors } = useTheme();
   return (
     <TouchableOpacity
       onPress={onClick}
       style={[
         styles.toggleContainer,
-        { backgroundColor: active ? color : "rgba(255,255,255,0.1)", justifyContent: active ? "flex-end" : "flex-start" }
+        { backgroundColor: active ? color : colors.borderStrong, justifyContent: active ? "flex-end" : "flex-start" }
       ]}
     >
-      <View style={styles.toggleKnob} />
+      <View style={[styles.toggleKnob, { backgroundColor: colors.textPrimary }]} />
     </TouchableOpacity>
   );
 }
 
 function UnitToggle({ options, active, onChange }: any) {
+  const { colors, isLight } = useTheme();
   return (
-    <View style={styles.unitToggleContainer}>
+    <View style={[styles.unitToggleContainer, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)" }]}>
       {options.map((opt: string) => (
         <TouchableOpacity
           key={opt}
           onPress={() => onChange(opt)}
           style={[
             styles.unitToggleBtn,
-            active === opt ? styles.unitToggleBtnActive : styles.unitToggleBtnInactive
+            active === opt ? [styles.unitToggleBtnActive, { backgroundColor: isLight ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.15)" }] : styles.unitToggleBtnInactive
           ]}
         >
           <Text style={[
             styles.unitToggleText,
-            active === opt ? styles.unitToggleTextActive : styles.unitToggleTextInactive
+            active === opt ? [styles.unitToggleTextActive, { color: colors.textPrimary }] : [styles.unitToggleTextInactive, { color: colors.textSecondary }]
           ]}>
             {opt}
           </Text>
@@ -46,6 +49,7 @@ function UnitToggle({ options, active, onChange }: any) {
 export default function SettingsPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("");
+  const { colors, isLight } = useTheme();
 
   const ctx = useSettings() as any;
 
@@ -86,40 +90,40 @@ export default function SettingsPage() {
 
         {/* Profile */}
         <View>
-          <Text style={styles.sectionLabel}>Profile</Text>
-          <View style={[styles.card, { padding: 18 }]}>
-            <Text style={styles.inputLabel}>Display Name</Text>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Profile</Text>
+          <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border, padding: 18 }]}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Display Name</Text>
             <TextInput
               value={userName}
               onChangeText={setUserName}
               onBlur={handleNameBlur}
               placeholder="Your Name"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              style={styles.nameInput}
+              placeholderTextColor={colors.textTertiary}
+              style={[styles.nameInput, { color: colors.textPrimary }]}
             />
           </View>
         </View>
 
         {/* Appearance */}
         <View>
-          <Text style={styles.sectionLabel}>Appearance</Text>
-          <View style={[styles.card, styles.row]}>
-            <Text style={styles.rowText}>Dark Mode</Text>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Appearance</Text>
+          <View style={[styles.card, styles.row, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.rowText, { color: colors.textPrimary }]}>Dark Mode</Text>
             <Toggle active={theme === "dark"} onClick={toggleTheme} color="#0A84FF" />
           </View>
         </View>
 
         {/* Units */}
         <View>
-          <Text style={styles.sectionLabel}>Units</Text>
-          <View style={styles.card}>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Units</Text>
+          <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
             <View style={styles.row}>
-              <Text style={styles.rowText}>Weight Unit</Text>
+              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Weight Unit</Text>
               <UnitToggle options={["lbs", "kg"]} active={weightUnit} onChange={setWeightUnit} />
             </View>
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <View style={styles.row}>
-              <Text style={styles.rowText}>Length Unit</Text>
+              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Length Unit</Text>
               <UnitToggle options={["in", "cm"]} active={lengthUnit} onChange={setLengthUnit} />
             </View>
           </View>
@@ -127,46 +131,46 @@ export default function SettingsPage() {
 
         {/* Workout Defaults */}
         <View>
-          <Text style={styles.sectionLabel}>Workout Defaults</Text>
-          <View style={styles.card}>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Workout Defaults</Text>
+          <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
             <View style={styles.row}>
-              <Text style={styles.rowText}>Default RIR Target</Text>
+              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Default RIR Target</Text>
               <TextInput
                 keyboardType="numeric"
                 value={String(defaultRIR)}
                 onChangeText={(v) => setDefaultRIR(parseInt(v) || 0)}
-                style={styles.numberInput}
+                style={[styles.numberInput, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(0,0,0,0.3)", borderColor: colors.border, color: colors.accentBlue }]}
               />
             </View>
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <View style={styles.row}>
-              <Text style={styles.rowText}>Rest Timer (sec)</Text>
+              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Rest Timer (sec)</Text>
               <TextInput
                 keyboardType="numeric"
                 value={String(restTimer)}
                 onChangeText={(v) => setRestTimer(parseInt(v) || 0)}
-                style={styles.numberInput}
+                style={[styles.numberInput, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(0,0,0,0.3)", borderColor: colors.border, color: colors.accentBlue }]}
               />
             </View>
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <View style={styles.row}>
-              <Text style={styles.rowText}>Auto-start Rest Timer</Text>
+              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Auto-start Rest Timer</Text>
               <Toggle active={autoStartRest} onClick={() => setAutoStartRest(!autoStartRest)} color="#30D158" />
             </View>
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <View style={{ padding: 18 }}>
               <View style={[styles.row, { padding: 0, marginBottom: plateCalc ? 14 : 0 }]}>
-                <Text style={styles.rowText}>Plate Calculator</Text>
+                <Text style={[styles.rowText, { color: colors.textPrimary }]}>Plate Calculator</Text>
                 <Toggle active={plateCalc} onClick={() => setPlateCalc(!plateCalc)} color="#0A84FF" />
               </View>
               {plateCalc && (
-                <View style={styles.plateCalcSubRow}>
-                  <Text style={styles.plateCalcLabel}>Bar Weight ({weightUnit})</Text>
+                <View style={[styles.plateCalcSubRow, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(0,0,0,0.2)", borderColor: colors.border }]}>
+                  <Text style={[styles.plateCalcLabel, { color: colors.textSecondary }]}>Bar Weight ({weightUnit})</Text>
                   <TextInput
                     keyboardType="numeric"
                     value={String(barWeight)}
                     onChangeText={(v) => setBarWeight(parseFloat(v) || 0)}
-                    style={styles.numberInput}
+                    style={[styles.numberInput, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(0,0,0,0.3)", borderColor: colors.border, color: colors.accentBlue }]}
                   />
                 </View>
               )}
@@ -176,15 +180,15 @@ export default function SettingsPage() {
 
         {/* Notifications */}
         <View>
-          <Text style={styles.sectionLabel}>Notifications</Text>
-          <View style={styles.card}>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Notifications</Text>
+          <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
             <View style={styles.row}>
-              <Text style={styles.rowText}>Workout Reminders</Text>
+              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Workout Reminders</Text>
               <Toggle active={notifications.reminders} onClick={() => setNotifications({ ...notifications, reminders: !notifications.reminders })} color="#0A84FF" />
             </View>
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <View style={styles.row}>
-              <Text style={styles.rowText}>Rest Timer Alerts</Text>
+              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Rest Timer Alerts</Text>
               <Toggle active={notifications.alerts} onClick={() => setNotifications({ ...notifications, alerts: !notifications.alerts })} color="#0A84FF" />
             </View>
           </View>
@@ -192,8 +196,8 @@ export default function SettingsPage() {
 
         {/* Account */}
         <View>
-          <Text style={styles.sectionLabel}>Account</Text>
-          <View style={[styles.card, { padding: 0 }]}>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Account</Text>
+          <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border, padding: 0 }]}>
             <TouchableOpacity onPress={logout} style={styles.logoutButton}>
               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF2D55" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

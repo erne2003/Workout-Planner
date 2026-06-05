@@ -14,6 +14,7 @@ import { useData } from "@apex/core";
 import MuscleMap from "@/components/MuscleMap";
 import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "@apex/core";
 import Svg, { Circle, Path } from "react-native-svg";
+import { useTheme } from "../../hooks/useTheme";
 
 const ALL_MUSCLES = [
   ...new Set([...ANTERIOR_PATHS, ...POSTERIOR_PATHS].map((p: any) => p.id))
@@ -21,10 +22,11 @@ const ALL_MUSCLES = [
 
 /* ─── Legend Dot ────────────────────────────────────────────── */
 function LegendDot({ color, label }: any) {
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
       <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: color }} />
-      <Text style={{ color: "#8E8E93", fontSize: 11 }}>{label}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{label}</Text>
     </View>
   );
 }
@@ -33,9 +35,10 @@ function LegendDot({ color, label }: any) {
 const SORENESS_LEVELS = ["fully_recovered", "mostly_recovered", "partially_recovered", "not_recovered"];
 
 function SorenessPicker({ current, muscle, onSelect, onClear }: any) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.sorenessPickerContainer}>
-      <Text style={styles.overrideLabel}>Override</Text>
+    <View style={[styles.sorenessPickerContainer, { borderTopColor: colors.border }]}>
+      <Text style={[styles.overrideLabel, { color: colors.textSecondary }]}>Override</Text>
       <View style={{ flexDirection: "row", flex: 1, gap: 6 }}>
         {SORENESS_LEVELS.map((level) => {
           const color = (RECOVERY_COLOR as any)[level];
@@ -47,12 +50,12 @@ function SorenessPicker({ current, muscle, onSelect, onClear }: any) {
               style={[
                 styles.sorenessBtn,
                 {
-                  borderColor: isActive ? color : "rgba(255,255,255,0.08)",
+                  borderColor: isActive ? color : colors.border,
                   backgroundColor: isActive ? `${color}20` : "transparent",
                 }
               ]}
             >
-              <Text style={[styles.sorenessBtnText, { color: isActive ? color : "rgba(255,255,255,0.4)" }]}>
+              <Text style={[styles.sorenessBtnText, { color: isActive ? color : colors.textSecondary }]}>
                 {(RECOVERY_LABEL as any)[level]}
               </Text>
             </TouchableOpacity>
@@ -66,6 +69,7 @@ function SorenessPicker({ current, muscle, onSelect, onClear }: any) {
 /* ─── Muscle Row ────────────────────────────────────────────── */
 function MuscleRow({ name, data, manualLevel, onSelect, onClear }: any) {
   const [open, setOpen] = useState(false);
+  const { colors, isLight } = useTheme();
 
   const color = (RECOVERY_COLOR as any)[data.status];
   const hours = data.hours ?? 0;
@@ -76,16 +80,16 @@ function MuscleRow({ name, data, manualLevel, onSelect, onClear }: any) {
     : "just now";
 
   return (
-    <View style={[styles.muscleRowContainer, { borderColor: data.isManual ? `${color}30` : "rgba(255,255,255,0.06)" }]}>
+    <View style={[styles.muscleRowContainer, { borderColor: data.isManual ? `${color}30` : colors.border, backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)" }]}>
       <TouchableOpacity onPress={() => setOpen(!open)} style={styles.muscleRowHeader}>
         <View style={styles.muscleRowTitleCol}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={styles.muscleName}>{name}</Text>
+            <Text style={[styles.muscleName, { color: colors.textPrimary }]}>{name}</Text>
             {data.isManual && (
               <Text style={{ fontSize: 9, color, opacity: 0.7 }}>✎ manual</Text>
             )}
           </View>
-          <Text style={styles.muscleTime}>
+          <Text style={[styles.muscleTime, { color: colors.textSecondary }]}>
             {data.isManual ? "Manual override active" : hoursLabel}
           </Text>
         </View>
@@ -97,13 +101,13 @@ function MuscleRow({ name, data, manualLevel, onSelect, onClear }: any) {
           <Text style={[styles.pctText, { color }]}>{data.pct}%</Text>
           <View style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}>
             <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <Path d="M2 4l4 4 4-4" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <Path d="M2 4l4 4 4-4" stroke={colors.textSecondary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           </View>
         </View>
       </TouchableOpacity>
 
-      <View style={styles.barTrack}>
+      <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
         <View style={[styles.barFill, { width: `${data.pct}%`, backgroundColor: color }]} />
       </View>
 
@@ -121,6 +125,7 @@ function MuscleRow({ name, data, manualLevel, onSelect, onClear }: any) {
 
 /* ─── Overall Score Ring ────────────────────────────────────── */
 function OverallScore({ muscleData }: any) {
+  const { colors } = useTheme();
   const values = Object.values(muscleData);
   if (!values.length) return null;
   const avg = Math.round(values.reduce((s: number, m: any) => s + m.pct, 0) / values.length);
@@ -131,7 +136,7 @@ function OverallScore({ muscleData }: any) {
   return (
     <View style={styles.scoreRingContainer}>
       <Svg width="100" height="100" viewBox="0 0 100 100" style={{ transform: [{ rotate: "-90deg" }] }}>
-        <Circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="7" />
+        <Circle cx="50" cy="50" r="44" fill="none" stroke={colors.border} strokeWidth="7" />
         <Circle
           cx="50" cy="50" r="44" fill="none"
           stroke={color} strokeWidth="7" strokeLinecap="round"
@@ -140,7 +145,7 @@ function OverallScore({ muscleData }: any) {
       </Svg>
       <View style={styles.scoreRingInner}>
         <Text style={[styles.scoreRingText, { color }]}>{avg}</Text>
-        <Text style={styles.scoreRingLabel}>Overall</Text>
+        <Text style={[styles.scoreRingLabel, { color: colors.textSecondary }]}>Overall</Text>
       </View>
     </View>
   );
@@ -148,10 +153,11 @@ function OverallScore({ muscleData }: any) {
 
 /* ─── Hours-since label ─────────────────────────────────────── */
 function LastWorkoutBanner({ lastTime, onReset }: any) {
+  const { colors } = useTheme();
   if (!lastTime) {
     return (
-      <View style={styles.lastWorkoutBanner}>
-        <Text style={styles.bannerText}>No workout logged yet</Text>
+      <View style={[styles.lastWorkoutBanner, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+        <Text style={[styles.bannerText, { color: colors.textSecondary }]}>No workout logged yet</Text>
         <TouchableOpacity onPress={onReset}>
           <Text style={[styles.bannerBtnText, { color: "#0A84FF" }]}>Log now</Text>
         </TouchableOpacity>
@@ -164,9 +170,9 @@ function LastWorkoutBanner({ lastTime, onReset }: any) {
     : `${Math.floor(hours)}h ${Math.round((hours % 1) * 60)}m`;
 
   return (
-    <View style={styles.lastWorkoutBanner}>
-      <Text style={styles.bannerText}>
-        Last workout <Text style={{ color: "#fff" }}>{hLabel} ago</Text>
+    <View style={[styles.lastWorkoutBanner, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+      <Text style={[styles.bannerText, { color: colors.textSecondary }]}>
+        Last workout <Text style={{ color: colors.textPrimary }}>{hLabel} ago</Text>
       </Text>
       <TouchableOpacity onPress={onReset}>
         <Text style={[styles.bannerBtnText, { color: "#FF9F0A" }]}>Reset</Text>
@@ -182,6 +188,7 @@ export default function RecoveryPage() {
   const [manualOverrides, setManualOverrides] = useState<any>({});
   const [muscleData, setMuscleData] = useState<any>({});
   const [view, setView] = useState("front");
+  const { colors, isLight } = useTheme();
 
   const { workouts: data, loading } = useData() as any;
 
@@ -229,25 +236,25 @@ export default function RecoveryPage() {
   return (
     <PageShell title="Recovery" subtitle="Muscle Readiness · Today" onSettingsClick={() => router.push("/settings" as any)}>
       {loading.workouts ? (
-        <View style={[styles.card, { height: 40, marginBottom: 14 }]} />
+        <View style={[styles.card, { height: 40, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
       ) : (
         <LastWorkoutBanner lastTime={lastTime} onReset={handleReset} />
       )}
 
       {loading.workouts ? (
-        <View style={[styles.card, { height: 450, padding: 20, marginBottom: 12 }]} />
+        <View style={[styles.card, { height: 450, padding: 20, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
       ) : (
-        <View style={[styles.card, { padding: 20, marginBottom: 12 }]}>
+        <View style={[styles.card, { padding: 20, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
           <View style={styles.heroHeaderRow}>
             <View>
-              <Text style={styles.heroTitle}>Muscle Readiness</Text>
-              <Text style={styles.heroSubtitle}>Tap a muscle row to set soreness</Text>
-              <View style={styles.viewToggleGroup}>
+              <Text style={[styles.heroTitle, { color: colors.textPrimary }]}>Muscle Readiness</Text>
+              <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>Tap a muscle row to set soreness</Text>
+              <View style={[styles.viewToggleGroup, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)" }]}>
                 <TouchableOpacity onPress={() => setView("front")} style={[styles.viewToggleBtn, view === "front" && { backgroundColor: "#0A84FF" }]}>
-                  <Text style={{ color: view === "front" ? "#fff" : "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" }}>Front</Text>
+                  <Text style={{ color: view === "front" ? "#fff" : colors.textPrimary, fontSize: 12, fontWeight: "600" }}>Front</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setView("back")} style={[styles.viewToggleBtn, view === "back" && { backgroundColor: "#0A84FF" }]}>
-                  <Text style={{ color: view === "back" ? "#fff" : "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" }}>Back</Text>
+                  <Text style={{ color: view === "back" ? "#fff" : colors.textPrimary, fontSize: 12, fontWeight: "600" }}>Back</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -266,7 +273,7 @@ export default function RecoveryPage() {
         </View>
       )}
 
-      <View style={[styles.card, styles.aiCard]}>
+      <View style={[styles.card, styles.aiCard, { backgroundColor: isLight ? "rgba(10,132,255,0.08)" : "rgba(10,132,255,0.05)", borderColor: "rgba(10,132,255,0.2)" }]}>
         <View style={styles.aiCardHeaderRow}>
           <View style={styles.aiIcon}>
             <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -275,19 +282,19 @@ export default function RecoveryPage() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.aiTitle}>APEX Recommendation</Text>
-            <Text style={styles.aiBody}>
+            <Text style={[styles.aiBody, { color: colors.textSecondary }]}>
               Recovery is calculated from time since your last workout. Tap any muscle row to manually override the soreness level if you feel differently.
             </Text>
           </View>
         </View>
       </View>
 
-      <Text style={styles.sectionLabel}>Breakdown</Text>
+      <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Breakdown</Text>
 
       <View style={styles.muscleRowsContainer}>
         {loading.workouts ? (
           Array.from({ length: 8 }).map((_, i) => (
-            <View key={i} style={[styles.card, { height: 64, borderRadius: 16 }]} />
+            <View key={i} style={[styles.card, { height: 64, borderRadius: 16, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
           ))
         ) : (
           sortedMuscles.map((name, i) => (

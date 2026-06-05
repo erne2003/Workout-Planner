@@ -1,14 +1,23 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import { useSettings, useData } from "@apex/core";
 import { computeDynamicRecovery, getMuscleSoreness } from "@apex/core/src/recovery";
-import Svg, { Circle, Line } from "react-native-svg";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTheme } from "../../hooks/useTheme";
+
+/* --- Lift config --------------------------------------------- */
+const LIFTS = [
+  { key: "bench",    label: "Bench Press", color: "#0A84FF", unit: "lbs" },
+  { key: "squat",    label: "Back Squat",  color: "#FF2D55", unit: "lbs" },
+  { key: "deadlift", label: "Deadlift",    color: "#FFD60A", unit: "lbs" },
+];
 
 /* --- Overall Score Ring -------------------------------------- */
 function OverallRing({ score, bw, age, index }: any) {
+  const { colors } = useTheme();
   const r = 72;
   const circumference = 2 * Math.PI * r;
   const offset = circumference * (1 - score / 100);
@@ -18,11 +27,11 @@ function OverallRing({ score, bw, age, index }: any) {
   const percentile = score >= 90 ? "2%" : score >= 75 ? "8%" : score >= 60 ? "15%" : "45%";
 
   return (
-    <View style={[styles.card, { padding: 28, alignItems: "center", marginBottom: 12 }]}>
+    <View style={[styles.card, { padding: 28, alignItems: "center", marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
       <View style={styles.ringContainer}>
         <View style={[styles.ringGlow, { backgroundColor: `${gradeColor}22` }]} />
         <Svg width="164" height="164" viewBox="0 0 164 164" style={{ transform: [{ rotate: "-90deg" }] }}>
-          <Circle cx="82" cy="82" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" />
+          <Circle cx="82" cy="82" r={r} fill="none" stroke={colors.border} strokeWidth="10" />
           {[...Array(24)].map((_, i) => {
             const angle = (i / 24) * 360;
             const rad = (angle * Math.PI) / 180;
@@ -30,7 +39,7 @@ function OverallRing({ score, bw, age, index }: any) {
             const y1 = 82 + (r - 6) * Math.sin(rad);
             const x2 = 82 + (r + 6) * Math.cos(rad);
             const y2 = 82 + (r + 6) * Math.sin(rad);
-            return <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.03)" strokeWidth="1.5" />;
+            return <Line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={colors.border} strokeWidth="1.5" />;
           })}
           <Circle
             cx="82" cy="82" r={r} fill="none"
@@ -40,24 +49,24 @@ function OverallRing({ score, bw, age, index }: any) {
         </Svg>
         <View style={styles.ringCenterText}>
           <Text style={[styles.ringScoreText, { color: gradeColor }]}>{score}</Text>
-          <Text style={styles.ringScoreLabel}>Score</Text>
+          <Text style={[styles.ringScoreLabel, { color: colors.textSecondary }]}>Score</Text>
         </View>
       </View>
 
       <Text style={[styles.gradeText, { color: gradeColor }]}>{grade}</Text>
-      <Text style={styles.percentileText}>Top {percentile} of athletes your level</Text>
+      <Text style={[styles.percentileText, { color: colors.textSecondary }]}>Top {percentile} of athletes your level</Text>
 
-      <View style={styles.divider} />
+      <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
       <View style={styles.quickStatsRow}>
         {[
           { label: "Strength Index", val: `${index || "0.0"}×`, color: "#0A84FF" },
-          { label: "Body Weight", val: bw ? `${Math.round(bw)} lbs` : "0 lbs", color: "#fff" },
+          { label: "Body Weight", val: bw ? `${Math.round(bw)} lbs` : "0 lbs", color: colors.textPrimary },
           { label: "Training Age", val: age ? `${age} yrs` : "0 yrs", color: "#FF9F0A" },
         ].map(({ label, val, color }) => (
           <View key={label} style={{ alignItems: "center" }}>
             <Text style={[styles.quickStatVal, { color }]}>{val}</Text>
-            <Text style={styles.quickStatLabel}>{label}</Text>
+            <Text style={[styles.quickStatLabel, { color: colors.textSecondary }]}>{label}</Text>
           </View>
         ))}
       </View>
@@ -67,6 +76,7 @@ function OverallRing({ score, bw, age, index }: any) {
 
 /* --- Lift Card (BW Multiplier) ------------------------------- */
 function LiftCard({ liftName, weight, bw }: any) {
+  const { colors } = useTheme();
   const multiplier = bw > 0 ? (weight / bw) : 0;
   
   let grade = "Unassigned";
@@ -94,23 +104,23 @@ function LiftCard({ liftName, weight, bw }: any) {
   }
 
   return (
-    <View style={[styles.card, { padding: 16, marginBottom: 12, borderTopWidth: 2, borderTopColor: `${gradeColor}40` }]}>
+    <View style={[styles.card, { padding: 16, marginBottom: 12, borderTopWidth: 2, borderTopColor: `${gradeColor}40`, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
         <View>
-          <Text style={styles.liftNameLabel}>{liftName}</Text>
-          <Text style={styles.liftWeightText}>
-            {weight} <Text style={styles.liftWeightUnit}>lbs</Text>
+          <Text style={[styles.liftNameLabel, { color: colors.textSecondary }]}>{liftName}</Text>
+          <Text style={[styles.liftWeightText, { color: colors.textPrimary }]}>
+            {weight} <Text style={[styles.liftWeightUnit, { color: colors.textTertiary }]}>lbs</Text>
           </Text>
         </View>
 
         <View style={{ alignItems: "flex-end" }}>
           <Text style={[styles.liftMultiplierText, { color: gradeColor }]}>{multiplier.toFixed(2)}x BW</Text>
-          <Text style={styles.liftGradeLabel}>{grade}</Text>
+          <Text style={[styles.liftGradeLabel, { color: colors.textSecondary }]}>{grade}</Text>
         </View>
       </View>
 
-      <View style={styles.barTrack}>
-        <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: gradeColor, shadowColor: gradeColor, shadowOpacity: 0.6, shadowRadius: 8, elevation: 2 }]} />
+      <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
+        <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: gradeColor }]} />
       </View>
     </View>
   );
@@ -118,15 +128,16 @@ function LiftCard({ liftName, weight, bw }: any) {
 
 /* --- Strength Bar Row ---------------------------------------- */
 function StrengthRow({ item }: any) {
+  const { colors } = useTheme();
   const gain = item.score - item.prev;
 
   return (
-    <View style={styles.strengthRowContainer}>
+    <View style={[styles.strengthRowContainer, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
       <View style={[styles.colorDot, { backgroundColor: item.color, shadowColor: item.color }]} />
-      <Text style={styles.strengthMuscleText}>{item.muscle}</Text>
+      <Text style={[styles.strengthMuscleText, { color: colors.textSecondary }]}>{item.muscle}</Text>
       
       <View style={{ flex: 1 }}>
-        <View style={[styles.barTrack, { height: 7 }]}>
+        <View style={[styles.barTrack, { height: 7, backgroundColor: colors.border }]}>
           <View style={[styles.barFill, { width: `${item.score}%`, backgroundColor: item.color }]} />
         </View>
       </View>
@@ -141,18 +152,209 @@ function StrengthRow({ item }: any) {
   );
 }
 
+/* --- Log PR Card Component ----------------------------------- */
+function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
+  const { colors, isLight } = useTheme();
+  const [exercise, setExercise] = useState("bench");
+  const [weight, setWeight] = useState("");
+  const [reps, setReps] = useState("1");
+  const [rir, setRir] = useState("0");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!weight || isNaN(parseFloat(weight))) {
+      Alert.alert("Error", "Please enter a valid weight");
+      return;
+    }
+    if (!reps || isNaN(parseInt(reps))) {
+      Alert.alert("Error", "Please enter valid reps");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const parsedWeight = parseFloat(weight);
+      const dbWeight = unit === "kg" ? Math.round(parsedWeight * 2.205) : parsedWeight;
+      
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/prs`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+        },
+        body: JSON.stringify({
+          exerciseName: exercise,
+          weight: dbWeight
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save PR");
+      }
+
+      Alert.alert(
+        "Success", 
+        `Logged PR: ${LIFTS.find(l => l.key === exercise)?.label || exercise} - ${weight} ${unit}!`
+      );
+      setWeight("");
+      setReps("1");
+      setRir("0");
+      refresh("prs");
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to save PR");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <View style={[styles.card, { borderTopWidth: 3, borderTopColor: "rgba(48, 209, 88, 0.4)", backgroundColor: colors.bgCard, borderColor: colors.border, padding: 16, marginBottom: 12 }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(48, 209, 88, 0.15)", alignItems: "center", justifyContent: "center" }}>
+          <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <Path d="M7 2v10M2 7h10" stroke="#30D158" strokeWidth="2" strokeLinecap="round" />
+          </Svg>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textPrimary, textTransform: "uppercase", letterSpacing: 1 }}>
+            Log New PR
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.textTertiary }}>
+            Record strength milestones
+          </Text>
+        </View>
+      </View>
+
+      {/* Row 1: Exercise Selection Chips */}
+      <View style={{ marginBottom: 12 }}>
+        <Text style={[styles.inputLabel, { color: colors.textTertiary }]}>Exercise</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {LIFTS.map((l) => {
+            const isSelected = exercise === l.key;
+            return (
+              <TouchableOpacity
+                key={l.key}
+                onPress={() => setExercise(l.key)}
+                style={[
+                  styles.exerciseChip,
+                  {
+                    flex: 1,
+                    backgroundColor: isSelected ? `${l.color}20` : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)"),
+                    borderColor: isSelected ? l.color : colors.border,
+                  }
+                ]}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: isSelected ? l.color : colors.textSecondary, textAlign: "center" }}>
+                  {l.label.split(" ")[0]}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Row 2: Weight & Reps */}
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.inputLabel, { color: colors.textTertiary }]}>Weight ({unit})</Text>
+          <TextInput
+            keyboardType="numeric"
+            placeholder="e.g. 225"
+            placeholderTextColor={colors.textTertiary}
+            value={weight}
+            onChangeText={setWeight}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)",
+                borderColor: colors.border,
+                color: colors.textPrimary,
+              }
+            ]}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.inputLabel, { color: colors.textTertiary }]}>Reps</Text>
+          <TextInput
+            keyboardType="numeric"
+            placeholder="e.g. 1"
+            placeholderTextColor={colors.textTertiary}
+            value={reps}
+            onChangeText={setReps}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)",
+                borderColor: colors.border,
+                color: colors.textPrimary,
+              }
+            ]}
+          />
+        </View>
+      </View>
+
+      {/* Row 3: RIR & Submit */}
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-end" }}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.inputLabel, { color: colors.textTertiary }]}>RIR (Buffer)</Text>
+          <View style={{ flexDirection: "row", gap: 4 }}>
+            {[0, 1, 2, 3, 4].map((r) => {
+              const isSelected = rir === String(r);
+              return (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() => setRir(String(r))}
+                  style={[
+                    styles.rirChip,
+                    {
+                      flex: 1,
+                      backgroundColor: isSelected ? "rgba(10,132,255,0.15)" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)"),
+                      borderColor: isSelected ? colors.accentBlue : colors.border,
+                    }
+                  ]}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: isSelected ? colors.accentBlue : colors.textSecondary, textAlign: "center" }}>
+                    {r}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={isSaving}
+          style={[
+            styles.submitBtn,
+            {
+              backgroundColor: "#30D158",
+              opacity: isSaving ? 0.7 : 1,
+            }
+          ]}
+        >
+          <Text style={{ color: "#000", fontWeight: "800", fontSize: 13, textAlign: "center" }}>
+            {isSaving ? "Saving..." : "Save PR"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 /* --- Personal Record Card ------------------------------------ */
 function PRCard({ prData }: any) {
+  const { colors } = useTheme();
   if (!prData) return null;
   return (
-    <View style={[styles.card, { paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12 }]}>
-      <Text style={styles.sectionLabel}>Personal Records</Text>
+    <View style={[styles.card, { paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+      <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Personal Records</Text>
       <View style={styles.prGrid}>
         {Object.entries(prData).map(([lift, data]: any) => (
           <View key={lift} style={{ flex: 1 }}>
-            <Text style={styles.prLiftLabel}>{lift}</Text>
-            <Text style={styles.prWeightText}>
-              {data.weight}<Text style={styles.prWeightUnit}> {data.unit}</Text>
+            <Text style={[styles.prLiftLabel, { color: colors.textSecondary }]}>{lift}</Text>
+            <Text style={[styles.prWeightText, { color: colors.textPrimary }]}>
+              {data.weight}<Text style={[styles.prWeightUnit, { color: colors.textTertiary }]}> {data.unit}</Text>
             </Text>
             <Text style={styles.prGainText}>{data.gain} lbs</Text>
           </View>
@@ -163,7 +365,7 @@ function PRCard({ prData }: any) {
 }
 
 /* --- Page ---------------------------------------------------- */
-export default function StrengthPage() {
+export function StrengthContent() {
   const router = useRouter();
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
@@ -183,7 +385,7 @@ export default function StrengthPage() {
       { muscle: "Core",      score: 0, color: "#FF3B30", prev: 0 },
   ]);
 
-  const { workouts, prs: prData, metrics: metData, loading } = useData() as any;
+  const { workouts, prs: prData, metrics: metData, loading, refresh } = useData() as any;
 
   useEffect(() => {
       try {
@@ -275,19 +477,21 @@ export default function StrengthPage() {
     return { strengthIndex: indexStr, derivedOverall: score };
   }, [dynamicScores, metrics, prs]);
 
+  const { colors } = useTheme();
+
   return (
-    <PageShell title="Strength" subtitle="Analytics · Big Lifts & Recovery" onSettingsClick={() => router.push("/settings" as any)}>
+    <View>
       {loading.prs || loading.metrics ? (
-        <View style={[styles.card, { height: 420, marginBottom: 12 }]} />
+        <View style={[styles.card, { height: 420, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
       ) : (
         <OverallRing score={derivedOverall} bw={metrics.weight} age={metrics.trainingYears} index={strengthIndex} />
       )}
 
-      <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Big Lifts vs Bodyweight</Text>
+      <Text style={[styles.sectionLabel, { marginTop: 16, color: colors.textSecondary }]}>Big Lifts vs Bodyweight</Text>
 
       {loading.prs || loading.metrics ? (
         Array.from({ length: 3 }).map((_, i) => (
-          <View key={i} style={[styles.card, { height: 92, marginBottom: 12 }]} />
+          <View key={i} style={[styles.card, { height: 92, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
         ))
       ) : (
         <View>
@@ -299,18 +503,20 @@ export default function StrengthPage() {
 
       <View style={{ marginTop: 12 }}>
         {loading.prs ? (
-          <View style={[styles.card, { height: 130, marginBottom: 12 }]} />
+          <View style={[styles.card, { height: 130, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
         ) : (
           <PRCard prData={prs} />
         )}
       </View>
 
-      <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Strength by Muscle Group</Text>
+      <LogPRCard refresh={refresh} unit={unit} />
+
+      <Text style={[styles.sectionLabel, { marginTop: 16, color: colors.textSecondary }]}>Strength by Muscle Group</Text>
 
       <View style={styles.muscleGroupContainer}>
         {loading.prs || loading.metrics ? (
           Array.from({ length: 6 }).map((_, i) => (
-            <View key={i} style={[styles.card, { height: 50 }]} />
+            <View key={i} style={[styles.card, { height: 50, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
           ))
         ) : (
           dynamicScores.map((item) => (
@@ -318,6 +524,15 @@ export default function StrengthPage() {
           ))
         )}
       </View>
+    </View>
+  );
+}
+
+export default function StrengthPage() {
+  const router = useRouter();
+  return (
+    <PageShell title="Strength" subtitle="Analytics · Big Lifts & Recovery" onSettingsClick={() => router.push("/settings" as any)}>
+      <StrengthContent />
     </PageShell>
   );
 }
@@ -509,5 +724,35 @@ const styles = StyleSheet.create({
   muscleGroupContainer: {
     gap: 8,
     paddingBottom: 40,
-  }
+  },
+  exerciseChip: {
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  textInput: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  rirChip: {
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  submitBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    justifyContent: "center",
+  },
+  inputLabel: {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+    fontWeight: "700",
+  },
 });

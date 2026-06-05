@@ -1,7 +1,10 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import Svg, { Circle, Path, Polyline } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import { useTheme } from "../hooks/useTheme";
 
 export default function PageShell({
   title,
@@ -12,11 +15,11 @@ export default function PageShell({
   onSettingsClick,
   children,
 }: any) {
+  const { colors, isLight } = useTheme();
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Ambient background (simplified for RN) */}
-      <View style={styles.ambientOrbBlue} />
-      <View style={styles.ambientOrbRed} />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgBase }]}>
+      <StatusBar style={isLight ? "dark" : "light"} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -24,34 +27,34 @@ export default function PageShell({
           <View style={styles.titleRow}>
             {backAction && (
               <TouchableOpacity onPress={backAction} style={styles.backButton}>
-                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.textPrimary} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <Polyline points="15 18 9 12 15 6" />
                 </Svg>
               </TouchableOpacity>
             )}
-            <Text style={styles.title}>{title}</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
             {badge && (
               <View style={[styles.badge, badgeColor === "blue" ? styles.badgeBlue : {}]}>
                 <Text style={styles.badgeText}>{badge}</Text>
               </View>
             )}
           </View>
-          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+          {subtitle && <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>}
         </View>
 
         {/* Right Actions */}
         <View style={styles.actions}>
           {/* Avatar */}
           <LinearGradient colors={["#FF2D55", "#0A84FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarBorder}>
-            <View style={styles.avatarInner}>
-              <Text style={styles.avatarText}>EC</Text>
+            <View style={[styles.avatarInner, { backgroundColor: isLight ? "#fff" : "#111120" }]}>
+              <Text style={[styles.avatarText, { color: colors.textPrimary }]}>EC</Text>
             </View>
           </LinearGradient>
 
           {/* Settings Button */}
           {onSettingsClick && (
-            <TouchableOpacity onPress={onSettingsClick} style={styles.settingsButton}>
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <TouchableOpacity onPress={onSettingsClick} style={[styles.settingsButton, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.textSecondary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <Circle cx="12" cy="12" r="3" />
                 <Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1 1.51H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </Svg>
@@ -72,24 +75,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#07070F", // var(--bg-base)
-  },
-  ambientOrbBlue: {
-    position: "absolute",
-    top: -100,
-    left: -50,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: "rgba(10,132,255,0.06)",
-  },
-  ambientOrbRed: {
-    position: "absolute",
-    top: 50,
-    right: -100,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: "rgba(255,45,85,0.05)",
   },
   header: {
     flexDirection: "row",

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { useTheme } from "../hooks/useTheme";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -10,6 +11,7 @@ export default function LoginPage() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const { colors, isLight } = useTheme();
 
     useEffect(() => {
         if (global.localStorage?.getItem("token")) {
@@ -68,52 +70,52 @@ export default function LoginPage() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.bgBase }]}>
             {/* Logo / title */}
             <View style={styles.titleContainer}>
                 <Text style={styles.logo}>APEX</Text>
-                <Text style={styles.subtitle}>
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                     {isRegister ? "Create your account" : "Welcome back"}
                 </Text>
             </View>
 
             {/* Card */}
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
                 {isRegister && (
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Name</Text>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>Name</Text>
                         <TextInput
                             value={name}
                             onChangeText={setName}
                             placeholder="Your name"
-                            placeholderTextColor="rgba(255,255,255,0.3)"
-                            style={styles.input}
+                            placeholderTextColor={colors.textTertiary}
+                            style={[styles.input, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]}
                         />
                     </View>
                 )}
 
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Email</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Email</Text>
                     <TextInput
                         value={email}
                         onChangeText={setEmail}
                         placeholder="you@example.com"
-                        placeholderTextColor="rgba(255,255,255,0.3)"
+                        placeholderTextColor={colors.textTertiary}
                         keyboardType="email-address"
                         autoCapitalize="none"
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]}
                     />
                 </View>
 
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Password</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Password</Text>
                     <TextInput
                         value={password}
                         onChangeText={setPassword}
                         placeholder="••••••••"
-                        placeholderTextColor="rgba(255,255,255,0.3)"
+                        placeholderTextColor={colors.textTertiary}
                         secureTextEntry
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]}
                     />
                 </View>
 
@@ -143,7 +145,7 @@ export default function LoginPage() {
                 onPress={() => { setIsRegister(!isRegister); setError(""); }}
                 style={styles.toggleButton}
             >
-                <Text style={styles.toggleText}>
+                <Text style={[styles.toggleText, { color: colors.textSecondary }]}>
                     {isRegister ? "Already have an account? Log in" : "No account? Register"}
                 </Text>
             </TouchableOpacity>
@@ -157,7 +159,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         padding: 24,
-        backgroundColor: "#07070F",
     },
     titleContainer: {
         marginBottom: 40,
@@ -167,20 +168,17 @@ const styles = StyleSheet.create({
         fontSize: 36,
         fontWeight: "900",
         letterSpacing: -1.5,
-        color: "#0A84FF", // Using solid color instead of gradient for simplicity, can use expo-linear-gradient text mask if needed
+        color: "#0A84FF", 
     },
     subtitle: {
         fontSize: 13,
-        color: "rgba(255,255,255,0.35)",
         marginTop: 4,
         fontWeight: "500",
     },
     card: {
         width: "100%",
         maxWidth: 360,
-        backgroundColor: "rgba(255,255,255,0.04)",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.09)",
         borderRadius: 20,
         paddingVertical: 28,
         paddingHorizontal: 24,
@@ -192,7 +190,6 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 11,
         fontWeight: "700",
-        color: "rgba(255,255,255,0.4)",
         textTransform: "uppercase",
         letterSpacing: 0.8,
     },
@@ -201,9 +198,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.1)",
-        backgroundColor: "rgba(0,0,0,0.4)",
-        color: "#fff",
         fontSize: 14,
         fontWeight: "500",
         width: "100%",
@@ -240,7 +234,6 @@ const styles = StyleSheet.create({
         padding: 10,
     },
     toggleText: {
-        color: "rgba(255,255,255,0.35)",
         fontSize: 13,
         fontWeight: "500",
     },
