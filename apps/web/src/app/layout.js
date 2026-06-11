@@ -3,6 +3,7 @@ import AuthGuard from "../components/AuthGuard";
 import { SettingsProvider } from "../contexts/SettingsContext";
 import { DataProvider } from "../contexts/DataContext";
 import KeepAlive from "../components/KeepAlive";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata = {
   title: "APEX — Fitness Dashboard",
@@ -19,6 +20,7 @@ export default function RootLayout({ children }) {
             <AuthGuard>{children}</AuthGuard>
           </DataProvider>
         </SettingsProvider>
+        <Analytics />
       </body>
     </html>
   );
