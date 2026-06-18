@@ -53,7 +53,13 @@ let AppleHealthKit = null;
 if (Platform.OS === 'ios') {
   try {
     const HealthKitPackage = require('react-native-health');
-    AppleHealthKit = HealthKitPackage.default || HealthKitPackage;
+    const hk = HealthKitPackage.default || HealthKitPackage;
+    if (hk && typeof hk.initHealthKit === 'function') {
+      AppleHealthKit = hk;
+    } else {
+      console.warn('[HealthKit] Native methods are not available (expected in Expo Go). Activating developer mock.');
+      AppleHealthKit = createMockHealthKit();
+    }
   } catch (e) {
     console.warn('[HealthKit] Native package not found (expected in Expo Go / simulator). Activating developer mock. Error:', e.message);
     AppleHealthKit = createMockHealthKit();
@@ -229,22 +235,26 @@ export function useHealthKit() {
 
   useEffect(() => {
     if (Platform.OS === 'ios' && AppleHealthKit) {
-      AppleHealthKit.getAuthStatus({
-        permissions: {
-          read: [
-            AppleHealthKit.Constants.Permissions.HeartRateVariability,
-            AppleHealthKit.Constants.Permissions.RestingHeartRate,
-            AppleHealthKit.Constants.Permissions.SleepAnalysis,
-          ],
-          write: [],
-        }
-      }, (err, results) => {
-        if (!err && results && results.permissions && results.permissions.read && results.permissions.read.every(status => status === 2)) {
-          requestPermissions();
-        } else {
-          setLoading(false);
-        }
-      });
+      if (typeof AppleHealthKit.getAuthStatus === 'function') {
+        AppleHealthKit.getAuthStatus({
+          permissions: {
+            read: [
+              AppleHealthKit.Constants.Permissions.HeartRateVariability,
+              AppleHealthKit.Constants.Permissions.RestingHeartRate,
+              AppleHealthKit.Constants.Permissions.SleepAnalysis,
+            ],
+            write: [],
+          }
+        }, (err, results) => {
+          if (!err && results && results.permissions && results.permissions.read && results.permissions.read.every(status => status === 2)) {
+            requestPermissions();
+          } else {
+            setLoading(false);
+          }
+        });
+      } else {
+        setLoading(false);
+      }
     } else {
       setLoading(false);
     }
