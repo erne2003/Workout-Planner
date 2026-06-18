@@ -1,12 +1,62 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
 
+const createMockHealthKit = () => {
+  return {
+    Constants: {
+      Permissions: {
+        HeartRateVariability: 'HeartRateVariability',
+        RestingHeartRate: 'RestingHeartRate',
+        SleepAnalysis: 'SleepAnalysis',
+      }
+    },
+    initHealthKit: (permissions, callback) => {
+      console.log('[HealthKit Mock] initHealthKit called');
+      callback(null);
+    },
+    getAuthStatus: (permissions, callback) => {
+      console.log('[HealthKit Mock] getAuthStatus called');
+      // Return 1 (Undetermined) so the user gets to tap "Sync" to test the flow
+      callback(null, {
+        permissions: {
+          read: [1, 1, 1]
+        }
+      });
+    },
+    getRestingHeartRateSamples: (options, callback) => {
+      console.log('[HealthKit Mock] getRestingHeartRateSamples called');
+      callback(null, [
+        { value: 62, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+        { value: 58, startDate: new Date().toISOString() },
+      ]);
+    },
+    getHeartRateVariabilitySamples: (options, callback) => {
+      console.log('[HealthKit Mock] getHeartRateVariabilitySamples called');
+      callback(null, [
+        { value: 60, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+        { value: 65, startDate: new Date().toISOString() },
+      ]);
+    },
+    getSleepSamples: (options, callback) => {
+      console.log('[HealthKit Mock] getSleepSamples called');
+      const now = Date.now();
+      callback(null, [
+        { value: 'DEEP', startDate: new Date(now - 8 * 60 * 60 * 1000).toISOString(), endDate: new Date(now - 6.5 * 60 * 60 * 1000).toISOString() },
+        { value: 'CORE', startDate: new Date(now - 6.5 * 60 * 60 * 1000).toISOString(), endDate: new Date(now - 2 * 60 * 60 * 1000).toISOString() },
+        { value: 'REM', startDate: new Date(now - 2 * 60 * 60 * 1000).toISOString(), endDate: new Date(now - 0.5 * 60 * 60 * 1000).toISOString() },
+      ]);
+    }
+  };
+};
+
 let AppleHealthKit = null;
 if (Platform.OS === 'ios') {
   try {
-    AppleHealthKit = require('react-native-health').default;
+    const HealthKitPackage = require('react-native-health');
+    AppleHealthKit = HealthKitPackage.default || HealthKitPackage;
   } catch (e) {
-    console.warn('Failed to load react-native-health package:', e);
+    console.warn('[HealthKit] Native package not found (expected in Expo Go / simulator). Activating developer mock. Error:', e.message);
+    AppleHealthKit = createMockHealthKit();
   }
 }
 
