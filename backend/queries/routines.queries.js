@@ -57,11 +57,11 @@ const createRoutine = async ({ userId, name, exercises }) => {
 };
 
 // Delete a routine
-const deleteRoutine = async (routineId) => {
+const deleteRoutine = async (routineId, userId) => {
     // ON DELETE CASCADE on the FK handles routine_exercises mapping automatically.
     const result = await pool.query(
-        `DELETE FROM routines WHERE id = $1 RETURNING *`,
-        [routineId]
+        `DELETE FROM routines WHERE id = $1 AND user_id = $2 RETURNING *`,
+        [routineId, userId]
     );
     return result.rows[0];
 };
