@@ -203,3 +203,109 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
 
   return result;
 }
+
+/**
+ * Calculate readiness score based on sleep stages, HRV, RHR, and workout intervals.
+ * 
+ * Rules & Calculations:
+ * 1. Total Sleep Time = Sum of deep, core, and rem minutes.
+ * 2. Duration Score = Math.min(100, (Total Sleep Time / 480) * 100)
+ * 3. Deep Component = Math.min(100, (deepMinutes / (Total Sleep Time * 0.15)) * 100)
+ * 4. REM Component = Math.min(100, (remMinutes / (Total Sleep Time * 0.20)) * 100)
+ * 5. Sleep Quality Score = (Duration Score * 0.5) + (((Deep Component + REM Component) / 2) * 0.5)
+ * 
+ * 6. HRV Score = Math.min(120, (todayHRV / avg14DayHRV) * 100)
+ * 7. RHR Score = Math.min(120, (avg14DayRHR / todayRHR) * 100)
+ * 
+ * 8. Workout Interval Score Calculation:
+ *    - If hoursSinceLastWorkout < 12: Score = 25
+ *    - If hoursSinceLastWorkout >= 12 AND hoursSinceLastWorkout < 18: Score = 50
+ *    - If hoursSinceLastWorkout >= 18 AND hoursSinceLastWorkout < 24: Score = 75
+ *    - If hoursSinceLastWorkout >= 24: Score = 100
+ * 
+ * 9. Final Composite Readiness (Weighted 50% Sleep, 20% HRV, 15% RHR, 15% Workout Interval):
+ *    Composite Readiness = Math.min(100, 
+ *      (Sleep Quality Score * 0.50) + 
+ *      (HRV Score * 0.20) + 
+ *      (RHR Score * 0.15) + 
+ *      (Workout Interval Score * 0.15)
+ *    )
+ * 
+ * Deliverable: Output the final readiness percentage as an integer alongside the computed sub-scores for detailed analytical charts.
+ */
+export function calculateReadinessScore(data) {
+  if (!data) return null;
+
+  const {
+    sleepStages = { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
+    todayHRV = 0,
+    avg14DayHRV = 1,
+    todayRHR = 60,
+    avg14DayRHR = 60,
+    hoursSinceLastWorkout = 0
+  } = data;
+
+  const {
+    deepMinutes = 0,
+    coreMinutes = 0,
+    remMinutes = 0
+  } = sleepStages;
+
+  // 1. Total Sleep Time = Sum of deep, core, and rem minutes.
+  const totalSleepTime = deepMinutes + coreMinutes + remMinutes;
+
+  // 2. Duration Score = Math.min(100, (Total Sleep Time / 480) * 100)
+  const durationScore = Math.min(100, (totalSleepTime / 480) * 100);
+
+  // 3. Deep Component = Math.min(100, (deepMinutes / (Total Sleep Time * 0.15)) * 100)
+  const deepComponent = totalSleepTime > 0
+    ? Math.min(100, (deepMinutes / (totalSleepTime * 0.15)) * 100)
+    : 0;
+
+  // 4. REM Component = Math.min(100, (remMinutes / (Total Sleep Time * 0.20)) * 100)
+  const remComponent = totalSleepTime > 0
+    ? Math.min(100, (remMinutes / (totalSleepTime * 0.20)) * 100)
+    : 0;
+
+  // 5. Sleep Quality Score = (Duration Score * 0.5) + (((Deep Component + REM Component) / 2) * 0.5)
+  const sleepQualityScore = (durationScore * 0.5) + (((deepComponent + remComponent) / 2) * 0.5);
+
+  // 6. HRV Score = Math.min(120, (todayHRV / avg14DayHRV) * 100)
+  const hrvScore = avg14DayHRV > 0
+    ? Math.min(120, (todayHRV / avg14DayHRV) * 100)
+    : 0;
+
+  // 7. RHR Score = Math.min(120, (avg14DayRHR / todayRHR) * 100)
+  const rhrScore = todayRHR > 0
+    ? Math.min(120, (avg14DayRHR / todayRHR) * 100)
+    : 0;
+
+  // 8. Workout Interval Score Calculation
+  let workoutIntervalScore = 100;
+  if (hoursSinceLastWorkout < 12) {
+    workoutIntervalScore = 25;
+  } else if (hoursSinceLastWorkout < 18) {
+    workoutIntervalScore = 50;
+  } else if (hoursSinceLastWorkout < 24) {
+    workoutIntervalScore = 75;
+  }
+
+  // 9. Final Composite Readiness
+  const compositeReadiness = Math.min(100, 
+    (sleepQualityScore * 0.50) + 
+    (hrvScore * 0.20) + 
+    (rhrScore * 0.15) + 
+    (workoutIntervalScore * 0.15)
+  );
+
+  return {
+    compositeReadiness: Math.round(compositeReadiness),
+    sleepQualityScore,
+    durationScore,
+    deepComponent,
+    remComponent,
+    hrvScore,
+    rhrScore,
+    workoutIntervalScore
+  };
+}
