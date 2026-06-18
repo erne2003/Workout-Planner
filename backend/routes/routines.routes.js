@@ -33,7 +33,7 @@ router.post("/", async (req, res) => {
 router.delete("/:id", async (req, res) => {
     try {
         const { id } = req.params;
-        const deleted = await deleteRoutine(id);
+        const deleted = await deleteRoutine(id, req.userId);
         if (!deleted) {
             return res.status(404).json({ error: "Routine not found" });
         }

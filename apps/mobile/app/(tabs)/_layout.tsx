@@ -4,10 +4,12 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
+import { useTheme } from '../../hooks/useTheme';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const router = useRouter();
-  
+  const { colors, isLight } = useTheme();
+
   const handleLogout = () => {
     global.localStorage.removeItem("userId");
     global.localStorage.removeItem("token");
@@ -16,19 +18,21 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   };
 
   return (
-    <View style={styles.tabBarContainer}>
-      <BlurView intensity={30} tint="dark" style={styles.blurView}>
+    <View style={[styles.tabBarContainer, { borderTopColor: colors.border }]}>
+      <BlurView intensity={30} tint={isLight ? "light" : "dark"} style={styles.blurView}>
         <View style={styles.tabContent}>
-          {state.routes.map((route: any, index: number) => {
-            const { options } = descriptors[route.key];
+          {state.routes.filter((route: any) => route.name !== 'explore' && route.name !== 'strength').map((route: any, index: number) => {
+            const { descriptors: allDesc } = descriptors as any || {};
+            const descriptor = descriptors[route.key] || {};
+            const { options } = descriptor;
             const label =
               options.tabBarLabel !== undefined
                 ? options.tabBarLabel
                 : options.title !== undefined
-                ? options.title
-                : route.name;
+                  ? options.title
+                  : route.name;
 
-            const isFocused = state.index === index;
+            const isFocused = state.routes[state.index]?.name === route.name;
 
             const onPress = () => {
               const event = navigation.emit({
@@ -42,11 +46,11 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
               }
             };
 
-            const color = isFocused ? "#0A84FF" : "rgba(255,255,255,0.35)";
+            const color = isFocused ? colors.accentBlue : colors.textTertiary;
 
             // Custom Icons based on web BottomNav
             let IconComponent;
-            switch(route.name) {
+            switch (route.name) {
               case 'index':
                 IconComponent = () => (
                   <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
@@ -97,23 +101,26 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
               <TouchableOpacity
                 key={route.key}
                 onPress={onPress}
-                style={[styles.tabButton, isFocused && styles.tabButtonFocused]}
+                style={[
+                  styles.tabButton,
+                  isFocused && [styles.tabButtonFocused, { backgroundColor: isLight ? 'rgba(10,132,255,0.08)' : 'rgba(10,132,255,0.12)' }]
+                ]}
               >
                 <IconComponent />
-                <Text style={[styles.tabLabel, { color: isFocused ? "#0A84FF" : "rgba(255,255,255,0.3)" }]}>
+                <Text style={[styles.tabLabel, { color: isFocused ? colors.accentBlue : colors.textTertiary }]}>
                   {label as string}
                 </Text>
               </TouchableOpacity>
             );
           })}
-          
+
           <TouchableOpacity onPress={handleLogout} style={styles.tabButton}>
             <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <Path d="M9 3H5a1 1 0 00-1 1v14a1 1 0 001 1h4" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" strokeLinecap="round" />
-              <Path d="M15 15l4-4-4-4" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              <Line x1="19" y1="11" x2="9" y2="11" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" strokeLinecap="round" />
+              <Path d="M9 3H5a1 1 0 00-1 1v14a1 1 0 001 1h4" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" />
+              <Path d="M15 15l4-4-4-4" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <Line x1="19" y1="11" x2="9" y2="11" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" />
             </Svg>
-            <Text style={styles.tabLabel}>OUT</Text>
+            <Text style={[styles.tabLabel, { color: colors.textTertiary }]}>OUT</Text>
           </TouchableOpacity>
         </View>
       </BlurView>
@@ -122,18 +129,19 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 }
 
 export default function TabLayout() {
+  const { colors } = useTheme();
+
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: '#07070F' },
+        sceneStyle: { backgroundColor: colors.bgBase },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="workout" options={{ title: 'Workout' }} />
       <Tabs.Screen name="recovery" options={{ title: 'Recovery' }} />
-      <Tabs.Screen name="strength" options={{ title: 'Strength' }} />
       <Tabs.Screen name="progress" options={{ title: 'Progress' }} />
     </Tabs>
   );
@@ -146,7 +154,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.07)',
     overflow: 'hidden',
   },
   blurView: {
@@ -167,13 +174,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   tabButtonFocused: {
-    backgroundColor: 'rgba(10,132,255,0.12)',
+    // Dynamically overridden
   },
   tabLabel: {
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    color: 'rgba(255,255,255,0.3)',
   },
 });

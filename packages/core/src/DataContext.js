@@ -35,7 +35,8 @@ export function DataProvider({ children }) {
     setErrors((prev) => ({ ...prev, [key]: null }));
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL;
+      const res = await fetch(`${apiUrl}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -63,7 +64,7 @@ export function DataProvider({ children }) {
     setLoading({ workouts: true, routines: true, prs: true, metrics: true });
     setErrors({ workouts: null, routines: null, prs: null, metrics: null });
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL;
     const fetchWithAuth = (endpoint) =>
       fetch(`${apiUrl}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },

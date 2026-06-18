@@ -87,4 +87,46 @@ router.post("/login", [
     }
 });
 
+const requireAuth = require("../middleware/requireAuth");
+
+router.post("/delete-account", requireAuth, async (req, res) => {
+    const { password } = req.body;
+    if (!password) {
+        return res.status(400).json({ error: "Password is required to delete account." });
+    }
+
+    const client = await pool.connect();
+    try {
+        // Fetch user password hash
+        const userRes = await client.query("SELECT password FROM users WHERE id = $1", [req.userId]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ error: "User not found." });
+        }
+
+        const match = await bcrypt.compare(password, userRes.rows[0].password);
+        if (!match) {
+            return res.status(401).json({ error: "Incorrect password. Account deletion aborted." });
+        }
+
+        await client.query("BEGIN");
+        // Delete all user records in proper dependency order
+        await client.query(`DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id = $1)`, [req.userId]);
+        await client.query(`DELETE FROM workouts WHERE user_id = $1`, [req.userId]);
+        await client.query(`DELETE FROM prs WHERE user_id = $1`, [req.userId]);
+        await client.query(`DELETE FROM routine_exercises WHERE routine_id IN (SELECT id FROM routines WHERE user_id = $1)`, [req.userId]);
+        await client.query(`DELETE FROM routines WHERE user_id = $1`, [req.userId]);
+        await client.query(`DELETE FROM body_metrics WHERE user_id = $1`, [req.userId]);
+        await client.query(`DELETE FROM users WHERE id = $1`, [req.userId]);
+        await client.query("COMMIT");
+        
+        res.json({ message: "Account and all associated data deleted successfully." });
+    } catch (e) {
+        await client.query("ROLLBACK");
+        console.error("Account deletion error:", e.message);
+        res.status(500).json({ error: "Failed to delete account." });
+    } finally {
+        client.release();
+    }
+});
+
 module.exports = router;

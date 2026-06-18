@@ -1,9 +1,18 @@
 const express = require("express");
 const axios = require("axios");
+const rateLimit = require("express-rate-limit");
 const router = express.Router();
 const { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup } = require("../queries/exercises.queries");
 
-router.get("/search", async (req, res) => {
+const exerciseSearchLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 50, // Max 50 searches per 15 minutes per IP
+    message: { error: "Too many exercise search attempts, please try again later." },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+router.get("/search", exerciseSearchLimiter, async (req, res) => {
     const { name } = req.query;
 
     if (!name) {

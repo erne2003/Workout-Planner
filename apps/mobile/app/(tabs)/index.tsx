@@ -7,6 +7,7 @@ import { useSettings, useData } from "@apex/core";
 import { getStatusFromPct, getMuscleSoreness, computeDynamicRecovery, RECOVERY_COLOR } from "@apex/core/src/recovery";
 import Svg, { Polygon, Polyline } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTheme } from "../../hooks/useTheme";
 
 /* --- Helpers ----------------------------------------------- */
 function greeting() {
@@ -27,13 +28,14 @@ function formatDate() {
 const RECOVERY_MUSCLES = ["chest", "shoulders", "quads", "lats"];
 
 /* --- Stat Card --------------------------------------------- */
-function StatCard({ label, value, unit, color = "#fff", delay }: any) {
+function StatCard({ label, value, unit, color, delay }: any) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.statCard}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, { color }]}>
+    <View style={[styles.statCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
+      <Text style={[styles.statValue, { color: color || colors.textPrimary }]}>
         {value}
-        {unit && <Text style={styles.statUnit}> {unit}</Text>}
+        {unit && <Text style={[styles.statUnit, { color: colors.textTertiary }]}> {unit}</Text>}
       </Text>
     </View>
   );
@@ -42,15 +44,16 @@ function StatCard({ label, value, unit, color = "#fff", delay }: any) {
 /* --- Last Workout Accordion Row ------------------------------ */
 function WorkoutExerciseRow({ ex, unit }: any) {
   const [open, setOpen] = useState(false);
+  const { colors, isLight } = useTheme();
   return (
-    <View style={[styles.exerciseRowContainer, open && styles.exerciseRowOpen]}>
+    <View style={[styles.exerciseRowContainer, { borderColor: colors.border, backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)" }, open && styles.exerciseRowOpen]}>
       <TouchableOpacity onPress={() => setOpen(!open)} style={styles.exerciseRowHeader}>
         <View style={[styles.exerciseDot, { backgroundColor: ex.accentColor, shadowColor: ex.accentColor }]} />
-        <Text style={styles.exerciseName}>{ex.name}</Text>
+        <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{ex.name}</Text>
         <View style={styles.exerciseSetsInfo}>
-          <Text style={styles.exerciseSetsText}>{ex.setsLength} sets</Text>
+          <Text style={[styles.exerciseSetsText, { color: colors.textSecondary }]}>{ex.setsLength} sets</Text>
           <View style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}>
-            <Svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <Svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={colors.textSecondary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <Polyline points="6 9 12 15 18 9" />
             </Svg>
           </View>
@@ -62,12 +65,12 @@ function WorkoutExerciseRow({ ex, unit }: any) {
           {ex.sets.map((s: any, i: number) => {
             const displayWeight = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
             return (
-              <View key={s.id || i} style={styles.setRow}>
-                <Text style={styles.setLabel}>Set {s.set_order || i + 1}</Text>
+              <View key={s.id || i} style={[styles.setRow, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.02)" }]}>
+                <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Set {s.set_order || i + 1}</Text>
                 <View style={styles.setDetails}>
-                  <Text style={styles.setDetailPrimary}>{displayWeight} {unit}</Text>
-                  <Text style={styles.setDetailSecondary}>×</Text>
-                  <Text style={styles.setDetailPrimary}>{s.reps} reps</Text>
+                  <Text style={[styles.setDetailPrimary, { color: colors.textPrimary }]}>{displayWeight} {unit}</Text>
+                  <Text style={[styles.setDetailSecondary, { color: colors.textSecondary }]}>×</Text>
+                  <Text style={[styles.setDetailPrimary, { color: colors.textPrimary }]}>{s.reps} reps</Text>
                   <Text style={styles.setDetailRir}>({s.rir ?? 0} rir)</Text>
                 </View>
               </View>
@@ -85,6 +88,7 @@ export default function HomePage() {
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
   const showPlateCalc = ctx?.plateCalc ?? true;
+  const { colors, isLight } = useTheme();
 
   const [sessionCount, setSessionCount] = useState(0);
   const [strengthScore, setStrengthScore] = useState(0);
@@ -236,14 +240,14 @@ export default function HomePage() {
         </LinearGradient>
       </TouchableOpacity>
 
-      <Text style={styles.sectionLabel}>Last Workout</Text>
+      <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Last Workout</Text>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>{lastWorkout.name}</Text>
-          <Text style={styles.cardDate}>{lastWorkout.date}</Text>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{lastWorkout.name}</Text>
+          <Text style={[styles.cardDate, { color: colors.textSecondary }]}>{lastWorkout.date}</Text>
         </View>
-        <Text style={styles.cardSubtitle}>{lastWorkout.subtitle}</Text>
+        <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>{lastWorkout.subtitle}</Text>
 
         <View style={styles.cardStatsRow}>
           {[
@@ -252,8 +256,8 @@ export default function HomePage() {
             { label: "Sets", value: `${lastWorkout.sets} sets`, align: "flex-end" },
           ].map(({ label, value, align }) => (
             <View key={label} style={[styles.cardStatCol, { alignItems: align as any }]}>
-              <Text style={styles.cardStatLabel}>{label}</Text>
-              <Text style={styles.cardStatValue}>{value}</Text>
+              <Text style={[styles.cardStatLabel, { color: colors.textSecondary }]}>{label}</Text>
+              <Text style={[styles.cardStatValue, { color: colors.textPrimary }]}>{value}</Text>
             </View>
           ))}
         </View>
