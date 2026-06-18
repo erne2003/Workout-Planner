@@ -17,7 +17,9 @@ export function useHealthKit() {
   const [error, setError] = useState(null);
 
   const fetchHealthData = useCallback(() => {
+    console.log("[HealthKit] fetchHealthData triggered");
     if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      console.log("[HealthKit] fetchHealthData aborted (Not iOS or AppleHealthKit not loaded)");
       setLoading(false);
       return;
     }
@@ -143,7 +145,9 @@ export function useHealthKit() {
   }, []);
 
   const requestPermissions = useCallback(() => {
+    console.log("[HealthKit] requestPermissions triggered");
     if (Platform.OS !== 'ios' || !AppleHealthKit) {
+      console.log("[HealthKit] requestPermissions aborted (Not iOS or AppleHealthKit not loaded)");
       setLoading(false);
       return;
     }
