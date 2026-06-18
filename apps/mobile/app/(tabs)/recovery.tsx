@@ -186,6 +186,7 @@ function LastWorkoutBanner({ lastTime, onReset }: any) {
 /* ─── HealthKit Readiness Score ─────────────────────────────── */
 function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermissions, hoursSinceLastWorkout }: any) {
   const { colors } = useTheme();
+  const [expanded, setExpanded] = useState(false);
 
   if (Platform.OS !== 'ios') {
     return null;
@@ -218,12 +219,19 @@ function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermi
     );
   }
 
+  // Determine availability of data
+  const hasSleep = healthData.sleepStages !== null;
+  const hasHRV = healthData.todayHRV !== null;
+  const hasRHR = healthData.todayRHR !== null;
+  const hasActualData = hasSleep && hasHRV && hasRHR;
+
+  // Use safe default fallbacks for calculateReadinessScore if data is missing
   const scoreData = calculateReadinessScore({
-    sleepStages: healthData.sleepStages,
-    todayHRV: healthData.todayHRV,
-    avg14DayHRV: healthData.avg14DayHRV,
-    todayRHR: healthData.todayRHR,
-    avg14DayRHR: healthData.avg14DayRHR,
+    sleepStages: healthData.sleepStages || { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
+    todayHRV: healthData.todayHRV || 50,
+    avg14DayHRV: healthData.avg14DayHRV || 50,
+    todayRHR: healthData.todayRHR || 60,
+    avg14DayRHR: healthData.avg14DayRHR || 60,
     hoursSinceLastWorkout
   });
 
@@ -237,16 +245,21 @@ function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermi
     workoutIntervalScore
   } = scoreData;
 
-  const scoreColor = compositeReadiness >= 75 ? "#30D158" : compositeReadiness >= 50 ? "#FF9F0A" : "#FF2D55";
-  const circumference = 2 * Math.PI * 34;
-  const offset = circumference * (1 - compositeReadiness / 100);
+  const scoreColor = hasActualData
+    ? (compositeReadiness >= 75 ? "#30D158" : compositeReadiness >= 50 ? "#FF9F0A" : "#FF2D55")
+    : colors.textSecondary; // Gray if N/A
 
-  const totalSleepTime = healthData.sleepStages.deepMinutes + healthData.sleepStages.coreMinutes + healthData.sleepStages.remMinutes;
+  const circumference = 2 * Math.PI * 34;
+  const offset = hasActualData ? circumference * (1 - compositeReadiness / 100) : circumference;
+
+  const totalSleepTime = hasSleep
+    ? (healthData.sleepStages.deepMinutes + healthData.sleepStages.coreMinutes + healthData.sleepStages.remMinutes)
+    : 0;
   const sleepHrs = (totalSleepTime / 60).toFixed(1);
 
   return (
     <View style={[styles.card, { padding: 18, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>APEX Readiness Score</Text>
           <Text style={{ fontSize: 10, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Calculated from Apple Health</Text>
@@ -262,52 +275,82 @@ function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermi
             />
           </Svg>
           <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 20, fontWeight: '800', color: scoreColor }}>{compositeReadiness}%</Text>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: scoreColor }}>
+              {hasActualData ? `${compositeReadiness}%` : "N/A"}
+            </Text>
           </View>
         </View>
       </View>
 
-      <View style={{ gap: 10 }}>
-        <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Sleep Quality</Text>
-            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{sleepHrs}h ({Math.round(sleepQualityScore)}%)</Text>
+      {expanded && (
+        <View style={{ gap: 10, marginTop: 16 }}>
+          {/* Sleep Quality */}
+          <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Sleep Quality</Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                {hasSleep ? `${sleepHrs}h (${Math.round(sleepQualityScore)}%)` : "N/A"}
+              </Text>
+            </View>
+            <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${hasSleep ? sleepQualityScore : 0}%`, backgroundColor: '#30D158' }} />
+            </View>
           </View>
-          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-            <View style={{ height: '100%', width: `${sleepQualityScore}%`, backgroundColor: '#30D158' }} />
-          </View>
-        </View>
 
-        <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Heart Rate Variability (HRV)</Text>
-            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(healthData.todayHRV)} ms (Baseline: {Math.round(healthData.avg14DayHRV)} ms)</Text>
+          {/* HRV */}
+          <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Heart Rate Variability (HRV)</Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                {hasHRV ? `${Math.round(healthData.todayHRV)} ms (Baseline: ${Math.round(healthData.avg14DayHRV)} ms)` : "N/A"}
+              </Text>
+            </View>
+            <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${hasHRV ? Math.min(100, (hrvScore / 120) * 100) : 0}%`, backgroundColor: '#0A84FF' }} />
+            </View>
           </View>
-          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-            <View style={{ height: '100%', width: `${Math.min(100, (hrvScore / 120) * 100)}%`, backgroundColor: '#0A84FF' }} />
-          </View>
-        </View>
 
-        <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Resting Heart Rate (RHR)</Text>
-            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(healthData.todayRHR)} bpm (Baseline: {Math.round(healthData.avg14DayRHR)} bpm)</Text>
+          {/* RHR */}
+          <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Resting Heart Rate (RHR)</Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                {hasRHR ? `${Math.round(healthData.todayRHR)} bpm (Baseline: ${Math.round(healthData.avg14DayRHR)} bpm)` : "N/A"}
+              </Text>
+            </View>
+            <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${hasRHR ? Math.min(100, (rhrScore / 120) * 100) : 0}%`, backgroundColor: '#BF5AF2' }} />
+            </View>
           </View>
-          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-            <View style={{ height: '100%', width: `${Math.min(100, (rhrScore / 120) * 100)}%`, backgroundColor: '#BF5AF2' }} />
-          </View>
-        </View>
 
-        <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Workout Interval</Text>
-            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(hoursSinceLastWorkout)}h elapsed ({workoutIntervalScore}%)</Text>
-          </View>
-          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-            <View style={{ height: '100%', width: `${workoutIntervalScore}%`, backgroundColor: '#FF9F0A' }} />
+          {/* Workout Interval */}
+          <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Workout Interval</Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(hoursSinceLastWorkout)}h elapsed ({workoutIntervalScore}%)</Text>
+            </View>
+            <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${workoutIntervalScore}%`, backgroundColor: '#FF9F0A' }} />
+            </View>
           </View>
         </View>
-      </View>
+      )}
+
+      <TouchableOpacity 
+        onPress={() => setExpanded(!expanded)} 
+        style={{ 
+          marginTop: 14, 
+          paddingTop: 10, 
+          borderTopWidth: 1, 
+          borderTopColor: colors.border,
+          alignItems: 'center', 
+          justifyContent: 'center' 
+        }}
+      >
+        <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '600' }}>
+          {expanded ? "Hide Details ▲" : "Show Details ▼"}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }

@@ -106,7 +106,7 @@ export function useHealthKit() {
       new Promise((resolve) => {
         AppleHealthKit.getRestingHeartRateSamples(rhrOptions, (err, results) => {
           if (err || !results || results.length === 0) {
-            resolve({ todayRHR: 60, avg14DayRHR: 60 });
+            resolve({ todayRHR: null, avg14DayRHR: null });
             return;
           }
 
@@ -121,7 +121,7 @@ export function useHealthKit() {
       new Promise((resolve) => {
         AppleHealthKit.getHeartRateVariabilitySamples(hrvOptions, (err, results) => {
           if (err || !results || results.length === 0) {
-            resolve({ todayHRV: 50, avg14DayHRV: 50 });
+            resolve({ todayHRV: null, avg14DayHRV: null });
             return;
           }
 
@@ -146,7 +146,7 @@ export function useHealthKit() {
         AppleHealthKit.getSleepSamples(sleepOptions, (err, results) => {
           if (err || !results || results.length === 0) {
             resolve({
-              sleepStages: { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 }
+              sleepStages: null
             });
             return;
           }
