@@ -124,6 +124,11 @@ export function useHealthKit() {
         });
       })
     ]).then(([rhrData, hrvData, sleepData]) => {
+      console.log("[HealthKit] Fetched Raw Metrics:", {
+        rhr: rhrData,
+        hrv: hrvData,
+        sleep: sleepData,
+      });
       setHealthData({
         ...rhrData,
         ...hrvData,
