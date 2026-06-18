@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import { useSettings } from "@apex/core";
@@ -50,6 +50,40 @@ export default function SettingsPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("");
   const { colors, isLight } = useTheme();
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) return;
+    setIsDeleting(true);
+    try {
+      const token = global.localStorage?.getItem("token");
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
+      const response = await fetch(`${apiUrl}/auth/delete-account`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        Alert.alert("Success", "Account and all associated data deleted successfully.");
+        setShowDeleteModal(false);
+        setDeletePassword("");
+        logout();
+      } else {
+        Alert.alert("Error", data.error || "Failed to delete account");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", "Error connecting to server. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const ctx = useSettings() as any;
 
@@ -206,8 +240,76 @@ export default function SettingsPage() {
               </Svg>
               <Text style={styles.logoutText}>Log Out</Text>
             </TouchableOpacity>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <TouchableOpacity onPress={() => setShowDeleteModal(true)} style={styles.deleteAccountButton}>
+              <Text style={styles.deleteAccountText}>Delete Account</Text>
+            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Delete Account Modal */}
+        <Modal
+          visible={showDeleteModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => {
+            setShowDeleteModal(false);
+            setDeletePassword("");
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.bgBase, borderColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Delete Account?</Text>
+              
+              <View style={[styles.warningBox, { backgroundColor: isLight ? "#FFEBEB" : "#240E10" }]}>
+                <Text style={styles.warningText}>
+                  ⚠️ WARNING: This action is permanent! All of your workout logs, routines, personal records, and body metrics will be permanently deleted and cannot be recovered.
+                </Text>
+              </View>
+
+              <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
+                To confirm, please enter your password:
+              </Text>
+
+              <TextInput
+                secureTextEntry
+                value={deletePassword}
+                onChangeText={setDeletePassword}
+                placeholder="Confirm Password"
+                placeholderTextColor={colors.textTertiary}
+                style={[styles.passwordInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              />
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowDeleteModal(false);
+                    setDeletePassword("");
+                  }}
+                  style={[styles.modalButton, styles.cancelBtn]}
+                >
+                  <Text style={[styles.cancelBtnText, { color: colors.textPrimary }]}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleDeleteAccount}
+                  disabled={isDeleting || !deletePassword}
+                  style={[
+                    styles.modalButton,
+                    styles.confirmBtn,
+                    (!deletePassword || isDeleting) && styles.disabledConfirmBtn
+                  ]}
+                >
+                  {isDeleting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.confirmBtnText}>Delete Permanently</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
       </View>
     </PageShell>
@@ -347,5 +449,92 @@ const styles = StyleSheet.create({
     color: "#FF2D55",
     fontSize: 15,
     fontWeight: "800",
+  },
+  deleteAccountButton: {
+    padding: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,59,48,0.05)",
+  },
+  deleteAccountText: {
+    color: "#FF3B30",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 24,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  warningBox: {
+    backgroundColor: "rgba(255, 59, 48, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 59, 48, 0.3)",
+    borderRadius: 12,
+    padding: 14,
+  },
+  warningText: {
+    color: "#FF3B30",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+    textAlign: "center",
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 8,
+  },
+  passwordInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtn: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  confirmBtn: {
+    backgroundColor: "#FF3B30",
+  },
+  disabledConfirmBtn: {
+    backgroundColor: "rgba(255, 59, 48, 0.4)",
+  },
+  confirmBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

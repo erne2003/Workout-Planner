@@ -9,7 +9,7 @@ export default function MuscleMap({ view = "front", muscleData = {}, onSelect }:
   const { colors, isLight } = useTheme();
   
   const paths = view === "front" ? ANTERIOR_PATHS : POSTERIOR_PATHS;
-  const viewBox = view === "front" ? "0 95 727 1280" : "696 95 727 1280";
+  const viewBox = view === "front" ? "0 95 727 1280" : "445 95 727 1280";
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
