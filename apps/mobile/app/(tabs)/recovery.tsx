@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import {
@@ -9,12 +9,14 @@ import {
   setMuscleSoreness,
   computeDynamicRecovery,
   parseLocalISO,
+  calculateReadinessScore,
 } from "@apex/core/src/recovery";
 import { useData } from "@apex/core";
 import MuscleMap from "@/components/MuscleMap";
 import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "@apex/core";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useTheme } from "../../hooks/useTheme";
+import { useHealthKit } from "../../hooks/useHealthKit";
 
 const ALL_MUSCLES = [
   ...new Set([...ANTERIOR_PATHS, ...POSTERIOR_PATHS].map((p: any) => p.id))
@@ -181,6 +183,135 @@ function LastWorkoutBanner({ lastTime, onReset }: any) {
   );
 }
 
+/* ─── HealthKit Readiness Score ─────────────────────────────── */
+function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermissions, hoursSinceLastWorkout }: any) {
+  const { colors } = useTheme();
+
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
+
+  if (loading) {
+    return (
+      <View style={[styles.card, { padding: 20, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', height: 120 }]}>
+        <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Syncing with Apple Health...</Text>
+      </View>
+    );
+  }
+
+  if (!hasPermission || !healthData) {
+    return (
+      <View style={[styles.card, { padding: 18, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }]}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>Apple Health Integration</Text>
+          <Text style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 15 }}>
+            Sync sleep, heart rate variability (HRV), and resting heart rate to calculate your dynamic APEX Readiness Score.
+          </Text>
+        </View>
+        <TouchableOpacity 
+          onPress={onRequestPermissions}
+          style={{ backgroundColor: '#0A84FF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8 }}
+        >
+          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Sync</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const scoreData = calculateReadinessScore({
+    sleepStages: healthData.sleepStages,
+    todayHRV: healthData.todayHRV,
+    avg14DayHRV: healthData.avg14DayHRV,
+    todayRHR: healthData.todayRHR,
+    avg14DayRHR: healthData.avg14DayRHR,
+    hoursSinceLastWorkout
+  });
+
+  if (!scoreData) return null;
+
+  const {
+    compositeReadiness,
+    sleepQualityScore,
+    hrvScore,
+    rhrScore,
+    workoutIntervalScore
+  } = scoreData;
+
+  const scoreColor = compositeReadiness >= 75 ? "#30D158" : compositeReadiness >= 50 ? "#FF9F0A" : "#FF2D55";
+  const circumference = 2 * Math.PI * 34;
+  const offset = circumference * (1 - compositeReadiness / 100);
+
+  const totalSleepTime = healthData.sleepStages.deepMinutes + healthData.sleepStages.coreMinutes + healthData.sleepStages.remMinutes;
+  const sleepHrs = (totalSleepTime / 60).toFixed(1);
+
+  return (
+    <View style={[styles.card, { padding: 18, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>APEX Readiness Score</Text>
+          <Text style={{ fontSize: 10, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Calculated from Apple Health</Text>
+        </View>
+        
+        <View style={{ width: 80, height: 80, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+          <Svg width="76" height="76" viewBox="0 0 76 76" style={{ transform: [{ rotate: "-90deg" }] }}>
+            <Circle cx="38" cy="38" r="34" fill="none" stroke={colors.border} strokeWidth="5" />
+            <Circle
+              cx="38" cy="38" r="34" fill="none"
+              stroke={scoreColor} strokeWidth="5" strokeLinecap="round"
+              strokeDasharray={circumference} strokeDashoffset={offset}
+            />
+          </Svg>
+          <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: scoreColor }}>{compositeReadiness}%</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <View style={{ gap: 4 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Sleep Quality</Text>
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{sleepHrs}h ({Math.round(sleepQualityScore)}%)</Text>
+          </View>
+          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+            <View style={{ height: '100%', width: `${sleepQualityScore}%`, backgroundColor: '#30D158' }} />
+          </View>
+        </View>
+
+        <View style={{ gap: 4 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Heart Rate Variability (HRV)</Text>
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(healthData.todayHRV)} ms (Baseline: {Math.round(healthData.avg14DayHRV)} ms)</Text>
+          </View>
+          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+            <View style={{ height: '100%', width: `${Math.min(100, (hrvScore / 120) * 100)}%`, backgroundColor: '#0A84FF' }} />
+          </View>
+        </View>
+
+        <View style={{ gap: 4 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Resting Heart Rate (RHR)</Text>
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(healthData.todayRHR)} bpm (Baseline: {Math.round(healthData.avg14DayRHR)} bpm)</Text>
+          </View>
+          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+            <View style={{ height: '100%', width: `${Math.min(100, (rhrScore / 120) * 100)}%`, backgroundColor: '#BF5AF2' }} />
+          </View>
+        </View>
+
+        <View style={{ gap: 4 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Workout Interval</Text>
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(hoursSinceLastWorkout)}h elapsed ({workoutIntervalScore}%)</Text>
+          </View>
+          <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+            <View style={{ height: '100%', width: `${workoutIntervalScore}%`, backgroundColor: '#FF9F0A' }} />
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 /* ─── Page ──────────────────────────────────────────────────── */
 export default function RecoveryPage() {
   const router = useRouter();
@@ -191,6 +322,11 @@ export default function RecoveryPage() {
   const { colors, isLight } = useTheme();
 
   const { workouts: data, loading } = useData() as any;
+  const { hasPermission, loading: healthLoading, healthData, requestPermissions } = useHealthKit();
+
+  const hoursSinceLastWorkout = lastTime
+    ? (Date.now() - lastTime.getTime()) / 3_600_000
+    : 24;
 
   const updateHeatmap = useCallback(() => {
     try {
@@ -239,6 +375,16 @@ export default function RecoveryPage() {
         <View style={[styles.card, { height: 40, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
       ) : (
         <LastWorkoutBanner lastTime={lastTime} onReset={handleReset} />
+      )}
+
+      {Platform.OS === 'ios' && (
+        <HealthKitReadiness
+          healthData={healthData}
+          hasPermission={hasPermission}
+          loading={healthLoading}
+          onRequestPermissions={requestPermissions}
+          hoursSinceLastWorkout={hoursSinceLastWorkout}
+        />
       )}
 
       {loading.workouts ? (
