@@ -9,6 +9,7 @@ export default function OnboardingPage() {
     const router = useRouter();
     const [years, setYears] = useState("");
     const [weight, setWeight] = useState("");
+    const [gender, setGender] = useState<"male" | "female">("male");
     
     // Explicit Height Metrics constraints
     const [hUnit, setHUnit] = useState<"ft" | "cm">("ft");
@@ -19,17 +20,17 @@ export default function OnboardingPage() {
     const [bodyFat, setBodyFat] = useState("");
     const [loading, setLoading] = useState(false);
     const { colors, isLight } = useTheme();
-
+ 
     const handleSubmit = async () => {
         setLoading(true);
-
+ 
         let finalHeight = "Not Selected";
         if (hUnit === "ft" && (feet || inches)) {
             finalHeight = `${feet || 0}'${inches || 0}"`;
         } else if (hUnit === "cm" && cm) {
             finalHeight = `${cm}cm`;
         }
-
+ 
         try {
             const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
             await fetch(`${apiUrl}/metrics`, {
@@ -42,7 +43,8 @@ export default function OnboardingPage() {
                     trainingYears: parseFloat(years) || 0,
                     weight: parseFloat(weight),
                     height: finalHeight,
-                    bodyFat: bodyFat ? parseFloat(bodyFat) : null
+                    bodyFat: bodyFat ? parseFloat(bodyFat) : null,
+                    gender: gender
                 })
             });
             router.replace("/");
@@ -68,6 +70,18 @@ export default function OnboardingPage() {
                 </View>
 
                 <View style={styles.form}>
+                    <View>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>Gender</Text>
+                        <View style={[styles.unitToggleGroup, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(0,0,0,0.4)", width: "100%", height: 46, padding: 3 }]}>
+                            <TouchableOpacity onPress={() => setGender("male")} style={[{ flex: 1, justifyContent: "center", alignItems: "center", borderRadius: 4 }, gender === "male" && { backgroundColor: isLight ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.15)" }]}>
+                                <Text style={[styles.unitToggleText, { fontSize: 13, color: colors.textSecondary }, gender === "male" && { color: colors.textPrimary, fontWeight: "700" }]}>Male</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setGender("female")} style={[{ flex: 1, justifyContent: "center", alignItems: "center", borderRadius: 4 }, gender === "female" && { backgroundColor: isLight ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.15)" }]}>
+                                <Text style={[styles.unitToggleText, { fontSize: 13, color: colors.textSecondary }, gender === "female" && { color: colors.textPrimary, fontWeight: "700" }]}>Female</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
                     <View>
                         <Text style={[styles.label, { color: colors.textSecondary }]}>Training Age (Years)</Text>
                         <TextInput 
