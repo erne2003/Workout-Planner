@@ -5,14 +5,17 @@ import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../hooks/useTheme';
+import { useData } from '@apex/core';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const router = useRouter();
   const { colors, isLight } = useTheme();
 
+  const { setToken } = useData() as any;
+
   const handleLogout = () => {
     global.localStorage.removeItem("userId");
-    global.localStorage.removeItem("token");
+    setToken(null);
     global.localStorage.removeItem("userName");
     router.replace("/login");
   };

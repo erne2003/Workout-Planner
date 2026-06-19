@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
-import { useSettings } from "@apex/core";
+import { useSettings, useData } from "@apex/core";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
 import { useTheme } from "../hooks/useTheme";
+import { useHealthKit } from "../hooks/useHealthKit";
 
 function Toggle({ active, onClick, color }: any) {
   const { colors } = useTheme();
@@ -50,6 +51,29 @@ export default function SettingsPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("");
   const { colors, isLight } = useTheme();
+
+  const { hasPermission, requestPermissions, disconnect } = useHealthKit();
+
+  const handleHealthToggle = () => {
+    if (hasPermission) {
+      Alert.alert(
+        "Disconnect Apple Health?",
+        "Are you sure you want to stop syncing health metrics? Your dynamic Readiness Score won't be calculated.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Disconnect", 
+            style: "destructive", 
+            onPress: () => {
+              disconnect();
+            } 
+          }
+        ]
+      );
+    } else {
+      requestPermissions();
+    }
+  };
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
@@ -110,9 +134,11 @@ export default function SettingsPage() {
     global.localStorage?.setItem("userName", userName);
   };
 
+  const { setToken } = useData() as any;
+
   const logout = () => {
     global.localStorage?.removeItem("userId");
-    global.localStorage?.removeItem("token");
+    setToken(null);
     global.localStorage?.removeItem("userName");
     global.localStorage?.removeItem("userEmail");
     router.replace("/login");
@@ -227,6 +253,28 @@ export default function SettingsPage() {
             </View>
           </View>
         </View>
+
+        {/* Integrations */}
+        {Platform.OS === 'ios' && (
+          <View>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Integrations</Text>
+            <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={[styles.rowText, { color: colors.textPrimary }]}>Apple Health Sync</Text>
+                  <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
+                    {hasPermission ? "Connected & auto-syncing metrics" : "Sync sleep, HRV, and heart rate"}
+                  </Text>
+                </View>
+                <Toggle 
+                  active={hasPermission} 
+                  onClick={handleHealthToggle} 
+                  color="#30D158" 
+                />
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Account */}
         <View>

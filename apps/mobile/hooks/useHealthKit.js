@@ -67,7 +67,13 @@ if (Platform.OS === 'ios') {
 }
 
 export function useHealthKit() {
-  const [hasPermission, setHasPermission] = useState(false);
+  const [hasPermission, setHasPermission] = useState(() => {
+    if (typeof window !== 'undefined' && global.localStorage) {
+      return global.localStorage.getItem('has_connected_healthkit') === 'true';
+    }
+    return false;
+  });
+
   const [loading, setLoading] = useState(Platform.OS === 'ios');
   const [healthData, setHealthData] = useState(null);
   const [error, setError] = useState(null);
@@ -228,32 +234,50 @@ export function useHealthKit() {
         return;
       }
 
+      global.localStorage?.setItem('has_connected_healthkit', 'true');
       setHasPermission(true);
       fetchHealthData();
     });
   }, [fetchHealthData]);
 
+  const disconnect = useCallback(() => {
+    console.log("[HealthKit] Disconnecting and clearing state");
+    global.localStorage?.removeItem('has_connected_healthkit');
+    setHasPermission(false);
+    setHealthData(null);
+    setError(null);
+  }, []);
+
   useEffect(() => {
     if (Platform.OS === 'ios' && AppleHealthKit) {
-      if (typeof AppleHealthKit.getAuthStatus === 'function') {
-        AppleHealthKit.getAuthStatus({
-          permissions: {
-            read: [
-              AppleHealthKit.Constants.Permissions.HeartRateVariability,
-              AppleHealthKit.Constants.Permissions.RestingHeartRate,
-              AppleHealthKit.Constants.Permissions.SleepAnalysis,
-            ],
-            write: [],
-          }
-        }, (err, results) => {
-          if (!err && results && results.permissions && results.permissions.read && results.permissions.read.every(status => status === 2)) {
-            requestPermissions();
-          } else {
-            setLoading(false);
-          }
-        });
+      const alreadyConnected = global.localStorage?.getItem('has_connected_healthkit') === 'true';
+      if (alreadyConnected) {
+        console.log("[HealthKit] Auto-syncing since integration is enabled");
+        requestPermissions();
       } else {
-        setLoading(false);
+        if (typeof AppleHealthKit.getAuthStatus === 'function') {
+          AppleHealthKit.getAuthStatus({
+            permissions: {
+              read: [
+                AppleHealthKit.Constants.Permissions.HeartRateVariability,
+                AppleHealthKit.Constants.Permissions.RestingHeartRate,
+                AppleHealthKit.Constants.Permissions.SleepAnalysis,
+              ],
+              write: [],
+            }
+          }, (err, results) => {
+            if (!err && results && results.permissions && results.permissions.read && results.permissions.read.every(status => status === 2)) {
+              console.log("[HealthKit] Auto-syncing from fallback AuthStatus authorized check");
+              global.localStorage?.setItem('has_connected_healthkit', 'true');
+              setHasPermission(true);
+              requestPermissions();
+            } else {
+              setLoading(false);
+            }
+          });
+        } else {
+          setLoading(false);
+        }
       }
     } else {
       setLoading(false);
@@ -266,6 +290,7 @@ export function useHealthKit() {
     healthData,
     error,
     requestPermissions,
+    disconnect,
     refresh: fetchHealthData
   };
 }

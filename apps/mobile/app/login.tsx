@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "../hooks/useTheme";
+import { useData } from "@apex/core";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -12,6 +13,7 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const { colors, isLight } = useTheme();
+    const { setToken } = useData() as any;
 
     useEffect(() => {
         if (global.localStorage?.getItem("token")) {
@@ -43,8 +45,11 @@ export default function LoginPage() {
             const { token, user } = data;
             if (!token) throw new Error("No token returned");
 
-            global.localStorage.setItem("token", token);
+            setToken(token);
             global.localStorage.setItem("userName", user.name);
+            if (user && user.email) {
+                global.localStorage.setItem("userEmail", user.email);
+            }
             global.localStorage.removeItem("userId"); // Clean up old storage
             
             // Check metrics via backend

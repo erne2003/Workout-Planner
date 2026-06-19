@@ -184,7 +184,7 @@ function LastWorkoutBanner({ lastTime, onReset }: any) {
 }
 
 /* ─── HealthKit Readiness Score ─────────────────────────────── */
-function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermissions, hoursSinceLastWorkout }: any) {
+function HealthKitReadiness({ healthData, hasPermission, loading, error, onRequestPermissions, hoursSinceLastWorkout }: any) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
 
@@ -200,21 +200,43 @@ function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermi
     );
   }
 
+  if (error) {
+    return (
+      <View style={[styles.card, { padding: 18, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border, gap: 8 }]}>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: '#FF2D55' }}>Health Sync Issue</Text>
+        <Text style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 15 }}>
+          Could not retrieve data. Please ensure APEX is allowed to read Sleep, Heart Rate Variability, and Resting Heart Rate in the iOS Health app.
+        </Text>
+        <TouchableOpacity 
+          onPress={onRequestPermissions}
+          style={{ alignSelf: 'flex-start', marginTop: 4 }}
+        >
+          <Text style={{ color: '#0A84FF', fontSize: 12, fontWeight: '600' }}>Retry Connection</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (!hasPermission || !healthData) {
     return (
-      <View style={[styles.card, { padding: 18, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }]}>
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>Apple Health Integration</Text>
-          <Text style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 15 }}>
+      <View style={[styles.card, { padding: 20, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border, gap: 14 }]}>
+        <View style={{ gap: 4 }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary }}>Connect Apple Health</Text>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17 }}>
             Sync sleep, heart rate variability (HRV), and resting heart rate to calculate your dynamic APEX Readiness Score.
           </Text>
         </View>
+        
         <TouchableOpacity 
           onPress={onRequestPermissions}
-          style={{ backgroundColor: '#0A84FF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8 }}
+          style={{ backgroundColor: '#0A84FF', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, alignSelf: 'flex-start' }}
         >
-          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Sync</Text>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Connect Apple Health</Text>
         </TouchableOpacity>
+        
+        <Text style={{ fontSize: 10, color: colors.textSecondary, fontStyle: 'italic', opacity: 0.8, lineHeight: 14 }}>
+          * APEX respects your privacy. Your health data is processed entirely on-device and is never uploaded to any external servers.
+        </Text>
       </View>
     );
   }
@@ -262,7 +284,10 @@ function HealthKitReadiness({ healthData, hasPermission, loading, onRequestPermi
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textPrimary }}>APEX Readiness Score</Text>
-          <Text style={{ fontSize: 10, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Calculated from Apple Health</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#30D158' }} />
+            <Text style={{ fontSize: 10, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Connected & Auto-synced</Text>
+          </View>
         </View>
         
         <View style={{ width: 80, height: 80, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
@@ -365,7 +390,7 @@ export default function RecoveryPage() {
   const { colors, isLight } = useTheme();
 
   const { workouts: data, loading } = useData() as any;
-  const { hasPermission, loading: healthLoading, healthData, requestPermissions } = useHealthKit();
+  const { hasPermission, loading: healthLoading, healthData, error: healthError, requestPermissions } = useHealthKit();
 
   const hoursSinceLastWorkout = lastTime
     ? (Date.now() - lastTime.getTime()) / 3_600_000
@@ -425,6 +450,7 @@ export default function RecoveryPage() {
           healthData={healthData}
           hasPermission={hasPermission}
           loading={healthLoading}
+          error={healthError}
           onRequestPermissions={requestPermissions}
           hoursSinceLastWorkout={hoursSinceLastWorkout}
         />
