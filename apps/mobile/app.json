@@ -4,20 +4,23 @@
     "slug": "Apex-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/AppIconRefined.png",
     "scheme": "apexmobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "2",
       "infoPlist": {
         "NSHealthShareUsageDescription": "Apex needs access to your sleep and heart rate data to calculate your daily readiness score.",
-        "NSHealthUpdateUsageDescription": "Apex needs access to your sleep and heart rate data to calculate your daily readiness score."
+        "NSHealthUpdateUsageDescription": "Apex needs access to your sleep and heart rate data to calculate your daily readiness score.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
         "com.apple.developer.healthkit": true,
         "com.apple.developer.healthkit.background-delivery": true
-      }
+      },
+      "bundleIdentifier": "com.ebarreiro2003.Apexmobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -52,6 +55,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d96d6d4c-6d78-432a-a0b9-c771fdcee1c1"
+      }
     }
   }
 }
