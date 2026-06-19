@@ -31,6 +31,7 @@ async function migrate() {
                 weight DECIMAL(5,2) NOT NULL,
                 height VARCHAR(50) NOT NULL,
                 body_fat DECIMAL(5,2),
+                gender VARCHAR(10) DEFAULT 'male',
                 logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );

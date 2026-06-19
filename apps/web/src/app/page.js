@@ -304,7 +304,7 @@ export default function HomePage() {
           label="Strength" 
           value={strengthScore} 
           unit="/ 100" 
-          color={strengthScore >= 90 ? "#FFD60A" : strengthScore >= 75 ? "#30D158" : strengthScore >= 60 ? "#0A84FF" : "#FF9F0A"} 
+          color={strengthScore >= 90 ? "#FFD60A" : strengthScore >= 75 ? "#FF3B30" : strengthScore >= 60 ? "#0A84FF" : "#30D158"} 
           delay={3} 
         />
       </div>
