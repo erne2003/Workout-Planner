@@ -137,6 +137,7 @@ export default function SettingsPage() {
   const { setToken } = useData() as any;
 
   const logout = () => {
+    global.localStorage?.removeItem("token");
     global.localStorage?.removeItem("userId");
     setToken(null);
     global.localStorage?.removeItem("userName");

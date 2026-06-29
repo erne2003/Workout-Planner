@@ -14,6 +14,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const { setToken } = useData() as any;
 
   const handleLogout = () => {
+    global.localStorage.removeItem("token");
     global.localStorage.removeItem("userId");
     setToken(null);
     global.localStorage.removeItem("userName");
