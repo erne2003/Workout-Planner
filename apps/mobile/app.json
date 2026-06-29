@@ -4,7 +4,7 @@
     "slug": "Apex-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/AppIconRefined.png",
+    "icon": "./assets/images/VirtusIconImage.png",
     "scheme": "virtusfitness",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -54,7 +54,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "router": {},

@@ -25,7 +25,10 @@ const globalLimiter = rateLimit({
 
 app.use(globalLimiter);
 app.use(cors({
-    origin: [process.env.FRONTEND_URL || "http://localhost:3000", "https://www.apextracker.dev"],
+    origin: (origin, callback) => {
+        // Allow all origins dynamically (essential for EAS build, web previews, and local/network development)
+        callback(null, true);
+    },
     credentials: true
 }));
 
