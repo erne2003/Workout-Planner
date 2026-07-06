@@ -9,6 +9,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const token = global.localStorage?.getItem("token");
         if (!token && pathname !== "/login") {
+            setChecked(false);
             router.replace("/login");
         } else {
             setChecked(true);

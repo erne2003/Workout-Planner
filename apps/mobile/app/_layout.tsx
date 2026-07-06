@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 import { SettingsProvider, DataProvider } from '@apex/core';
+import AuthGuard from '../components/AuthGuard';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -88,7 +89,9 @@ export default function RootLayout() {
   return (
     <SettingsProvider>
       <DataProvider>
-        <AppNavigator />
+        <AuthGuard>
+          <AppNavigator />
+        </AuthGuard>
       </DataProvider>
     </SettingsProvider>
   );

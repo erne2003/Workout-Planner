@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Virtus Fitness",
-    "slug": "Apex-mobile",
+    "slug": "apex",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/VirtusIconImage.png",
@@ -20,7 +20,7 @@
         "com.apple.developer.healthkit": true,
         "com.apple.developer.healthkit.background-delivery": true
       },
-      "bundleIdentifier": "com.ebarreiro2003.Apexmobile"
+      "bundleIdentifier": "com.ebarreiro2003.apex"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +30,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.ebarreiro2003.apex"
     },
     "web": {
       "output": "static",
@@ -59,7 +60,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "d96d6d4c-6d78-432a-a0b9-c771fdcee1c1"
+        "projectId": "4870d17c-9278-4254-a777-c0b12ad108e1"
       }
     }
   }
