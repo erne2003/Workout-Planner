@@ -60,23 +60,35 @@ export function parseLocalISO(dateStr) {
   return t;
 }
 
+const getStorage = () => {
+  if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  if (typeof localStorage !== "undefined") return localStorage;
+  if (typeof global !== "undefined" && global.localStorage) return global.localStorage;
+  return null;
+};
+
 /** Read the last workout timestamp from localStorage (safe for SSR). */
 export function getLastWorkoutTime() {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem("lastWorkoutTime");
+  const storage = getStorage();
+  if (!storage) return null;
+  const raw = storage.getItem("lastWorkoutTime");
   return raw ? new Date(raw) : null;
 }
 
 /** Persist the last workout completion time. */
 export function setLastWorkoutTime(date = new Date()) {
-  localStorage.setItem("lastWorkoutTime", date.toISOString());
+  const storage = getStorage();
+  if (storage) {
+    storage.setItem("lastWorkoutTime", date.toISOString());
+  }
 }
 
 /** Read all manual override soreness levels { muscleName: "fresh"|"moderate"|"sore" }. */
 export function getMuscleSoreness() {
-  if (typeof window === "undefined") return {};
+  const storage = getStorage();
+  if (!storage) return {};
   try {
-    return JSON.parse(localStorage.getItem("muscleSoreness") || "{}");
+    return JSON.parse(storage.getItem("muscleSoreness") || "{}");
   } catch {
     return {};
   }
@@ -90,7 +102,10 @@ export function setMuscleSoreness(muscle, level) {
   } else {
     current[muscle] = level;
   }
-  localStorage.setItem("muscleSoreness", JSON.stringify(current));
+  const storage = getStorage();
+  if (storage) {
+    storage.setItem("muscleSoreness", JSON.stringify(current));
+  }
 }
 
 /**

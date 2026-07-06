@@ -5,6 +5,13 @@ const SettingsContext = createContext({});
 
 export const useSettings = () => useContext(SettingsContext);
 
+const getStorage = () => {
+  if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  if (typeof localStorage !== "undefined") return localStorage;
+  if (typeof global !== "undefined" && global.localStorage) return global.localStorage;
+  return null;
+};
+
 export function SettingsProvider({ children }) {
   const [theme, setThemeState] = useState("dark");
   const [weightUnit, setWeightUnitState] = useState("lbs");
@@ -20,7 +27,13 @@ export function SettingsProvider({ children }) {
 
   // Initialize from localStorage
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") || "dark";
+    const storage = getStorage();
+    if (!storage) {
+      setIsLoaded(true);
+      return;
+    }
+
+    const savedTheme = storage.getItem("theme") || "dark";
     setThemeState(savedTheme);
     if (typeof document !== 'undefined') {
       if (savedTheme === "light") {
@@ -30,16 +43,16 @@ export function SettingsProvider({ children }) {
       }
     }
 
-    setWeightUnitState(localStorage.getItem("weightUnit") || "lbs");
-    setLengthUnitState(localStorage.getItem("lengthUnit") || "in");
-    setDefaultRIRState(parseInt(localStorage.getItem("defaultRIR")) || 2);
-    setRestTimerState(parseInt(localStorage.getItem("restTimer")) || 90);
-    setPlateCalcState(localStorage.getItem("plateCalc") !== "false");
-    setBarWeightState(parseFloat(localStorage.getItem("barWeight")) || 45);
-    setAutoStartRestState(localStorage.getItem("autoStartRest") !== "false");
+    setWeightUnitState(storage.getItem("weightUnit") || "lbs");
+    setLengthUnitState(storage.getItem("lengthUnit") || "in");
+    setDefaultRIRState(parseInt(storage.getItem("defaultRIR")) || 2);
+    setRestTimerState(parseInt(storage.getItem("restTimer")) || 90);
+    setPlateCalcState(storage.getItem("plateCalc") !== "false");
+    setBarWeightState(parseFloat(storage.getItem("barWeight")) || 45);
+    setAutoStartRestState(storage.getItem("autoStartRest") !== "false");
 
     try {
-      const notifs = JSON.parse(localStorage.getItem("notifications") || '{"reminders": true, "alerts": true}');
+      const notifs = JSON.parse(storage.getItem("notifications") || '{"reminders": true, "alerts": true}');
       setNotificationsState(notifs);
     } catch {
       // Ignored
@@ -49,7 +62,10 @@ export function SettingsProvider({ children }) {
   }, []);
 
   const save = (key, val) => {
-    localStorage.setItem(key, val);
+    const storage = getStorage();
+    if (storage) {
+      storage.setItem(key, val);
+    }
   };
 
   const setTheme = (val) => {

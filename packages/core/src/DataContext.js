@@ -5,6 +5,13 @@ const DataContext = createContext({});
 
 export const useData = () => useContext(DataContext);
 
+const getStorage = () => {
+  if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  if (typeof localStorage !== "undefined") return localStorage;
+  if (typeof global !== "undefined" && global.localStorage) return global.localStorage;
+  return null;
+};
+
 export function DataProvider({ children }) {
   const [data, setData] = useState({
     workouts: null,
@@ -31,25 +38,28 @@ export function DataProvider({ children }) {
 
   // Initialize token from localStorage
   useEffect(() => {
-    if (typeof localStorage !== "undefined") {
-      const savedToken = localStorage.getItem("token");
+    const storage = getStorage();
+    if (storage) {
+      const savedToken = storage.getItem("token");
       setTokenState(savedToken);
     }
   }, []);
 
   const setToken = useCallback((newToken) => {
-    if (typeof localStorage !== "undefined") {
+    const storage = getStorage();
+    if (storage) {
       if (newToken) {
-        localStorage.setItem("token", newToken);
+        storage.setItem("token", newToken);
       } else {
-        localStorage.removeItem("token");
+        storage.removeItem("token");
       }
     }
     setTokenState(newToken);
   }, []);
 
   const fetchResource = useCallback(async (key, endpoint) => {
-    const activeToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("token") : null);
+    const storage = getStorage();
+    const activeToken = token || (storage ? storage.getItem("token") : null);
     if (!activeToken) return;
 
     setLoading((prev) => ({ ...prev, [key]: true }));
@@ -76,7 +86,8 @@ export function DataProvider({ children }) {
   }, [token]);
 
   const prefetchAll = useCallback(async () => {
-    const activeToken = token || (typeof localStorage !== "undefined" ? localStorage.getItem("token") : null);
+    const storage = getStorage();
+    const activeToken = token || (storage ? storage.getItem("token") : null);
     if (!activeToken) {
         setData({ workouts: null, routines: null, prs: null, metrics: null });
         setLoading({ workouts: false, routines: false, prs: false, metrics: false });
