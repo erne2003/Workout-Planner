@@ -10,8 +10,10 @@ jobs:
   keepalive:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase REST API
+      - name: Ping Backend DB Health Endpoint
         run: |
-          curl -sSf -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/exercises?limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          API_URL="${{ secrets.BACKEND_API_URL }}"
+          if [ -z "$API_URL" ]; then
+            API_URL="https://workout-planner-production-66ce.up.railway.app"
+          fi
+          curl -sSf -X GET "$API_URL/health-db"

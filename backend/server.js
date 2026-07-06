@@ -40,9 +40,21 @@ const routinesRoutes = require("./routes/routines.routes");
 const prsRoutes = require("./routes/prs.routes");
 const metricsRoutes = require("./routes/metrics.routes");
 
+const pool = require("./config/db");
+
 app.use(express.json());
 
 app.get("/health", (req, res) => res.json({ ok: true }));
+
+app.get("/health-db", async (req, res) => {
+    try {
+        const result = await pool.query("SELECT NOW()");
+        res.json({ ok: true, db: result.rows[0].now });
+    } catch (err) {
+        console.error("Health-db check failed:", err.message);
+        res.status(500).json({ error: "Database health check failed", details: err.message });
+    }
+});
 
 app.use("/auth", authLimiter, authRoutes);
 
