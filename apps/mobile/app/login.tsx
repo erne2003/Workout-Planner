@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "../hooks/useTheme";
-import { useData } from "@apex/core";
+import { useData, getStorage } from "@apex/core";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -13,13 +13,13 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const { colors, isLight } = useTheme();
-    const { setToken } = useData() as any;
+    const { token, tokenLoading, setToken } = useData() as any;
 
     useEffect(() => {
-        if (global.localStorage?.getItem("token")) {
+        if (!tokenLoading && token) {
             router.replace("/");
         }
-    }, [router]);
+    }, [token, tokenLoading, router]);
 
     const handle = async () => {
         setError("");
@@ -45,12 +45,15 @@ export default function LoginPage() {
             const { token, user } = data;
             if (!token) throw new Error("No token returned");
 
-            setToken(token);
-            global.localStorage.setItem("userName", user.name);
-            if (user && user.email) {
-                global.localStorage.setItem("userEmail", user.email);
+            await setToken(token);
+            const storage = getStorage();
+            if (storage) {
+                storage.setItem("userName", user.name);
+                if (user && user.email) {
+                    storage.setItem("userEmail", user.email);
+                }
+                storage.removeItem("userId"); // Clean up old storage
             }
-            global.localStorage.removeItem("userId"); // Clean up old storage
             
             // Check metrics via backend
             try {

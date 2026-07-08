@@ -38,6 +38,7 @@ function ExerciseSearch({ onAdd }: any) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedEx, setSelectedEx] = useState<any>(null);
   const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
 
   useEffect(() => {
     if (query.trim() === "" || (selectedEx && query === selectedEx.name)) {
@@ -48,7 +49,7 @@ function ExerciseSearch({ onAdd }: any) {
       setIsLoading(true);
       try {
         const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises/search?name=${encodeURIComponent(query)}`, {
-            headers: { "Authorization": `Bearer ${global.localStorage?.getItem("token")}` }
+            headers: { "Authorization": `Bearer ${token}` }
         });
         const data = res.ok ? await res.json() : [];
         setResults(data);
@@ -183,6 +184,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
 function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet }: any) {
   const [prevSets, setPrevSets] = useState([]);
   const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
 
   useEffect(() => {
     const exerciseId = exercise.exerciseId || exercise.id;
@@ -192,7 +194,7 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAdd
     if (!apiUrl) return;
 
     fetch(`${apiUrl}/workouts/history/${exerciseId}`, {
-        headers: { "Authorization": `Bearer ${global.localStorage?.getItem("token")}` }
+        headers: { "Authorization": `Bearer ${token}` }
     })
       .then((r) => r.ok ? r.json() : [])
       .then((data) => setPrevSets(Array.isArray(data) ? data : [] as any))
@@ -268,7 +270,7 @@ export default function WorkoutPage() {
   const [newRoutineConfig, setNewRoutineConfig] = useState<any[]>([]);
   const [expandedOverviewEx, setExpandedOverviewEx] = useState<number | null>(null);
 
-  const { workouts, routines: templateRoutines, loading: dataLoading, refresh } = useData() as any;
+  const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token } = useData() as any;
 
   useEffect(() => {
     if (templateRoutines) {
@@ -346,7 +348,7 @@ export default function WorkoutPage() {
         method: "POST",
         headers: { 
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+            "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           name: activeRoutine?.name || "Workout Session",
@@ -366,7 +368,7 @@ export default function WorkoutPage() {
               method: "POST",
               headers: { 
                   "Content-Type": "application/json",
-                  "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+                   "Authorization": `Bearer ${token}`
               },
               body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) * 2.205) : Number(set.weight), rir: set.rir || 0 }),
             });
@@ -396,7 +398,7 @@ export default function WorkoutPage() {
         try {
           await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, { 
               method: "DELETE",
-              headers: { "Authorization": `Bearer ${global.localStorage?.getItem("token")}` }
+              headers: { "Authorization": `Bearer ${token}` }
           });
           refresh("workouts");
           refresh("routines");
@@ -414,7 +416,7 @@ export default function WorkoutPage() {
         method: "POST",
         headers: { 
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+            "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ name: newRoutineName, exercises: newRoutineConfig }),
       });

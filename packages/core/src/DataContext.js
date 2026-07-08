@@ -1,16 +1,10 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { getSecureStorage } from "./storage";
 
 const DataContext = createContext({});
 
 export const useData = () => useContext(DataContext);
-
-const getStorage = () => {
-  if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
-  if (typeof localStorage !== "undefined") return localStorage;
-  if (typeof global !== "undefined" && global.localStorage) return global.localStorage;
-  return null;
-};
 
 export function DataProvider({ children }) {
   const [data, setData] = useState({
@@ -35,32 +29,44 @@ export function DataProvider({ children }) {
   });
 
   const [token, setTokenState] = useState(null);
+  const [tokenLoading, setTokenLoading] = useState(true);
 
-  // Initialize token from localStorage
+  // Initialize token from secure storage (async, awaited)
   useEffect(() => {
-    const storage = getStorage();
-    if (storage) {
-      const savedToken = storage.getItem("token");
-      setTokenState(savedToken);
-    }
+    (async () => {
+      try {
+        const secureStorage = getSecureStorage();
+        if (secureStorage) {
+          const savedToken = await secureStorage.getItemAsync("token");
+          setTokenState(savedToken ?? null);
+        }
+      } catch (e) {
+        console.warn("[DataContext] Failed to load token:", e);
+      } finally {
+        setTokenLoading(false);
+      }
+    })();
   }, []);
 
-  const setToken = useCallback((newToken) => {
-    const storage = getStorage();
-    if (storage) {
-      if (newToken) {
-        storage.setItem("token", newToken);
-      } else {
-        storage.removeItem("token");
+  // Persist token via secure storage — async and awaited by callers
+  const setToken = useCallback(async (newToken) => {
+    const secureStorage = getSecureStorage();
+    if (secureStorage) {
+      try {
+        if (newToken) {
+          await secureStorage.setItemAsync("token", newToken);
+        } else {
+          await secureStorage.removeItemAsync("token");
+        }
+      } catch (e) {
+        console.warn("[DataContext] Failed to persist token:", e);
       }
     }
     setTokenState(newToken);
   }, []);
 
   const fetchResource = useCallback(async (key, endpoint) => {
-    const storage = getStorage();
-    const activeToken = token || (storage ? storage.getItem("token") : null);
-    if (!activeToken) return;
+    if (!token) return;
 
     setLoading((prev) => ({ ...prev, [key]: true }));
     setErrors((prev) => ({ ...prev, [key]: null }));
@@ -68,7 +74,7 @@ export function DataProvider({ children }) {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL;
       const res = await fetch(`${apiUrl}${endpoint}`, {
-        headers: { Authorization: `Bearer ${activeToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) {
@@ -86,9 +92,7 @@ export function DataProvider({ children }) {
   }, [token]);
 
   const prefetchAll = useCallback(async () => {
-    const storage = getStorage();
-    const activeToken = token || (storage ? storage.getItem("token") : null);
-    if (!activeToken) {
+    if (!token) {
         setData({ workouts: null, routines: null, prs: null, metrics: null });
         setLoading({ workouts: false, routines: false, prs: false, metrics: false });
         return;
@@ -100,7 +104,7 @@ export function DataProvider({ children }) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL;
     const fetchWithAuth = (endpoint) =>
       fetch(`${apiUrl}${endpoint}`, {
-        headers: { Authorization: `Bearer ${activeToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       }).then((res) => {
         if (!res.ok) throw new Error(`Failed to fetch ${endpoint}`);
         return res.json();
@@ -128,9 +132,12 @@ export function DataProvider({ children }) {
     }
   }, [token]);
 
+  // Only prefetch after token has been loaded from secure storage
   useEffect(() => {
-    prefetchAll();
-  }, [prefetchAll]);
+    if (!tokenLoading) {
+      prefetchAll();
+    }
+  }, [prefetchAll, tokenLoading]);
 
   const refresh = useCallback((key) => {
     const endpoints = {
@@ -153,6 +160,7 @@ export function DataProvider({ children }) {
     prefetchAll,
     token,
     setToken,
+    tokenLoading,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

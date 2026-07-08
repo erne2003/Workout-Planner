@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-nati
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import PlateCalculator from "@/components/PlateCalculator";
-import { useSettings, useData } from "@apex/core";
+import { useSettings, useData, getStorage } from "@apex/core";
 import { getStatusFromPct, getMuscleSoreness, computeDynamicRecovery, RECOVERY_COLOR } from "@apex/core/src/recovery";
 import Svg, { Polygon, Polyline } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
@@ -209,7 +209,7 @@ export default function HomePage() {
 
   return (
     <PageShell 
-      title={`${greeting()}, ${global.localStorage?.getItem("userName")?.split(" ")[0] || "User"}`} 
+      title={`${greeting()}, ${getStorage()?.getItem("userName")?.split(" ")[0] || "User"}`} 
       subtitle={formatDate()}
       onSettingsClick={() => router.push("/settings" as any)}
     >
@@ -236,7 +236,7 @@ export default function HomePage() {
           <Svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <Polygon points="6,3 17,10 6,17" fill="white" />
           </Svg>
-          <Text style={styles.ctaButtonText}>Start Today's Workout</Text>
+          <Text style={styles.ctaButtonText}>{"Start Today's Workout"}</Text>
         </LinearGradient>
       </TouchableOpacity>
 

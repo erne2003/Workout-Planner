@@ -1,8 +1,9 @@
 const js = require("@eslint/js");
 const globals = require("globals");
-
+const pluginSecurity = require("eslint-plugin-security");
 module.exports = [
   js.configs.recommended,
+  pluginSecurity.configs.recommended,
   {
     ignores: [
       "scratch/**",

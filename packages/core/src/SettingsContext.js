@@ -1,16 +1,12 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { getStorage } from "./storage";
 
 const SettingsContext = createContext({});
 
 export const useSettings = () => useContext(SettingsContext);
 
-const getStorage = () => {
-  if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
-  if (typeof localStorage !== "undefined") return localStorage;
-  if (typeof global !== "undefined" && global.localStorage) return global.localStorage;
-  return null;
-};
+
 
 export function SettingsProvider({ children }) {
   const [theme, setThemeState] = useState("dark");

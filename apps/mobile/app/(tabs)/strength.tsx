@@ -271,7 +271,7 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           exerciseName: exercise,
@@ -476,7 +476,7 @@ export function StrengthContent() {
       { muscle: "Core",      score: 0, color: "#FF3B30", prev: 0 },
   ]);
 
-  const { workouts, prs: prData, metrics: metData, loading, refresh } = useData() as any;
+  const { workouts, prs: prData, metrics: metData, loading, refresh, token } = useData() as any;
 
   useEffect(() => {
       try {
