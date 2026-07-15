@@ -66,8 +66,51 @@ const deleteRoutine = async (routineId, userId) => {
     return result.rows[0];
 };
 
+// Update an existing routine
+const updateRoutine = async ({ userId, routineId, name, exercises }) => {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const routineRes = await client.query(
+            `UPDATE routines SET name = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
+            [name, routineId, userId]
+        );
+
+        if (routineRes.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return null;
+        }
+
+        // Delete existing exercise mappings
+        await client.query(
+            `DELETE FROM routine_exercises WHERE routine_id = $1`,
+            [routineId]
+        );
+
+        // Insert new/updated exercise mappings
+        for (let i = 0; i < exercises.length; i++) {
+            const ex = exercises[i];
+            await client.query(
+                `INSERT INTO routine_exercises (routine_id, exercise_id, exercise_order, sets, reps, weight, rir)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [routineId, ex.exercise_id || ex.id, i, ex.sets || 3, ex.reps || 10, ex.weight || 0, ex.rir || 0]
+            );
+        }
+
+        await client.query("COMMIT");
+        return routineRes.rows[0];
+    } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     getRoutinesByUser,
     createRoutine,
-    deleteRoutine
+    deleteRoutine,
+    updateRoutine
 };

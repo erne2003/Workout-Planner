@@ -184,7 +184,12 @@ export default function HomePage() {
           });
 
           const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (\d+:\d+)/) : null;
-          const dStr = dMatch ? `${dMatch[1]} min` : "N/A";
+          let dStr = "N/A";
+          if (dMatch) {
+            const [m, s] = dMatch[1].split(":").map(Number);
+            const timeStr = `${m}:${String(s).padStart(2, "0")}`;
+            dStr = m === 0 ? `${timeStr} sec` : `${timeStr} min`;
+          }
 
           setLastWorkout({
             name: lw.name || "Workout Session",

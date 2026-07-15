@@ -49,7 +49,7 @@ function ExerciseSearch({ onAdd }: any) {
       setIsLoading(true);
       try {
         const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises/search?name=${encodeURIComponent(query)}`, {
-            headers: { "Authorization": `Bearer ${token}` }
+          headers: { "Authorization": `Bearer ${token}` }
         });
         const data = res.ok ? await res.json() : [];
         setResults(data);
@@ -117,8 +117,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
 
   return (
     <View style={styles.setRowContainer}>
-      <TouchableOpacity
-        onPress={() => !isDone && onToggle(exIdx, setIdx)}
+      <View
         style={[
           styles.setRowInner,
           {
@@ -168,33 +167,37 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
           </View>
         </View>
 
-        <TouchableOpacity onPress={() => onToggle(exIdx, setIdx)} style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}>
+        <TouchableOpacity
+          onPress={() => onToggle(exIdx, setIdx)}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}
+        >
           {isDone && (
             <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <Path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           )}
         </TouchableOpacity>
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 /* ─── ExerciseCard ──────────────────────────────────────────── */
-function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet }: any) {
+function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise }: any) {
   const [prevSets, setPrevSets] = useState([]);
   const { colors, isLight } = useTheme();
   const { token } = useData() as any;
 
   useEffect(() => {
     const exerciseId = exercise.exerciseId || exercise.id;
-    if (!exerciseId || String(exerciseId).startsWith("e")) return; 
+    if (!exerciseId || String(exerciseId).startsWith("e")) return;
 
     const apiUrl = process.env.EXPO_PUBLIC_API_URL;
     if (!apiUrl) return;
 
     fetch(`${apiUrl}/workouts/history/${exerciseId}`, {
-        headers: { "Authorization": `Bearer ${token}` }
+      headers: { "Authorization": `Bearer ${token}` }
     })
       .then((r) => r.ok ? r.json() : [])
       .then((data) => setPrevSets(Array.isArray(data) ? data : [] as any))
@@ -208,10 +211,14 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAdd
     <View style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
       <View style={styles.exCardHeader}>
         <View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity
+            onLongPress={() => onSwapExercise && onSwapExercise(exIdx)}
+            delayLongPress={800}
+            style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+          >
             <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
             <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-          </View>
+          </TouchableOpacity>
           <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
         </View>
         <Text style={[styles.exCardDoneCount, { color: done === exercise.sets.length ? "#30D158" : colors.textSecondary }]}>
@@ -270,6 +277,10 @@ export default function WorkoutPage() {
   const [newRoutineConfig, setNewRoutineConfig] = useState<any[]>([]);
   const [expandedOverviewEx, setExpandedOverviewEx] = useState<number | null>(null);
 
+  const [swappingExIdx, setSwappingExIdx] = useState<number | null>(null);
+  const [routineModified, setRoutineModified] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+
   const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token } = useData() as any;
 
   useEffect(() => {
@@ -280,10 +291,12 @@ export default function WorkoutPage() {
   }, [templateRoutines]);
 
   useEffect(() => {
-    if (!started) return;
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    if (!started || !startTime) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [started]);
+  }, [started, startTime]);
 
   useEffect(() => {
     if (!isResting) return;
@@ -340,15 +353,69 @@ export default function WorkoutPage() {
     setWorkoutPlan(newPlan);
   };
 
-  const finishWorkout = async () => {
-    if (isSaving) return;
+  const swapExercise = (exIdx: number, newExercise: any) => {
+    if (!newExercise) return;
+    const newPlan = [...workoutPlan];
+    const originalEx = newPlan[exIdx];
+
+    const updatedSets = originalEx.sets.map((set: any, si: number) => {
+      const isSetDone = !!completed[`${exIdx}-${si}`];
+      if (isSetDone) {
+        return set;
+      }
+      return {
+        ...set,
+        weight: 0,
+        reps: 0,
+        rir: 0
+      };
+    });
+
+    newPlan[exIdx] = {
+      ...originalEx,
+      ...newExercise,
+      muscle: newExercise.muscle_group || newExercise.muscle,
+      accentColor: originalEx.accentColor || "#30D158",
+      exerciseId: newExercise.id,
+      name: newExercise.name,
+      sets: updatedSets
+    };
+
+    setWorkoutPlan(newPlan);
+    setRoutineModified(true);
+  };
+
+  const saveWorkoutAndFinish = async (shouldUpdateRoutine: boolean) => {
     setIsSaving(true);
     try {
-      const workoutRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts`, {
-        method: "POST",
-        headers: { 
+      if (shouldUpdateRoutine && activeRoutine && !activeRoutine.isPastWorkout) {
+        const payloadExercises = workoutPlan.map((ex: any) => ({
+          exercise_id: ex.exerciseId || ex.id,
+          sets: ex.sets.length,
+          reps: ex.sets[0]?.reps || 10,
+          weight: ex.sets[0]?.weight || 0,
+          rir: ex.sets[0]?.rir || 0
+        }));
+
+        await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${activeRoutine.id}`, {
+          method: "PUT",
+          headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            name: activeRoutine.name,
+            exercises: payloadExercises
+          }),
+        });
+        refresh("routines");
+      }
+
+      const workoutRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           name: activeRoutine?.name || "Workout Session",
@@ -366,9 +433,9 @@ export default function WorkoutPage() {
             const set = exercise.sets[si];
             await fetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts/${workoutId}/sets`, {
               method: "POST",
-              headers: { 
-                  "Content-Type": "application/json",
-                   "Authorization": `Bearer ${token}`
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
               },
               body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) * 2.205) : Number(set.weight), rir: set.rir || 0 }),
             });
@@ -381,31 +448,50 @@ export default function WorkoutPage() {
       setStarted(false);
       setElapsed(0);
       setCompleted({});
+      setRoutineModified(false);
+      setStartTime(null);
     } catch (err) {
       console.error("Error saving workout:", err);
-      setActiveRoutine(null);
-      setStarted(false);
-      setLastWorkoutTime(new Date());
+      Alert.alert("Error", "Failed to save workout session.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const finishWorkout = async () => {
+    if (isSaving) return;
+    if (routineModified && activeRoutine && !activeRoutine.isPastWorkout) {
+      Alert.alert(
+        "Update Routine?",
+        "You swapped exercises in this workout. Would you like to update the routine template for future sessions?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "No, Only Save Session", onPress: () => saveWorkoutAndFinish(false) },
+          { text: "Yes, Update Routine", onPress: () => saveWorkoutAndFinish(true) },
+        ]
+      );
+    } else {
+      await saveWorkoutAndFinish(false);
     }
   };
 
   const deleteRoutine = async (rId: string) => {
     Alert.alert("Delete", "Delete this routine?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => {
-        try {
-          await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, { 
+      {
+        text: "Delete", style: "destructive", onPress: async () => {
+          try {
+            await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, {
               method: "DELETE",
               headers: { "Authorization": `Bearer ${token}` }
-          });
-          refresh("workouts");
-          refresh("routines");
-        } catch (e) {
-          console.error(e);
+            });
+            refresh("workouts");
+            refresh("routines");
+          } catch (e) {
+            console.error(e);
+          }
         }
-      }}
+      }
     ]);
   };
 
@@ -414,9 +500,9 @@ export default function WorkoutPage() {
     try {
       await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines`, {
         method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ name: newRoutineName, exercises: newRoutineConfig }),
       });
@@ -454,34 +540,34 @@ export default function WorkoutPage() {
         });
       });
       plan = Object.values(exercisesMap);
-    } else if (lastSession) {
-      const exercisesMap: any = {};
-      lastSession.sets.forEach((set: any) => {
-        if (!exercisesMap[set.exercise_id]) {
-          exercisesMap[set.exercise_id] = {
-            exerciseId: set.exercise_id,
-            id: set.exercise_id,
-            name: set.name || set.exercise_name,
-            muscle: set.muscle_group,
-            accentColor: "#0A84FF",
-            sets: []
-          };
-        }
-        exercisesMap[set.exercise_id].sets.push({
-          reps: set.reps, 
-          weight: unit === "kg" ? Math.round(Number(set.weight) / 2.205) : Number(set.weight), 
-          rir: set.rir !== null ? set.rir : 0
-        });
-      });
-      plan = Object.values(exercisesMap);
     } else {
+      // It's a template routine. Base the plan on template's exercises.
+      // If a lastSession exists, pre-populate individual exercise sets from it.
       plan = item.exercises.map((ex: any) => {
-        const setsObj = Array(ex.sets).fill(0).map(() => ({
-          reps: ex.reps, weight: unit === "kg" ? Math.round(Number(ex.weight) / 2.205) : Number(ex.weight), rir: ex.rir
-        }));
+        const exId = ex.exercise_id || ex.id;
+        const lastExSets = lastSession 
+          ? lastSession.sets.filter((s: any) => s.exercise_id === exId) 
+          : [];
+
+        let setsObj = [];
+        if (lastExSets.length > 0) {
+          setsObj = lastExSets.map((s: any) => ({
+            reps: s.reps,
+            weight: unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight),
+            rir: s.rir !== null ? s.rir : 0
+          }));
+        } else {
+          setsObj = Array(ex.sets || 3).fill(0).map(() => ({
+            reps: ex.reps || 10,
+            weight: unit === "kg" ? Math.round(Number(ex.weight || 0) / 2.205) : Number(ex.weight || 0),
+            rir: ex.rir || 0
+          }));
+        }
+
         return {
           ...ex,
-          id: ex.exercise_id,
+          id: exId,
+          exerciseId: exId,
           sets: setsObj,
           accentColor: "#0A84FF",
         };
@@ -492,6 +578,8 @@ export default function WorkoutPage() {
     setWorkoutPlan(plan);
     setStarted(false);
     setIsEditing(false);
+    setElapsed(0);
+    setStartTime(null);
   };
 
   /* ── Routines List View ──────────────────────────────────────── */
@@ -623,12 +711,12 @@ export default function WorkoutPage() {
               {ex.sets.map((set: any, si: number) => (
                 <View key={si} style={styles.editSetRow}>
                   <Text style={[styles.editSetNum, { color: colors.textSecondary }]}>S{si + 1}</Text>
-                  
+
                   <View style={styles.editSetInputGroup}>
                     <TextInput keyboardType="numeric" value={String(set.weight)} onChangeText={(t) => updateSet(ei, si, "weight", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>{unit}</Text>
                   </View>
-                  
+
                   <View style={styles.editSetInputGroup}>
                     <TextInput keyboardType="numeric" value={String(set.reps)} onChangeText={(t) => updateSet(ei, si, "reps", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>reps</Text>
@@ -638,7 +726,7 @@ export default function WorkoutPage() {
                     <TextInput keyboardType="numeric" value={String(set.rir !== undefined ? set.rir : 0)} onChangeText={(t) => updateSet(ei, si, "rir", t)} style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>RIR</Text>
                   </View>
-                  
+
                   <TouchableOpacity onPress={() => removeSet(ei, si)} style={styles.removeSetBtn}>
                     <Text style={styles.removeSetBtnText}>✕</Text>
                   </TouchableOpacity>
@@ -720,7 +808,7 @@ export default function WorkoutPage() {
           })}
         </View>
 
-        <TouchableOpacity onPress={() => setStarted(true)} style={styles.startWorkoutBtn}>
+        <TouchableOpacity onPress={() => { setStarted(true); setStartTime(Date.now()); }} style={styles.startWorkoutBtn}>
           <Text style={styles.startWorkoutBtnText}>Start Workout</Text>
         </TouchableOpacity>
 
@@ -775,7 +863,7 @@ export default function WorkoutPage() {
 
       <View style={{ gap: 12 }}>
         {workoutPlan.map((ex, ei) => (
-          <ExerciseCard key={ex.id} exercise={ex} exIdx={ei} completed={completed} onToggle={toggle} onUpdateSet={updateSet} onAddSet={addSet} onRemoveSet={removeSet} />
+          <ExerciseCard key={ex.id} exercise={ex} exIdx={ei} completed={completed} onToggle={toggle} onUpdateSet={updateSet} onAddSet={addSet} onRemoveSet={removeSet} onSwapExercise={setSwappingExIdx} />
         ))}
       </View>
 
@@ -788,6 +876,32 @@ export default function WorkoutPage() {
           {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
         </Text>
       </TouchableOpacity>
+
+      <Modal visible={swappingExIdx !== null} animationType="slide" transparent>
+        <View style={[styles.modalOverlay, { backgroundColor: isLight ? "rgba(255,255,255,0.98)" : "rgba(0,0,0,0.95)" }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Swap Exercise</Text>
+            <TouchableOpacity onPress={() => setSwappingExIdx(null)}>
+              <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {swappingExIdx !== null && (
+            <Text style={{ fontSize: 16, color: colors.textSecondary, marginBottom: 20 }}>
+              Replace <Text style={{ fontWeight: "700", color: colors.textPrimary }}>&quot;{workoutPlan[swappingExIdx]?.name}&quot;</Text> with:
+            </Text>
+          )}
+
+          <ExerciseSearch
+            onAdd={(newEx: any) => {
+              if (swappingExIdx !== null) {
+                swapExercise(swappingExIdx, newEx);
+                setSwappingExIdx(null);
+              }
+            }}
+          />
+        </View>
+      </Modal>
     </PageShell>
   );
 }

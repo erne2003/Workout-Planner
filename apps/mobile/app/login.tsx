@@ -29,7 +29,7 @@ export default function LoginPage() {
 
         try {
             const endpoint = isRegister ? "/auth/register" : "/auth/login";
-            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
             const res = await fetch(`${apiUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

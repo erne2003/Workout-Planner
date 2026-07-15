@@ -246,6 +246,7 @@ function StrengthRow({ item }: any) {
 /* --- Log PR Card Component ----------------------------------- */
 function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
   const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
   const [exercise, setExercise] = useState("bench");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("1");

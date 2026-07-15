@@ -34,7 +34,7 @@ export default function OnboardingPage() {
         }
  
         try {
-            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
             await fetch(`${apiUrl}/metrics`, {
                 method: "POST",
                 headers: { 
