@@ -14,6 +14,8 @@
  *   "muscleSoreness"    - JSON object { [muscleName]: "fresh"|"moderate"|"sore" }
  */
 
+import { getStorage } from "./storage";
+
 export const RECOVERY_COLOR = {
   fully_recovered:     "#30D158", // Green ✅
   mostly_recovered:    "#FFD60A", // Yellow 🟡
@@ -60,12 +62,7 @@ export function parseLocalISO(dateStr) {
   return t;
 }
 
-const getStorage = () => {
-  if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
-  if (typeof localStorage !== "undefined") return localStorage;
-  if (typeof global !== "undefined" && global.localStorage) return global.localStorage;
-  return null;
-};
+
 
 /** Read the last workout timestamp from localStorage (safe for SSR). */
 export function getLastWorkoutTime() {

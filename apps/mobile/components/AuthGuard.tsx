@@ -1,21 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter, usePathname } from "expo-router";
+import { useData } from "@apex/core";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
-    const [checked, setChecked] = useState(false);
+    const { token, tokenLoading } = useData() as any;
 
     useEffect(() => {
-        const token = global.localStorage?.getItem("token");
+        if (tokenLoading) return; // still loading from SecureStore, don't redirect yet
         if (!token && pathname !== "/login") {
-            setChecked(false);
             router.replace("/login");
-        } else {
-            setChecked(true);
         }
-    }, [pathname, router]);
+    }, [token, tokenLoading, pathname, router]);
 
-    if (!checked) return null; // prevent flash of protected content
+    // Don't render protected content while token is loading or while redirecting
+    if (tokenLoading) return null;
+    if (!token && pathname !== "/login") return null;
     return <>{children}</>;
 }

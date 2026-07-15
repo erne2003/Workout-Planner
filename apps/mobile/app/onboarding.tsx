@@ -4,9 +4,11 @@ import { useRouter } from "expo-router";
 import Svg, { Path, Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../hooks/useTheme";
+import { useData } from "@apex/core";
 
 export default function OnboardingPage() {
     const router = useRouter();
+    const { token } = useData() as any;
     const [years, setYears] = useState("");
     const [weight, setWeight] = useState("");
     const [gender, setGender] = useState<"male" | "female">("male");
@@ -32,12 +34,12 @@ export default function OnboardingPage() {
         }
  
         try {
-            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
             await fetch(`${apiUrl}/metrics`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+                    "Authorization": `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     trainingYears: parseFloat(years) || 0,
