@@ -8,7 +8,7 @@ on:
 
 jobs:
   security-audit:
-    name: Run Security Audits
+    name: security-check
     runs-on: ubuntu-latest
 
     steps:
