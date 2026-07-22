@@ -81,7 +81,7 @@ export default function LoginPage() {
         <View style={[styles.container, { backgroundColor: colors.bgBase }]}>
             {/* Logo / title */}
             <View style={styles.titleContainer}>
-                <Text style={styles.logo}>APEX</Text>
+                <Text style={styles.logo}>Virtus Fitness</Text>
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                     {isRegister ? "Create your account" : "Welcome back"}
                 </Text>
