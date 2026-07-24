@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import { useSettings, useData } from "@apex/core";
@@ -37,11 +37,19 @@ function ExerciseSearch({ onAdd }: any) {
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedEx, setSelectedEx] = useState<any>(null);
+  const [isCreatingCustom, setIsCreatingCustom] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [selectedMuscle, setSelectedMuscle] = useState("Chest");
   const { colors, isLight } = useTheme();
   const { token } = useData() as any;
 
+  const MUSCLE_OPTIONS = [
+    "Chest", "Back", "Shoulders", "Biceps", "Triceps", "Abs",
+    "Quadriceps", "Hamstrings", "Glutes", "Calves", "Forearms", "Traps", "Full Body"
+  ];
+
   useEffect(() => {
-    if (query.trim() === "" || (selectedEx && query === selectedEx.name)) {
+    if (query.trim() === "" || (selectedEx && query === selectedEx.name) || isCreatingCustom) {
       setResults([]);
       return;
     }
@@ -57,7 +65,71 @@ function ExerciseSearch({ onAdd }: any) {
       finally { setIsLoading(false); }
     }, 500);
     return () => clearTimeout(t);
-  }, [query, selectedEx]);
+  }, [query, selectedEx, isCreatingCustom]);
+
+  const saveCustomExercise = async () => {
+    if (!customName.trim()) return;
+    try {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: customName.trim(), muscle: selectedMuscle })
+      });
+      const newEx = res.ok ? await res.json() : { id: Date.now(), name: customName.trim(), muscle: selectedMuscle, muscle_group: selectedMuscle };
+      onAdd({ ...newEx, muscle: selectedMuscle, muscle_group: selectedMuscle });
+      setQuery("");
+      setSelectedEx(null);
+      setIsCreatingCustom(false);
+    } catch {
+      const fallbackEx = { id: Date.now(), name: customName.trim(), muscle: selectedMuscle, muscle_group: selectedMuscle };
+      onAdd(fallbackEx);
+      setQuery("");
+      setSelectedEx(null);
+      setIsCreatingCustom(false);
+    }
+  };
+
+  if (isCreatingCustom) {
+    return (
+      <View style={{ gap: 12, marginBottom: 10 }}>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary }}>Creating Custom Exercise: "{customName}"</Text>
+        <Text style={{ fontSize: 12, color: colors.textSecondary }}>Select Target Muscle Group:</Text>
+        <ScrollView style={{ maxHeight: 150, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)" }}>
+          {MUSCLE_OPTIONS.map((m) => (
+            <TouchableOpacity
+              key={m}
+              onPress={() => setSelectedMuscle(m)}
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                backgroundColor: selectedMuscle === m ? (isLight ? "rgba(48,209,88,0.15)" : "rgba(48,209,88,0.2)") : "transparent"
+              }}
+            >
+              <Text style={{ color: selectedMuscle === m ? "#30D158" : colors.textPrimary, fontWeight: selectedMuscle === m ? "700" : "400" }}>{m}</Text>
+              {selectedMuscle === m && <Text style={{ color: "#30D158", fontWeight: "800" }}>✓</Text>}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: "row", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+          <TouchableOpacity onPress={() => setIsCreatingCustom(false)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.textSecondary, fontWeight: "600" }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={saveCustomExercise} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, backgroundColor: "#30D158" }}>
+            <Text style={{ color: "#000", fontWeight: "700" }}>Save & Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={{ zIndex: 50, marginBottom: 10 }}>
@@ -68,6 +140,8 @@ function ExerciseSearch({ onAdd }: any) {
             onChangeText={(t) => { setQuery(t); setSelectedEx(null); }}
             placeholder="Type to search exercises..."
             placeholderTextColor={colors.textSecondary}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
             style={[styles.searchInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]}
           />
           {query.trim() !== "" && !selectedEx && results.length > 0 && (
@@ -89,6 +163,20 @@ function ExerciseSearch({ onAdd }: any) {
               </ScrollView>
             </View>
           )}
+
+          {query.trim() !== "" && !selectedEx && !isLoading && results.length === 0 && (
+            <View style={[styles.searchResults, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={() => {
+                  setCustomName(query.trim());
+                  setIsCreatingCustom(true);
+                }}
+                style={[styles.searchResultItem, { paddingVertical: 14 }]}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#30D158" }}>+ Create custom exercise "{query.trim()}"</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <TouchableOpacity
@@ -106,6 +194,41 @@ function ExerciseSearch({ onAdd }: any) {
         </TouchableOpacity>
       </View>
     </View>
+  );
+}
+
+/* ─── ClearOnFocusInput ─────────────────────────────────────── */
+function ClearOnFocusInput({ numericValue, onChangeText, placeholder, ...rest }: any) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [editText, setEditText] = useState('');
+  const savedValue = useRef(numericValue);
+
+  const displayValue = isFocused ? editText : (numericValue === 0 ? '' : String(numericValue));
+
+  return (
+    <TextInput
+      {...rest}
+      keyboardType="numeric"
+      returnKeyType="done"
+      onSubmitEditing={Keyboard.dismiss}
+      value={displayValue}
+      placeholder={isFocused ? '' : placeholder}
+      onFocus={() => {
+        savedValue.current = numericValue;
+        setEditText('');
+        setIsFocused(true);
+      }}
+      onBlur={() => {
+        if (editText === '') {
+          onChangeText(String(savedValue.current));
+        }
+        setIsFocused(false);
+      }}
+      onChangeText={(t: string) => {
+        setEditText(t);
+        onChangeText(t);
+      }}
+    />
   );
 }
 
@@ -131,8 +254,8 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
         <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
           {prevSet ? (
             <>
-              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>{prevSet.weight}<Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text></Text>
-              <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.reps}{prevSet.rir != null && prevSet.rir !== undefined && ` ${prevSet.rir}rir`}</Text>
+              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>{Math.round(prevSet.weight)}<Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}</Text>
+              {prevSet.rir != null && prevSet.rir !== undefined && prevSet.rir > 0 && <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.rir}rir</Text>}
             </>
           ) : (
             <Text style={{ fontSize: 10, color: colors.textTertiary }}>—</Text>
@@ -141,10 +264,9 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
 
         <View style={styles.setInputsRow}>
           <View style={styles.inputGroup}>
-            <TextInput
-              keyboardType="numeric"
-              value={set.weight === 0 ? "" : String(set.weight)}
-              onChangeText={(t) => onUpdateSet(exIdx, setIdx, "weight", t)}
+            <ClearOnFocusInput
+              numericValue={set.weight}
+              onChangeText={(t: string) => onUpdateSet(exIdx, setIdx, "weight", t)}
               placeholder="0"
               placeholderTextColor={colors.textTertiary}
               editable={!isDone}
@@ -154,10 +276,9 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
           </View>
 
           <View style={styles.inputGroup}>
-            <TextInput
-              keyboardType="numeric"
-              value={set.reps === 0 ? "" : String(set.reps)}
-              onChangeText={(t) => onUpdateSet(exIdx, setIdx, "reps", t)}
+            <ClearOnFocusInput
+              numericValue={set.reps}
+              onChangeText={(t: string) => onUpdateSet(exIdx, setIdx, "reps", t)}
               placeholder="0"
               placeholderTextColor={colors.textTertiary}
               editable={!isDone}
@@ -273,6 +394,7 @@ export default function WorkoutPage() {
   const [activeRoutine, setActiveRoutine] = useState<any>(null);
   const [isManagingRoutines, setIsManagingRoutines] = useState(false);
   const [isCreatingRoutine, setIsCreatingRoutine] = useState(false);
+  const [isAddingExerciseModal, setIsAddingExerciseModal] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState("");
   const [newRoutineConfig, setNewRoutineConfig] = useState<any[]>([]);
   const [expandedOverviewEx, setExpandedOverviewEx] = useState<number | null>(null);
@@ -331,7 +453,7 @@ export default function WorkoutPage() {
   };
   const updateSet = (exIdx: number, setIdx: number, field: string, val: string) => {
     const newPlan = [...workoutPlan];
-    newPlan[exIdx].sets[setIdx][field] = Number(val);
+    newPlan[exIdx].sets[setIdx][field] = field === 'weight' ? Math.round(Number(val)) : Number(val);
     setWorkoutPlan(newPlan);
   };
   const removeExercise = (exIdx: number) => {
@@ -612,6 +734,8 @@ export default function WorkoutPage() {
               onChangeText={setNewRoutineName}
               placeholder="Workout Name (e.g. Pull Day)"
               placeholderTextColor={colors.textSecondary}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
               style={[styles.routineNameInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.05)", borderColor: colors.border, color: colors.textPrimary }]}
             />
 
@@ -646,6 +770,10 @@ export default function WorkoutPage() {
             routines.map(r => {
               const ls = workouts?.find((w: any) => w.name === r.name);
               const lsDate = ls ? new Date(ls.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+              const lsVolume = ls?.sets ? Math.round(ls.sets.reduce((sum: number, s: any) => {
+                const w = unit === "kg" ? Math.round(Number(s.weight || 0) / 2.205) : Number(s.weight || 0);
+                return sum + (Number(s.reps || 0) * w);
+              }, 0)) : 0;
 
               return (
                 <TouchableOpacity
@@ -654,7 +782,7 @@ export default function WorkoutPage() {
                   onPress={() => selectRoutine(r)}
                   disabled={isManagingRoutines}
                 >
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <Text style={[styles.routineTitle, { color: colors.textPrimary }]}>{r.name}</Text>
                       {r.isPastWorkout && <Text style={[styles.pastWorkoutBadge, { color: colors.textTertiary }]}>Completed Session</Text>}
@@ -667,7 +795,7 @@ export default function WorkoutPage() {
                       </Text>
                       {ls && !r.isPastWorkout && (
                         <Text style={styles.routineLastSessionText}>
-                          Last Session: {lsDate} · {ls.sets?.length || 0} sets
+                          Last Session: {lsDate} · {lsVolume.toLocaleString()} {unit} · {ls.sets?.length || 0} sets
                         </Text>
                       )}
                     </View>
@@ -713,17 +841,17 @@ export default function WorkoutPage() {
                   <Text style={[styles.editSetNum, { color: colors.textSecondary }]}>S{si + 1}</Text>
 
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.weight)} onChangeText={(t) => updateSet(ei, si, "weight", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <ClearOnFocusInput numericValue={set.weight} onChangeText={(t: string) => updateSet(ei, si, "weight", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>{unit}</Text>
                   </View>
 
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.reps)} onChangeText={(t) => updateSet(ei, si, "reps", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <ClearOnFocusInput numericValue={set.reps} onChangeText={(t: string) => updateSet(ei, si, "reps", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>reps</Text>
                   </View>
 
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.rir !== undefined ? set.rir : 0)} onChangeText={(t) => updateSet(ei, si, "rir", t)} style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
+                    <ClearOnFocusInput numericValue={set.rir !== undefined ? set.rir : 0} onChangeText={(t: string) => updateSet(ei, si, "rir", t)} placeholder="0" style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>RIR</Text>
                   </View>
 
@@ -739,11 +867,26 @@ export default function WorkoutPage() {
             </View>
           ))}
 
-          <View style={[styles.card, { padding: 16, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgCard, marginBottom: 40 }]}>
-            <Text style={{ fontSize: 12, fontWeight: "700", marginBottom: 10, color: colors.textSecondary }}>Add Exercise to Workout</Text>
-            <ExerciseSearch onAdd={addExercise} />
-          </View>
+          <TouchableOpacity onPress={() => setIsAddingExerciseModal(true)} style={[styles.card, { padding: 16, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgCard, marginBottom: 40, alignItems: "center", justifyContent: "center" }]}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#0A84FF" }}>+ Add Exercise to Workout</Text>
+          </TouchableOpacity>
         </View>
+
+        <Modal visible={isAddingExerciseModal} animationType="slide" transparent>
+          <View style={[styles.modalOverlay, { backgroundColor: isLight ? "rgba(255,255,255,0.98)" : "rgba(0,0,0,0.95)" }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Add Exercise</Text>
+              <TouchableOpacity onPress={() => setIsAddingExerciseModal(false)}>
+                <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ExerciseSearch onAdd={(ex: any) => {
+              addExercise(ex);
+              setIsAddingExerciseModal(false);
+            }} />
+          </View>
+        </Modal>
 
         <TouchableOpacity onPress={() => setIsEditing(false)} style={styles.doneEditingFloatingBtn}>
           <Text style={styles.doneEditingFloatingBtnText}>Done Editing</Text>
@@ -796,7 +939,7 @@ export default function WorkoutPage() {
                       <View key={si} style={styles.overviewSetRow}>
                         <Text style={[styles.overviewSetNum, { color: colors.textSecondary }]}>Set {si + 1}</Text>
                         <Text style={[styles.overviewSetDetails, { color: colors.textSecondary }]}>
-                          <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.weight}</Text> {unit} × <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.reps}</Text> reps
+                          <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{Math.round(set.weight)}</Text> {unit} × <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.reps}</Text> reps
                           {set.rir > 0 && <Text style={{ color: colors.textTertiary }}> (RIR: {set.rir})</Text>}
                         </Text>
                       </View>

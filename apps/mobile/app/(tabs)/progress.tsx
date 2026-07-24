@@ -2,7 +2,14 @@ import React, { useState, useEffect, useMemo } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
-import { useSettings, useData, PROGRESS_DATA, PERSONAL_RECORDS } from "@apex/core";
+import {
+  useSettings,
+  useData,
+  PROGRESS_DATA,
+  PERSONAL_RECORDS,
+  getLoggedExercises,
+  getExerciseProgressPoints,
+} from "@apex/core";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, G, Line, Text as SvgText, Path, Circle, Rect } from "react-native-svg";
 import { StrengthContent } from "./strength";
 import { useTheme } from "../../hooks/useTheme";
@@ -247,151 +254,155 @@ function ActivityCard({ workoutStats = {} as any }: any) {
   );
 }
 
-/* --- Exercise Trajectory Chart -------------------------------- */
+/* --- Exercise Progression Chart -------------------------------- */
 function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: string }) {
   const { colors, isLight } = useTheme();
   const [selectedEx, setSelectedEx] = useState("");
+  const [metric, setMetric] = useState<"topSetWeight" | "estimated1RM" | "sessionVolume">("topSetWeight");
+  const [timeRange, setTimeRange] = useState<"1M" | "3M" | "6M" | "1Y" | "ALL">("3M");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [activeDot, setActiveDot] = useState<{
     x: number;
     y: number;
-    weight: number;
-    reps: number;
-    date: Date;
+    pt: any;
     index: number;
   } | null>(null);
 
-  // Group workouts sets by exercise name
-  const exerciseSetsMap = useMemo(() => {
-    const map: Record<string, { weight: number; reps: number; date: Date }[]> = {};
-    if (!workouts) return map;
+  // 1. Unique logged exercises from @apex/core
+  const loggedExercises = useMemo(() => {
+    return getLoggedExercises(workouts || []);
+  }, [workouts]);
 
-    workouts.forEach((w: any) => {
-      const workoutDate = new Date(w.created_at);
-      if (w.sets) {
-        w.sets.forEach((set: any) => {
-          const exName = set.name || set.exercise_name || "Unknown Exercise";
-          if (!map[exName]) {
-            map[exName] = [];
-          }
-          const rawW = parseFloat(set.weight) || 0;
-          const displayW = unit === "kg" ? Math.round(rawW / 2.205) : rawW;
-          map[exName].push({
-            weight: displayW,
-            reps: parseInt(set.reps) || 0,
-            date: workoutDate
-          });
-        });
+  // 2. Persist & load last selected exercise
+  useEffect(() => {
+    if (loggedExercises.length > 0) {
+      if (!selectedEx) {
+        const defaultEx = loggedExercises.find((e: any) =>
+          /bench|squat|deadlift/i.test(e.name)
+        )?.name || loggedExercises[0].name;
+        setSelectedEx(defaultEx);
       }
+    }
+  }, [loggedExercises, selectedEx]);
+
+  // 3. Compute progress points from @apex/core
+  const rawPoints = useMemo(() => {
+    if (!selectedEx || !workouts) return [];
+    return getExerciseProgressPoints(workouts, selectedEx, timeRange);
+  }, [workouts, selectedEx, timeRange]);
+
+  // Unit conversion if kg
+  const points = useMemo(() => {
+    return rawPoints.map((p) => {
+      const topSetWeight = unit === "kg" ? Math.round(p.topSetWeight / 2.205) : p.topSetWeight;
+      const estimated1RM = unit === "kg" ? Math.round(p.estimated1RM / 2.205) : p.estimated1RM;
+      const sessionVolume = unit === "kg" ? Math.round(p.sessionVolume / 2.205) : p.sessionVolume;
+      return {
+        ...p,
+        topSetWeight,
+        estimated1RM,
+        sessionVolume,
+        formattedDate: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      };
     });
-
-    // Sort chronologically
-    Object.keys(map).forEach((name: string) => {
-      map[name].sort((a, b) => a.date.getTime() - b.date.getTime());
-    });
-
-    return map;
-  }, [workouts, unit]);
-
-  const availableExercises = useMemo(() => {
-    return Object.keys(exerciseSetsMap).sort();
-  }, [exerciseSetsMap]);
+  }, [rawPoints, unit]);
 
   const [searchQuery, setSearchQuery] = useState("");
-
   const filteredExercises = useMemo(() => {
-    if (!searchQuery) return availableExercises;
-    return availableExercises.filter((name: string) =>
-      name.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!searchQuery) return loggedExercises;
+    return loggedExercises.filter((e: any) =>
+      e.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [availableExercises, searchQuery]);
+  }, [loggedExercises, searchQuery]);
 
-  // Set default exercise if not selected
-  useEffect(() => {
-    if (!selectedEx && availableExercises.length > 0) {
-      const first = availableExercises.find((name: string) =>
-        name.toLowerCase().includes("bench") ||
-        name.toLowerCase().includes("squat") ||
-        name.toLowerCase().includes("deadlift")
-      ) || availableExercises[0];
-      setSelectedEx(first);
-    }
-  }, [availableExercises, selectedEx]);
-
-  const points = useMemo(() => {
-    return selectedEx ? (exerciseSetsMap[selectedEx] || []) : [];
-  }, [selectedEx, exerciseSetsMap]);
-
-  // Chart dimension & boundaries
+  // Chart dimensions
   const width = 340;
   const height = 200;
 
-  const { xMin, xMax, yMin, yMax } = useMemo(() => {
-    if (points.length === 0) {
-      return { xMin: 0, xMax: 12, yMin: 0, yMax: 100 };
-    }
-    const weights = points.map((p: any) => p.weight);
-    const reps = points.map((p: any) => p.reps);
+  const { yMin, yMax } = useMemo(() => {
+    if (points.length === 0) return { yMin: 0, yMax: 100 };
+    const vals = points.map((p: any) => p[metric]);
+    let minV = Math.min(...vals);
+    let maxV = Math.max(...vals);
 
-    let minW = Math.min(...weights);
-    let maxW = Math.max(...weights);
-    let minR = Math.min(...reps);
-    let maxR = Math.max(...reps);
+    let yMinVal = Math.max(0, Math.floor(minV * 0.85));
+    let yMaxVal = Math.ceil(maxV * 1.15);
 
-    // X-axis: Reps
-    let xMinVal = Math.max(0, minR - 1);
-    let xMaxVal = maxR + 1;
-
-    // Y-axis: Weight
-    let yMinVal = Math.max(0, minW - 10);
-    let yMaxVal = maxW + 10;
-
-    if (xMaxVal === xMinVal) {
-      xMaxVal = xMinVal + 4;
-      xMinVal = Math.max(0, xMinVal - 1);
-    }
     if (yMaxVal === yMinVal) {
       yMaxVal = yMinVal + 20;
-      yMinVal = Math.max(0, yMinVal - 20);
+      yMinVal = Math.max(0, yMinVal - 10);
     }
+    return { yMin: yMinVal, yMax: yMaxVal };
+  }, [points, metric]);
 
-    return { xMin: xMinVal, xMax: xMaxVal, yMin: yMinVal, yMax: yMaxVal };
-  }, [points]);
-
-  const padL = 35;
+  const padL = 40;
   const padR = 15;
-  const padT = 20;
+  const padT = 25;
   const padB = 40;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
 
-  // x is Reps, y is Weight
-  const toX = (r: number) => padL + ((r - xMin) / (xMax - xMin)) * innerW;
-  const toY = (w: number) => padT + innerH - ((w - yMin) / (yMax - yMin)) * innerH;
+  const toX = (idx: number) => padL + (points.length <= 1 ? innerW / 2 : (idx / (points.length - 1)) * innerW);
+  const toY = (val: number) => padT + innerH - ((val - yMin) / (yMax - yMin || 1)) * innerH;
 
-  // y-axis gridlines (Weight)
   const yGridLines = useMemo(() => {
     const list: number[] = [];
-    const step = Math.max(5, Math.round((yMax - yMin) / 5));
+    const step = Math.max(1, Math.round((yMax - yMin) / 4));
     for (let w = Math.ceil(yMin); w <= Math.floor(yMax); w += step) {
       if (!list.includes(w)) list.push(w);
     }
     return list;
   }, [yMin, yMax]);
 
-  // x-axis gridlines (Reps)
-  const xGridLines = useMemo(() => {
-    const list: number[] = [];
-    const step = Math.max(1, Math.round((xMax - xMin) / 5));
-    for (let r = Math.ceil(xMin); r <= Math.floor(xMax); r += step) {
-      if (!list.includes(r)) list.push(r);
-    }
-    return list;
-  }, [xMin, xMax]);
-
   return (
     <View style={[styles.card, { padding: 20, backgroundColor: colors.bgCard, borderColor: colors.border, marginBottom: 16 }]}>
-      <Text style={[styles.cardHeaderSmall, { color: colors.textSecondary }]}>Exercise Progress Trajectory</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <Text style={[styles.cardHeaderSmall, { color: colors.textSecondary, marginBottom: 0 }]}>
+          {metric === "topSetWeight" ? "Top Set Weight" : metric === "estimated1RM" ? "Estimated 1RM (Epley)" : "Session Volume"}
+        </Text>
+
+        {/* Metric Toggle */}
+        <View style={{ flexDirection: "row", backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)", borderRadius: 8, padding: 2 }}>
+          {[
+            { id: "topSetWeight", label: "Top Set" },
+            { id: "estimated1RM", label: "Est 1RM" },
+            { id: "sessionVolume", label: "Vol" },
+          ].map((m: any) => (
+            <TouchableOpacity
+              key={m.id}
+              onPress={() => setMetric(m.id)}
+              style={{
+                paddingVertical: 3,
+                paddingHorizontal: 6,
+                borderRadius: 6,
+                backgroundColor: metric === m.id ? "#0A84FF" : "transparent"
+              }}
+            >
+              <Text style={{ fontSize: 10, fontWeight: "700", color: metric === m.id ? "#fff" : colors.textSecondary }}>{m.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Time Range Selector */}
+      <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
+        {(["1M", "3M", "6M", "1Y", "ALL"] as const).map((t) => (
+          <TouchableOpacity
+            key={t}
+            onPress={() => setTimeRange(t)}
+            style={{
+              paddingVertical: 3,
+              paddingHorizontal: 8,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: timeRange === t ? "#30D158" : colors.border,
+              backgroundColor: timeRange === t ? (isLight ? "rgba(48,209,88,0.12)" : "rgba(48,209,88,0.2)") : "transparent"
+            }}
+          >
+            <Text style={{ fontSize: 10, fontWeight: "700", color: timeRange === t ? "#30D158" : colors.textSecondary }}>{t}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       {/* Custom Expandable Dropdown Selector */}
       <View style={{ position: "relative", zIndex: 100, marginBottom: 16 }}>
@@ -462,30 +473,30 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
               }}
             />
             <ScrollView nestedScrollEnabled style={{ flex: 1 }}>
-              {filteredExercises.map((name: string) => (
+              {filteredExercises.map((e: any) => (
                 <TouchableOpacity
-                  key={name}
+                  key={e.name}
                   onPress={() => {
-                    setSelectedEx(name);
+                    setSelectedEx(e.name);
                     setIsDropdownOpen(false);
-                    setSearchQuery(""); // Clear search when selected
+                    setSearchQuery("");
                   }}
                   style={{
                     padding: 12,
                     borderBottomWidth: 1,
                     borderBottomColor: colors.border,
-                    backgroundColor: selectedEx === name ? (isLight ? "rgba(10,132,255,0.08)" : "rgba(10,132,255,0.12)") : "transparent",
+                    backgroundColor: selectedEx === e.name ? (isLight ? "rgba(10,132,255,0.08)" : "rgba(10,132,255,0.12)") : "transparent",
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textPrimary }}>
-                    {name}
+                    {e.name}
                   </Text>
                 </TouchableOpacity>
               ))}
               {filteredExercises.length === 0 && (
                 <View style={{ padding: 20, alignItems: "center" }}>
                   <Text style={{ color: colors.textTertiary, fontSize: 13 }}>
-                    No matching exercises
+                    No matching logged exercises
                   </Text>
                 </View>
               )}
@@ -494,16 +505,40 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
         )}
       </View>
 
+      {/* Empty & Sparse States */}
       {points.length === 0 ? (
-        <View style={{ height, justifyContent: "center", alignItems: "center" }}>
+        <View style={{ height, justifyContent: "center", alignItems: "center", padding: 20 }}>
           <Text style={{ color: colors.textTertiary, fontSize: 13, textAlign: "center" }}>
-            No sets logged for this exercise yet.
+            No sessions logged for this exercise yet.
+          </Text>
+        </View>
+      ) : points.length === 1 ? (
+        <View style={{ height, justifyContent: "center", alignItems: "center", padding: 15 }}>
+          <View style={{ backgroundColor: isLight ? "rgba(10,132,255,0.08)" : "rgba(10,132,255,0.15)", borderRadius: 12, padding: 14, alignItems: "center" }}>
+            <Text style={{ fontSize: 20, fontWeight: "800", color: "#0A84FF" }}>
+              {metric === "topSetWeight" && `${points[0].topSetWeight} ${unit} × ${points[0].topSetReps}`}
+              {metric === "estimated1RM" && `${points[0].estimated1RM} ${unit}`}
+              {metric === "sessionVolume" && `${points[0].sessionVolume.toLocaleString()} ${unit}`}
+            </Text>
+            <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
+              Logged on {points[0].formattedDate}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 11, color: "#FF9F0A", marginTop: 10, fontWeight: "600" }}>
+            💡 Log another session to see your progression trend line!
           </Text>
         </View>
       ) : (
-        <View style={{ width: "100%", height, overflow: "visible" }}>
+        <View style={{ width: "100%", height, overflow: "visible", borderRadius: 16, backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.02)", borderWidth: 1, borderColor: colors.border, paddingVertical: 10 }}>
           <Svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
-            {/* Y Gridlines (Weight) */}
+            <Defs>
+              <SvgLinearGradient id="mobileGraphArea" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#0A84FF" stopOpacity={0.25} />
+                <Stop offset="100%" stopColor="#0A84FF" stopOpacity={0.0} />
+              </SvgLinearGradient>
+            </Defs>
+
+            {/* Y Gridlines */}
             {yGridLines.map((w: number) => {
               const y = toY(w);
               return (
@@ -531,34 +566,6 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
               );
             })}
 
-            {/* X Gridlines (Reps) */}
-            {xGridLines.map((r: number) => {
-              const x = toX(r);
-              return (
-                <G key={`x-${r}`}>
-                  <Line
-                    x1={x}
-                    y1={padT}
-                    x2={x}
-                    y2={height - padB}
-                    stroke={colors.border}
-                    strokeWidth="1"
-                    strokeDasharray="4,4"
-                  />
-                  <SvgText
-                    x={x}
-                    y={height - padB + 16}
-                    fontSize="10"
-                    fill={colors.textSecondary}
-                    textAnchor="middle"
-                    fontWeight="600"
-                  >
-                    {r}
-                  </SvgText>
-                </G>
-              );
-            })}
-
             {/* Y Axis Label */}
             <SvgText
               x={10}
@@ -568,7 +575,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
               fontWeight="700"
               textAnchor="start"
             >
-              WEIGHT ({unit.toUpperCase()})
+              {metric === "topSetWeight" ? `TOP SET (${unit.toUpperCase()})` : metric === "estimated1RM" ? `1RM (${unit.toUpperCase()})` : `VOLUME (${unit.toUpperCase()})`}
             </SvgText>
 
             {/* X Axis Label */}
@@ -580,90 +587,142 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
               fontWeight="700"
               textAnchor="middle"
             >
-              REPS
+              SESSIONS (CHRONOLOGICAL)
             </SvgText>
 
-            {/* Chronological Trajectory Lines */}
-            {points.slice(0, -1).map((pt: any, idx: number) => {
-              const nextPt = points[idx + 1];
-              const opacity = 0.2 + 0.8 * (idx / (points.length - 1));
-              return (
-                <Line
-                  key={`line-${idx}`}
-                  x1={toX(pt.reps)}
-                  y1={toY(pt.weight)}
-                  x2={toX(nextPt.reps)}
-                  y2={toY(nextPt.weight)}
-                  stroke={colors.accentBlue}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  opacity={opacity}
-                />
-              );
-            })}
+            {/* Volume Bars vs Line */}
+            {metric === "sessionVolume" ? (
+              points.map((pt: any, idx: number) => {
+                const cxVal = toX(idx);
+                const cyVal = toY(pt.sessionVolume);
+                const barW = Math.max(8, Math.min(24, innerW / (points.length * 1.5)));
+                const barH = padT + innerH - cyVal;
 
-            {/* Chronological Dots */}
-            {points.map((pt: any, idx: number) => {
-              const opacity = 0.3 + 0.7 * (idx / (points.length - 1));
-              const isLatest = idx === points.length - 1;
-              const cxVal = toX(pt.reps);
-              const cyVal = toY(pt.weight);
-
-              return (
-                <G key={`dot-${idx}`}>
-                  <Circle
-                    cx={cxVal}
-                    cy={cyVal}
-                    r={isLatest ? 6 : 4}
-                    fill={colors.accentBlue}
-                    stroke={colors.bgCard}
-                    strokeWidth={2}
-                    opacity={opacity}
-                  />
-                  {isLatest && (
-                    <Circle
-                      cx={cxVal}
-                      cy={cyVal}
-                      r={10}
-                      fill="none"
-                      stroke={colors.accentBlue}
-                      strokeWidth="1.5"
-                      opacity="0.5"
+                return (
+                  <G key={`bar-${idx}`}>
+                    <Rect
+                      x={cxVal - barW / 2}
+                      y={cyVal}
+                      width={barW}
+                      height={Math.max(0, barH)}
+                      rx={3}
+                      fill="#0A84FF"
+                      opacity={0.85}
                     />
-                  )}
-                  {/* Invisible touch target overlay */}
-                  <Circle
-                    cx={cxVal}
-                    cy={cyVal}
-                    r={20}
-                    fill="transparent"
-                    onPressIn={() => {
-                      setActiveDot({
-                        x: cxVal,
-                        y: cyVal,
-                        weight: pt.weight,
-                        reps: pt.reps,
-                        date: pt.date,
-                        index: idx
-                      });
-                    }}
-                    onPressOut={() => {
-                      setActiveDot(null);
-                    }}
-                  />
-                </G>
-              );
-            })}
+                    {points.length <= 15 && (
+                      <SvgText
+                        x={cxVal}
+                        y={cyVal - 6}
+                        fontSize="9"
+                        fill={colors.textSecondary}
+                        textAnchor="middle"
+                        fontWeight="600"
+                      >
+                        {pt.sessionVolume}
+                      </SvgText>
+                    )}
+                  </G>
+                );
+              })
+            ) : (
+              <>
+                {/* Area Fill */}
+                {points.length > 1 && (() => {
+                  const firstPt = points[0];
+                  const lastPt = points[points.length - 1];
+                  const dPath = points.map((pt: any, idx: number) => {
+                    const x = toX(idx);
+                    const y = toY(pt[metric]);
+                    return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+                  }).join(" ");
+                  const closedPath = `${dPath} L ${toX(points.length - 1)} ${padT + innerH} L ${toX(0)} ${padT + innerH} Z`;
+                  return <Path d={closedPath} fill="url(#mobileGraphArea)" />;
+                })()}
+
+                {/* Trend Lines */}
+                {points.slice(0, -1).map((pt: any, idx: number) => {
+                  const nextPt = points[idx + 1];
+                  const x1 = toX(idx);
+                  const y1 = toY(pt[metric]);
+                  const x2 = toX(idx + 1);
+                  const y2 = toY(nextPt[metric]);
+
+                  return (
+                    <Line
+                      key={`line-${idx}`}
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="#0A84FF"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+                  );
+                })}
+
+                {/* Point Dots & Rep Labels */}
+                {points.map((pt: any, idx: number) => {
+                  const isLatest = idx === points.length - 1;
+                  const cxVal = toX(idx);
+                  const cyVal = toY(pt[metric]);
+                  const showLabel = points.length <= 15;
+
+                  return (
+                    <G key={`dot-${idx}`}>
+                      <Circle
+                        cx={cxVal}
+                        cy={cyVal}
+                        r={isLatest ? 5 : 4}
+                        fill="#0A84FF"
+                        stroke={colors.bgCard}
+                        strokeWidth={2}
+                      />
+                      {showLabel && (
+                        <SvgText
+                          x={cxVal}
+                          y={cyVal - 8}
+                          fontSize="9"
+                          fill={colors.textPrimary}
+                          textAnchor="middle"
+                          fontWeight="700"
+                        >
+                          {pt.topSetWeight}×{pt.topSetReps}
+                        </SvgText>
+                      )}
+                      {/* Touch overlay */}
+                      <Circle
+                        cx={cxVal}
+                        cy={cyVal}
+                        r={20}
+                        fill="transparent"
+                        onPressIn={() => {
+                          setActiveDot({
+                            x: cxVal,
+                            y: cyVal,
+                            pt,
+                            index: idx
+                          });
+                        }}
+                        onPressOut={() => {
+                          setActiveDot(null);
+                        }}
+                      />
+                    </G>
+                  );
+                })}
+              </>
+            )}
 
             {/* Tooltip Overlay */}
             {activeDot && (() => {
-              const boxWidth = 120;
-              const boxHeight = 38;
+              const boxWidth = 130;
+              const boxHeight = 40;
               const tooltipX = Math.max(5, Math.min(width - 5 - boxWidth, activeDot.x - (boxWidth / 2)));
               const tooltipY = activeDot.y < 55 ? activeDot.y + 12 : activeDot.y - 48;
+              const pt = activeDot.pt;
               return (
                 <G>
-                  {/* Background rect */}
                   <Rect
                     x={tooltipX}
                     y={tooltipY}
@@ -674,7 +733,6 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
                     stroke={colors.border}
                     strokeWidth={1}
                   />
-                  {/* Title Text */}
                   <SvgText
                     x={tooltipX + boxWidth / 2}
                     y={tooltipY + 15}
@@ -683,18 +741,19 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
                     fill={colors.textPrimary}
                     textAnchor="middle"
                   >
-                    {`${activeDot.weight} ${unit} x ${activeDot.reps} reps`}
+                    {metric === "topSetWeight" && `${pt.topSetWeight} ${unit} × ${pt.topSetReps} reps`}
+                    {metric === "estimated1RM" && `Est 1RM: ${pt.estimated1RM} ${unit}`}
+                    {metric === "sessionVolume" && `Volume: ${pt.sessionVolume} ${unit}`}
                   </SvgText>
-                  {/* Date Text */}
                   <SvgText
                     x={tooltipX + boxWidth / 2}
-                    y={tooltipY + 28}
+                    y={tooltipY + 30}
                     fontSize="8.5"
                     fontWeight="600"
                     fill={colors.textSecondary}
                     textAnchor="middle"
                   >
-                    {activeDot.date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    {pt.formattedDate}
                   </SvgText>
                 </G>
               );

@@ -463,7 +463,7 @@ export default function RecoveryPage() {
           <View style={styles.heroHeaderRow}>
             <View>
               <Text style={[styles.heroTitle, { color: colors.textPrimary }]}>Muscle Readiness</Text>
-              <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>Tap a muscle row to set soreness</Text>
+              <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>Tap a muscle to see details</Text>
               <View style={[styles.viewToggleGroup, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)" }]}>
                 <TouchableOpacity onPress={() => setView("front")} style={[styles.viewToggleBtn, view === "front" && { backgroundColor: "#0A84FF" }]}>
                   <Text style={{ color: view === "front" ? "#fff" : colors.textPrimary, fontSize: 12, fontWeight: "600" }}>Front</Text>
