@@ -367,7 +367,8 @@ export function calculateReadinessScore(data) {
     avg14DayHRV = 1,
     todayRHR = 60,
     avg14DayRHR = 60,
-    hoursSinceLastWorkout = 0
+    hoursSinceLastWorkout = 0,
+    muscleReadinessScore = null
   } = data;
 
   const {
@@ -405,14 +406,18 @@ export function calculateReadinessScore(data) {
     ? Math.min(120, (avg14DayRHR / todayRHR) * 100)
     : 0;
 
-  // 8. Workout Interval Score Calculation
+  // 8. Workout Interval Score Calculation (replaced by muscle readiness if provided)
   let workoutIntervalScore = 100;
-  if (hoursSinceLastWorkout < 12) {
-    workoutIntervalScore = 25;
-  } else if (hoursSinceLastWorkout < 18) {
-    workoutIntervalScore = 50;
-  } else if (hoursSinceLastWorkout < 24) {
-    workoutIntervalScore = 75;
+  if (muscleReadinessScore !== null && muscleReadinessScore !== undefined) {
+    workoutIntervalScore = muscleReadinessScore;
+  } else {
+    if (hoursSinceLastWorkout < 12) {
+      workoutIntervalScore = 25;
+    } else if (hoursSinceLastWorkout < 18) {
+      workoutIntervalScore = 50;
+    } else if (hoursSinceLastWorkout < 24) {
+      workoutIntervalScore = 75;
+    }
   }
 
   // 9. Final Composite Readiness
