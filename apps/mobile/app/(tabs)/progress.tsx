@@ -21,6 +21,26 @@ const LIFTS = [
   { key: "deadlift", label: "Deadlift", color: "#FFD60A", unit: "lbs" },
 ];
 
+const isBench = (name: string) => {
+  const n = name?.toLowerCase()?.trim() || "";
+  return n === "bench" || n === "bench press" || n === "barbell bench press" || n === "flat bench press" || n === "chest press";
+};
+const isSquat = (name: string) => {
+  const n = name?.toLowerCase()?.trim() || "";
+  return n === "squat" || n === "barbell squat" || n === "back squat" || n === "back squats" || n === "squats";
+};
+const isDeadlift = (name: string) => {
+  const n = name?.toLowerCase()?.trim() || "";
+  return n === "deadlift" || n === "barbell deadlift" || n === "deadlifts";
+};
+
+const matchLiftKey = (name: string, key: string) => {
+  if (key === "bench") return isBench(name);
+  if (key === "squat") return isSquat(name);
+  if (key === "deadlift") return isDeadlift(name);
+  return false;
+};
+
 /* --- SVG Line Chart ------------------------------------------ */
 function LineChart({ data, dataKey, color, width = 340, height = 160 }: any) {
   const { colors: themeColors } = useTheme();
@@ -29,7 +49,7 @@ function LineChart({ data, dataKey, color, width = 340, height = 160 }: any) {
   const max = values.length ? Math.max(...values) + 20 : 100;
   const range = (max - min) || 1;
 
-  const padL = 8, padR = 8, padT = 12, padB = 28;
+  const padL = 8, padR = 8, padT = 12, padB = 35;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
 
@@ -256,9 +276,9 @@ function ActivityCard({ workoutStats = {} as any }: any) {
 
 /* --- Exercise Progression Chart -------------------------------- */
 /* --- Strength Trajectory Chart Component ----------------------- */
-function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, height = 160 }: any) {
-  const chartWidth = width - 38; // Maximize space for the graph (allocate only 38px on the right for legend)
-  const padL = 28, padR = 5, padT = 10, padB = 20;
+function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, height = 200 }: any) {
+  const chartWidth = width;
+  const padL = 28, padR = 45, padT = 10, padB = 20;
   const innerW = chartWidth - padL - padR;
   const innerH = height - padT - padB;
 
@@ -266,33 +286,23 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
     { key: "bench", color: "#0A84FF", name: "Bench" },
     { key: "squat", color: "#FF2D55", name: "Squat" },
     { key: "deadlift", color: "#FFD60A", name: "Deadlift" },
-    { key: "ohp", color: "#BF5AF2", name: "OHP" },
   ];
 
   const activeLifts = selectedLift === "all" ? lifts : lifts.filter(l => l.key === selectedLift);
-  
-  const allValues = data.flatMap((d: any) => 
+
+  const allValues = data.flatMap((d: any) =>
     activeLifts.map(l => d[l.key]).filter(v => v > 0)
   );
-  const min = allValues.length ? Math.max(0, Math.min(...allValues) - 10) : 0;
-  const max = allValues.length ? Math.max(...allValues) + 10 : 100;
+  const min = 0; // Force starting point to 0 for a larger highlighted fill area
+  const max = allValues.length ? Math.max(...allValues) + 15 : 100;
   const range = (max - min) || 1;
 
   const toX = (i: number) => padL + (data.length <= 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
   const toY = (v: number) => padT + innerH - ((v - min) / range) * innerH;
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", width: "100%", height }}>
+    <View style={{ width, height, position: "relative" }}>
       <Svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth} ${height}`}>
-        <Defs>
-          {lifts.map(l => (
-            <SvgLinearGradient key={l.key} id={`grad-${l.key}`} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor={l.color} stopOpacity="0.15" />
-              <Stop offset="100%" stopColor={l.color} stopOpacity="0" />
-            </SvgLinearGradient>
-          ))}
-        </Defs>
-
         {[0.25, 0.5, 0.75, 1].map((lvl) => {
           const y = padT + innerH * (1 - lvl);
           const val = Math.round(min + range * lvl);
@@ -318,14 +328,11 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
             .map((p: any, i: number) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
             .join(" ");
 
-          const areaD = `${pathD} L${validPoints[validPoints.length - 1].x.toFixed(1)},${(padT + innerH).toFixed(1)} L${validPoints[0].x.toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
-
           return (
             <G key={l.key}>
-              <Path d={areaD} fill={`url(#grad-${l.key})`} />
-              <Path d={pathD} stroke={l.color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              <Path d={pathD} stroke={l.color} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
               {validPoints.map((p: any, idx: number) => (
-                <Circle key={idx} cx={p.x} cy={p.y} r="3.5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="1.5" />
+                <Circle key={idx} cx={p.x} cy={p.y} r="5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
               ))}
             </G>
           );
@@ -347,7 +354,7 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
         })}
       </Svg>
 
-      <View style={{ flex: 1, paddingLeft: 4, marginRight: -11, justifyContent: "center", gap: 8 }}>
+      <View style={{ position: "absolute", right: -60, top: 0, bottom: 20, justifyContent: "center", gap: 20 }}>
         {lifts.map(l => {
           const active = selectedLift === "all" || selectedLift === l.key;
           return (
@@ -402,7 +409,7 @@ function VolumeIntensityChart({ data, colors, width = 310, height = 160 }: any) 
                 stroke={colors.border} strokeWidth="1" strokeDasharray="3,3"
               />
               <SvgText x={padL - 4} y={y + 3} fontSize="8" fill="#30D158" textAnchor="end">
-                {tonnageVal >= 1000 ? `${(tonnageVal/1000).toFixed(1)}k` : tonnageVal}
+                {tonnageVal >= 1000 ? `${(tonnageVal / 1000).toFixed(1)}k` : tonnageVal}
               </SvgText>
             </G>
           );
@@ -553,10 +560,10 @@ function BodyCompositionChart({ data, colors, width = 310, height = 160 }: any) 
 function MuscleRadarChart({ data, colors }: any) {
   const numPoints = 6;
   const width = 310;
-  const height = 180;
+  const height = 240;
   const center = width / 2;
   const centerY = height / 2;
-  const maxRadius = 55;
+  const maxRadius = 80;
 
   const getCoordinates = (index: number, value: number) => {
     const angle = (index * 2 * Math.PI) / numPoints - Math.PI / 2;
@@ -604,9 +611,9 @@ function MuscleRadarChart({ data, colors }: any) {
             return (
               <Path
                 d={volumePath}
-                fill="rgba(255, 214, 10, 0.25)"
+                fill="rgba(255, 214, 10, 0.40)"
                 stroke="#FFD60A"
-                strokeWidth="2"
+                strokeWidth="3.5"
               />
             );
           })()}
@@ -617,9 +624,9 @@ function MuscleRadarChart({ data, colors }: any) {
             return (
               <Path
                 d={freqPath}
-                fill="rgba(10, 132, 255, 0.12)"
+                fill="rgba(10, 132, 255, 0.30)"
                 stroke="#0A84FF"
-                strokeWidth="1.5"
+                strokeWidth="2.5"
               />
             );
           })()}
@@ -642,7 +649,7 @@ function MuscleRadarChart({ data, colors }: any) {
                 x={labelPos.x}
                 y={textY}
                 textAnchor={anchor}
-                fontSize="8"
+                fontSize="9"
                 fontWeight="700"
                 fill={colors.textSecondary || "rgba(255,255,255,0.6)"}
               >
@@ -678,49 +685,47 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
 
   const strengthChartData = useMemo(() => {
     if (!workouts || workouts.length === 0) return [];
-    
-    const dateMap = new Map<string, { date: string; bench: number; squat: number; deadlift: number; ohp: number }>();
+
+    const dateMap = new Map<string, { date: string; bench: number; squat: number; deadlift: number }>();
     const sortedWorkouts = [...workouts].sort((a: any, b: any) => new Date(a.created_at || a.date).getTime() - new Date(b.created_at || b.date).getTime());
-    
-    let runningMax = { bench: 0, squat: 0, deadlift: 0, ohp: 0 };
-    
+
+    let runningMax = { bench: 0, squat: 0, deadlift: 0 };
+
     sortedWorkouts.forEach((w: any) => {
       const dateStr = new Date(w.created_at || w.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      
+
       let dayMax = { ...runningMax };
       let updated = false;
-      
+
       (w.sets || []).forEach((s: any) => {
         const name = s.exercise_name?.toLowerCase();
         const weightLbs = parseFloat(s.weight) || 0;
         const reps = parseInt(s.reps) || 0;
-        
+
         if (weightLbs > 0 && reps > 0) {
           const est1RM = weightLbs * (1 + reps / 30);
           const wVal = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
-          
+
           if (name === "bench" || name === "bench press") {
             if (wVal > dayMax.bench) { dayMax.bench = wVal; updated = true; }
           } else if (name === "squat" || name === "back squat") {
             if (wVal > dayMax.squat) { dayMax.squat = wVal; updated = true; }
           } else if (name === "deadlift" || name === "barbell deadlift") {
             if (wVal > dayMax.deadlift) { dayMax.deadlift = wVal; updated = true; }
-          } else if (name === "ohp" || name === "overhead press") {
-            if (wVal > dayMax.ohp) { dayMax.ohp = wVal; updated = true; }
           }
         }
       });
-      
+
       if (updated) {
         runningMax = { ...dayMax };
       }
-      
+
       dateMap.set(dateStr, {
         date: dateStr,
         ...runningMax
       });
     });
-    
+
     return Array.from(dateMap.values());
   }, [workouts, unit]);
 
@@ -735,32 +740,32 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
 
   const volumeChartData = useMemo(() => {
     if (!workouts || workouts.length === 0) return [];
-    
-    const filteredWorkouts = selectedWorkout === "all" 
-      ? workouts 
+
+    const filteredWorkouts = selectedWorkout === "all"
+      ? workouts
       : workouts.filter((w: any) => w.name === selectedWorkout);
 
     if (filteredWorkouts.length === 0) return [];
-    
+
     const now = new Date();
     const weeksData = [];
-    
+
     for (let i = 7; i >= 0; i--) {
       const start = new Date();
       start.setDate(now.getDate() - (i + 1) * 7);
       const end = new Date();
       end.setDate(now.getDate() - i * 7);
-      
+
       const weekWorkouts = filteredWorkouts.filter((w: any) => {
         const d = new Date(w.created_at || w.date);
         return d >= start && d < end;
       });
-      
+
       let weeklyTonnage = 0;
       let totalSets = 0;
       let rpeSum = 0;
       let rpeCount = 0;
-      
+
       weekWorkouts.forEach((w: any) => {
         (w.sets || []).forEach((s: any) => {
           const reps = parseFloat(s.reps) || 0;
@@ -768,7 +773,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           const wVal = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
           weeklyTonnage += wVal * reps;
           totalSets++;
-          
+
           if (s.rir !== undefined && s.rir !== null) {
             const rpe = 10 - parseFloat(s.rir);
             rpeSum += rpe;
@@ -776,7 +781,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           }
         });
       });
-      
+
       const avgRpe = rpeCount > 0 ? parseFloat((rpeSum / rpeCount).toFixed(1)) : 0;
       weeksData.push({
         week: `Wk ${8 - i}`,
@@ -784,20 +789,20 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
         avgRpe: avgRpe || 7.0,
       });
     }
-    
+
     return weeksData;
   }, [workouts, selectedWorkout, unit]);
 
   const bodyChartData = useMemo(() => {
     if (!metrics || metrics.length === 0) return [];
-    
+
     const sorted = [...metrics].sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     return sorted.map((m: any) => {
       const wOriginal = parseFloat(m.weight) || 0;
       const w = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
       const bodyFat = parseFloat(m.body_fat || m.bodyFat) || 0;
       const leanMass = bodyFat > 0 ? parseFloat((w * (1 - bodyFat / 100)).toFixed(1)) : w;
-      
+
       return {
         date: new Date(m.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         weight: w,
@@ -816,7 +821,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
       "Arms": 8,
       "Core": 6
     };
-    
+
     const MUSCLE_MAP: any = {
       "Chest": ["chest"],
       "Back": ["lats", "back", "core"],
@@ -825,16 +830,16 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
       "Arms": ["biceps", "triceps"],
       "Core": ["core"]
     };
-    
+
     const now = new Date();
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(now.getDate() - 28);
-    
+
     const recentWorkouts = (workouts || []).filter((w: any) => new Date(w.created_at) >= fourWeeksAgo);
-    
+
     const counts: any = { "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0, "Core": 0 };
     const frequency: any = { "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0, "Core": 0 };
-    
+
     recentWorkouts.forEach((w: any) => {
       const wMuscleGroups = new Set();
       (w.sets || []).forEach((s: any) => {
@@ -846,20 +851,20 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           }
         });
       });
-      
+
       wMuscleGroups.forEach((subject: any) => {
         frequency[subject]++;
       });
     });
-    
+
     return Object.keys(MUSCLE_TARGETS).map((subject: string) => {
       const weeklyVolumeAvg = counts[subject] / 4;
       const target = MUSCLE_TARGETS[subject];
       const volumePct = Math.min(100, Math.round((weeklyVolumeAvg / target) * 100));
-      
+
       const weeklyFreqAvg = frequency[subject] / 4;
       const freqPct = Math.min(100, Math.round((weeklyFreqAvg / 2) * 100));
-      
+
       return {
         subject,
         volume: volumePct || 30,
@@ -907,7 +912,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
             <Text style={{ fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, color: colors.textSecondary }}>
               1RM Progression ({unit})
             </Text>
-            
+
             <View style={{ flexDirection: "row", gap: 4 }}>
               {[
                 { id: "all", label: "All" },
@@ -932,11 +937,11 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           </View>
 
           {strengthChartData.length === 0 ? (
-            <View style={{ height: 160, justifyContent: "center", alignItems: "center" }}>
+            <View style={{ height: 200, justifyContent: "center", alignItems: "center" }}>
               <Text style={{ color: colors.textTertiary, fontSize: 12 }}>No logs yet. Complete workouts to see graph.</Text>
             </View>
           ) : (
-            <StrengthTrajectoryChart data={strengthChartData} selectedLift={selectedLift} colors={colors} width={310} height={160} />
+            <StrengthTrajectoryChart data={strengthChartData} selectedLift={selectedLift} colors={colors} width={310} height={200} />
           )}
         </View>
       )}
@@ -946,7 +951,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           <Text style={{ fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, color: colors.textSecondary, marginBottom: 6 }}>
             Weekly Tonnage Volume
           </Text>
-          
+
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
             <View style={{ flexDirection: "row", gap: 6 }}>
               <TouchableOpacity
@@ -1034,43 +1039,39 @@ export function ProgressContent() {
 
   const getLatestEstimated1RM = (liftKey: string) => {
     if (!allWorkouts || allWorkouts.length === 0) return 0;
-    
-    const exerciseSets: { weight: number; reps: number; date: Date }[] = [];
-    
+
+    let maxConverted1RM = 0;
+
     allWorkouts.forEach((w: any) => {
-      const wDate = new Date(w.created_at || w.date);
       (w.sets || []).forEach((s: any) => {
         const name = s.exercise_name?.toLowerCase();
         let match = false;
         if (liftKey === "bench") match = name === "bench" || name === "bench press";
         else if (liftKey === "squat") match = name === "squat" || name === "back squat";
         else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
-        
+
         if (match) {
-          exerciseSets.push({
-            weight: parseFloat(s.weight) || 0,
-            reps: parseInt(s.reps) || 0,
-            date: wDate
-          });
+          const wOriginal = parseFloat(s.weight) || 0;
+          const reps = parseInt(s.reps) || 0;
+          if (wOriginal > 0 && reps > 0) {
+            const est1RM = wOriginal * (1 + reps / 30);
+            const converted = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
+            if (converted > maxConverted1RM) {
+              maxConverted1RM = converted;
+            }
+          }
         }
       });
     });
-    
-    if (exerciseSets.length === 0) return 0;
-    
-    exerciseSets.sort((a, b) => b.date.getTime() - a.date.getTime());
-    const latestSet = exerciseSets[0];
-    
-    const est1RM = latestSet.weight * (1 + latestSet.reps / 30);
-    const converted = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
-    return converted;
+
+    return maxConverted1RM;
   };
 
   const getFirstEstimated1RM = (liftKey: string) => {
     if (!allWorkouts || allWorkouts.length === 0) return 0;
-    
+
     const exerciseSets: { weight: number; reps: number; date: Date }[] = [];
-    
+
     allWorkouts.forEach((w: any) => {
       const wDate = new Date(w.created_at || w.date);
       (w.sets || []).forEach((s: any) => {
@@ -1079,7 +1080,7 @@ export function ProgressContent() {
         if (liftKey === "bench") match = name === "bench" || name === "bench press";
         else if (liftKey === "squat") match = name === "squat" || name === "back squat";
         else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
-        
+
         if (match) {
           exerciseSets.push({
             weight: parseFloat(s.weight) || 0,
@@ -1089,12 +1090,12 @@ export function ProgressContent() {
         }
       });
     });
-    
+
     if (exerciseSets.length === 0) return 0;
-    
+
     exerciseSets.sort((a, b) => a.date.getTime() - b.date.getTime());
     const firstSet = exerciseSets[0];
-    
+
     const est1RM = firstSet.weight * (1 + firstSet.reps / 30);
     const converted = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
     return converted;
@@ -1102,9 +1103,9 @@ export function ProgressContent() {
 
   const getSparklineDataForWorkouts = (liftKey: string) => {
     if (!allWorkouts || allWorkouts.length === 0) return [{ val: 0 }, { val: 0 }];
-    
+
     const exerciseSets: { weight: number; reps: number; date: Date }[] = [];
-    
+
     allWorkouts.forEach((w: any) => {
       const wDate = new Date(w.created_at || w.date);
       (w.sets || []).forEach((s: any) => {
@@ -1113,7 +1114,7 @@ export function ProgressContent() {
         if (liftKey === "bench") match = name === "bench" || name === "bench press";
         else if (liftKey === "squat") match = name === "squat" || name === "back squat";
         else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
-        
+
         if (match) {
           exerciseSets.push({
             weight: parseFloat(s.weight) || 0,
@@ -1123,11 +1124,11 @@ export function ProgressContent() {
         }
       });
     });
-    
+
     if (exerciseSets.length === 0) return [{ val: 0 }, { val: 0 }];
-    
+
     exerciseSets.sort((a, b) => a.date.getTime() - b.date.getTime());
-    
+
     const map = new Map<string, number>();
     exerciseSets.forEach(set => {
       const dateStr = set.date.toDateString();
@@ -1138,7 +1139,7 @@ export function ProgressContent() {
         map.set(dateStr, converted);
       }
     });
-    
+
     const vals = Array.from(map.values()).map(val => ({ val }));
     if (vals.length === 1) return [{ val: vals[0].val }, { val: vals[0].val }];
     return vals;
@@ -1195,7 +1196,7 @@ export function ProgressContent() {
       <View style={styles.topCardsRow}>
         {dataLoading.workouts ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <View key={i} style={[styles.card, { flex: 1, height: 135, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
+            <View key={i} style={[styles.card, { position: 'relative', flex: 1, height: 135, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
           ))
         ) : (
           LIFTS.map((l, i) => {
@@ -1281,6 +1282,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.09)",
     borderRadius: 20,
+
   },
   cardHeaderSmall: {
     fontSize: 11,
@@ -1293,6 +1295,7 @@ const styles = StyleSheet.create({
   topCardsRow: {
     flexDirection: "row",
     gap: 10,
+    justifyContent: "flex-end"
   },
   liftCardTitle: {
     fontSize: 9,
