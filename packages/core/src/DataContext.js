@@ -77,6 +77,11 @@ export function DataProvider({ children }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      if (res.status === 401) {
+        await setToken(null);
+        throw new Error("Session expired or invalid token. Please log in again.");
+      }
+
       if (!res.ok) {
         throw new Error(`Failed to fetch ${key}`);
       }
@@ -89,7 +94,7 @@ export function DataProvider({ children }) {
     } finally {
       setLoading((prev) => ({ ...prev, [key]: false }));
     }
-  }, [token]);
+  }, [token, setToken]);
 
   const prefetchAll = useCallback(async () => {
     if (!token) {
@@ -102,10 +107,16 @@ export function DataProvider({ children }) {
     setErrors({ workouts: null, routines: null, prs: null, metrics: null });
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL;
+    let unauthorizedOccurred = false;
+
     const fetchWithAuth = (endpoint) =>
       fetch(`${apiUrl}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then((res) => {
+        if (res.status === 401) {
+          unauthorizedOccurred = true;
+          throw new Error("Unauthorized - invalid token signature");
+        }
         if (!res.ok) throw new Error(`Failed to fetch ${endpoint}`);
         return res.json();
       });
@@ -120,6 +131,9 @@ export function DataProvider({ children }) {
 
       setData({ workouts, routines, prs, metrics });
     } catch (err) {
+      if (unauthorizedOccurred) {
+        await setToken(null);
+      }
       console.error("Prefetch error:", err);
       setErrors({
           workouts: err.message,
@@ -130,7 +144,7 @@ export function DataProvider({ children }) {
     } finally {
       setLoading({ workouts: false, routines: false, prs: false, metrics: false });
     }
-  }, [token]);
+  }, [token, setToken]);
 
   // Only prefetch after token has been loaded from secure storage
   useEffect(() => {

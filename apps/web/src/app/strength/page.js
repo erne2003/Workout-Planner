@@ -611,7 +611,7 @@ export default function StrengthPage() {
         
         if (prData) {
             const liftHistory = { bench: [], squat: [], deadlift: [] };
-            const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+            const rawMaxes = { bench: 0, squat: 0, deadlift: 0, rows: 0 };
             
             if (prData.length > 0) {
                 prData.forEach(p => {
@@ -630,7 +630,6 @@ export default function StrengthPage() {
                         liftHistory.deadlift.push(w);
                         rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
                     }
-                    else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
                     else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
                 });
                 const getGain = (arr) => {
@@ -669,7 +668,6 @@ export default function StrengthPage() {
             const tEliteSquatUnit = unit === "kg" ? tEliteSquat : tEliteSquat * 2.20462262;
             const tEliteDeadliftUnit = unit === "kg" ? tEliteDeadlift : tEliteDeadlift * 2.20462262;
             
-            const tEliteOhpUnit = tEliteBenchUnit * 0.6;
             const tEliteRowsUnit = tEliteBenchUnit * 0.8;
             
             const calcScore = (cur, target) => target > 0 ? Math.min(100, Math.round((cur / target) * 100)) : 0;
@@ -677,7 +675,7 @@ export default function StrengthPage() {
             const scores = [
                 { muscle: "Chest",     score: calcScore(rawMaxes.bench, tEliteBenchUnit), color: "#0A84FF", prev: 0 },
                 { muscle: "Back",      score: calcScore(rawMaxes.deadlift, tEliteDeadliftUnit), color: "#BF5AF2", prev: 0 },
-                { muscle: "Shoulders", score: calcScore(rawMaxes.ohp, tEliteOhpUnit), color: "#FF9F0A", prev: 0 },
+                { muscle: "Shoulders", score: Math.round(calcScore(rawMaxes.bench, tEliteBenchUnit) * 0.75), color: "#FF9F0A", prev: 0 },
                 { muscle: "Legs",      score: calcScore(rawMaxes.squat, tEliteSquatUnit), color: "#FFD60A", prev: 0 },
                 { 
                   muscle: "Arms",      

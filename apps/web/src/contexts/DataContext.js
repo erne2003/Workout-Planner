@@ -39,6 +39,15 @@ export function DataProvider({ children }) {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("userName");
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        throw new Error("Session expired or invalid token. Please log in again.");
+      }
+
       if (!res.ok) {
         throw new Error(`Failed to fetch ${key}`);
       }
@@ -64,10 +73,16 @@ export function DataProvider({ children }) {
     setErrors({ workouts: null, routines: null, prs: null, metrics: null });
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    let unauthorizedOccurred = false;
+
     const fetchWithAuth = (endpoint) =>
       fetch(`${apiUrl}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then((res) => {
+        if (res.status === 401) {
+          unauthorizedOccurred = true;
+          throw new Error("Unauthorized - invalid token signature");
+        }
         if (!res.ok) throw new Error(`Failed to fetch ${endpoint}`);
         return res.json();
       });
@@ -82,6 +97,13 @@ export function DataProvider({ children }) {
 
       setData({ workouts, routines, prs, metrics });
     } catch (err) {
+      if (unauthorizedOccurred) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("userName");
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+      }
       console.error("Prefetch error:", err);
       setErrors({
           workouts: err.message,

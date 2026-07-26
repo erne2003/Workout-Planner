@@ -183,30 +183,29 @@ export default function HomePage() {
             bw = parseFloat(metData[metData.length - 1].weight) || 1;
         }
 
-        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, rows: 0 };
         prData.forEach(p => {
             const e = p.exercise_name?.toLowerCase();
             const w = parseFloat(p.weight);
             if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
             else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
             else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
-            else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
             else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
         });
 
-        const ELITE = { bench: 1.5, deadlift: 2.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
+        const ELITE = { bench: 1.5, deadlift: 2.5, squat: 2.0, rows: 1.2 };
         const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
 
         const benchScore = calcScore(rawMaxes.bench, ELITE.bench);
         const dlScore = calcScore(rawMaxes.deadlift, ELITE.deadlift);
-        const ohpScore = calcScore(rawMaxes.ohp, ELITE.ohp);
         const squatScore = calcScore(rawMaxes.squat, ELITE.squat);
         const rowScore = calcScore(rawMaxes.rows, ELITE.rows);
+        const shoulderScore = Math.round(benchScore * 0.75);
 
         const muscleScores = [
             benchScore,
             dlScore,
-            ohpScore,
+            shoulderScore,
             squatScore,
             Math.round((benchScore * 0.5) + (rowScore * 0.5)), // Arms proxy
             Math.max(0, squatScore - 15) // Core proxy
