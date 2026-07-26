@@ -11,6 +11,7 @@ import {
   getStatusFromPct,
   getMuscleSoreness,
   computeDynamicRecovery,
+  computeMuscleReadiness,
 } from "../lib/recovery";
 
 /* --- Helpers ----------------------------------------------- */
@@ -226,8 +227,8 @@ export default function HomePage() {
         const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
         setRecoveryData(recData);
         
-        const avgRec = Math.round(Object.values(recData).reduce((a, b) => a + b.pct, 0) / ALL_MUSCLES.length);
-        setRecoveryScore(avgRec);
+        const { score } = computeMuscleReadiness(recData);
+        setRecoveryScore(score);
 
         if (data.length > 0) {
           // -- Aggregates: the Last 7 Days --
@@ -394,17 +395,7 @@ export default function HomePage() {
             {lastWorkout.date}
           </span>
         </div>
-        <div
-          style={{
-            fontSize: "11px",
-            color: "var(--text-tertiary)",
-            textTransform: "uppercase",
-            letterSpacing: "1px",
-            marginBottom: "14px",
-          }}
-        >
-          {lastWorkout.subtitle}
-        </div>
+
 
         {/* Stats row */}
         <div style={{ display: "flex", gap: "0", marginBottom: "14px" }}>

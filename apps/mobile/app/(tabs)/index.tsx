@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import PlateCalculator from "@/components/PlateCalculator";
 import { useSettings, useData, getStorage } from "@apex/core";
-import { getStatusFromPct, getMuscleSoreness, computeDynamicRecovery, RECOVERY_COLOR } from "@apex/core/src/recovery";
+import { getStatusFromPct, getMuscleSoreness, computeDynamicRecovery, computeMuscleReadiness, RECOVERY_COLOR } from "@apex/core/src/recovery";
 import Svg, { Polygon, Polyline } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../hooks/useTheme";
@@ -153,8 +153,8 @@ export default function HomePage() {
         const overrides = getMuscleSoreness();
         const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
         
-        const avgRec = Math.round(Object.values(recData).reduce((a: any, b: any) => a + b.pct, 0) / ALL_MUSCLES.length);
-        setRecoveryScore(avgRec);
+        const { score } = computeMuscleReadiness(recData);
+        setRecoveryScore(score);
 
         if (data.length > 0) {
           const now = new Date();
@@ -252,7 +252,6 @@ export default function HomePage() {
           <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{lastWorkout.name}</Text>
           <Text style={[styles.cardDate, { color: colors.textSecondary }]}>{lastWorkout.date}</Text>
         </View>
-        <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>{lastWorkout.subtitle}</Text>
 
         <View style={styles.cardStatsRow}>
           {[

@@ -30,6 +30,77 @@ export const RECOVERY_LABEL = {
   not_recovered:       "Not Recovered",
 };
 
+// ─── Per-muscle recovery time constants ────────────────────────────────────
+// Larger muscles need more recovery time than smaller ones.
+// Values are in hours to reach 100% recovery.
+export const RECOVERY_WINDOW_HOURS = {
+  quadriceps:  60,
+  hamstrings:  60,
+  glutes:      60,
+  back:        48,
+  chest:       48,
+  shoulders:   48,
+  traps:       36,
+  calves:      36,
+  biceps:      30,
+  triceps:     30,
+  forearms:    24,
+  abdominals:  24,
+};
+
+// ─── Muscle mass / systemic-impact weights for aggregate readiness ─────────
+// Weights sum to 1.0 across all tracked top-level muscle groups.
+export const MUSCLE_WEIGHT = {
+  quadriceps:  0.16,
+  hamstrings:  0.12,
+  glutes:      0.10,
+  back:        0.14,
+  chest:       0.10,
+  shoulders:   0.08,
+  traps:       0.04,
+  calves:      0.06,
+  biceps:      0.06,
+  triceps:     0.06,
+  forearms:    0.02,
+  abdominals:  0.06,
+};
+
+// ─── Inheritance map: sub-muscle / muscle-path IDs → canonical DB group ────
+// Hoisted here so both computeRecovery and computeDynamicRecovery can share it.
+export const INHERITANCE_MAP = {
+  // Anterior sub-muscles
+  "upperchest":     "chest",
+  "lowerchest":     "chest",
+  "serratus":       "chest",
+  "frontdeltoid":   "shoulders",
+  "reardeltoid":    "shoulders",
+  "reardeltoids":   "shoulders",
+  "deltoids":       "shoulders",
+  "innerquad":      "quadriceps",
+  "outerquad":      "quadriceps",
+  "hipflexors":     "quadriceps",
+  "adductors":      "quadriceps",
+  "uppertrapezius": "traps",
+  "lowertrapezius": "traps",
+  "trapezius":      "traps",
+  "upperabs":       "abdominals",
+  "lowerabs":       "abdominals",
+  "abs":            "abdominals",
+  "obliques":       "abdominals",
+  // Posterior sub-muscles
+  "upperback":      "back",
+  "lowerback":      "back",
+  "gluteal":        "glutes",
+  "hamstring":      "hamstrings",
+  "forearm":        "forearms",
+};
+
+/** Resolve a muscle key to its canonical top-level group via INHERITANCE_MAP. */
+export function resolveCanonicalGroup(muscleKey) {
+  const key = (muscleKey || "").toLowerCase();
+  return INHERITANCE_MAP[key] || key;
+}
+
 /** Map percentage cleanly to the configured statuses */
 export function getStatusFromPct(pct) {
   if (pct >= 80) return "fully_recovered";
@@ -38,15 +109,23 @@ export function getStatusFromPct(pct) {
   return "not_recovered";
 }
 
-/** Derive status strictly from hours elapsed dynamically mapping to smooth percentage logic */
-export function statusFromHours(hours) {
-  const pct = Math.min(Math.round((hours / 24) * 100), 100);
+/**
+ * Derive status from hours elapsed, using a per-muscle recovery window.
+ * @param {number} hours - hours since last workout for this muscle
+ * @param {number} [windowHours=24] - total hours for full recovery (from RECOVERY_WINDOW_HOURS)
+ */
+export function statusFromHours(hours, windowHours = 24) {
+  const pct = Math.min(Math.round((hours / windowHours) * 100), 100);
   return getStatusFromPct(pct);
 }
 
-/** Percentage (0-100) to fill the bar, based purely on hours (caps at 100 after 24h). */
-export function recoveryPct(hours) {
-  return Math.min(Math.round((hours / 24) * 100), 100);
+/**
+ * Percentage (0-100) to fill the bar, using a per-muscle recovery window.
+ * @param {number} hours - hours since last workout for this muscle
+ * @param {number} [windowHours=24] - total hours for full recovery (from RECOVERY_WINDOW_HOURS)
+ */
+export function recoveryPct(hours, windowHours = 24) {
+  return Math.min(Math.round((hours / windowHours) * 100), 100);
 }
 
 /** Parses database naive UTC dates back to local epoch time */
@@ -120,11 +199,13 @@ export function computeRecovery(muscles, lastWorkoutTime, manualOverrides) {
   const result = {};
   muscles.forEach((muscle) => {
     const manual = manualOverrides[muscle] ?? null;
-    const timeStatus = statusFromHours(hours);
+    const canonical = resolveCanonicalGroup(muscle);
+    const windowHours = RECOVERY_WINDOW_HOURS[canonical] ?? 24;
+    const timeStatus = statusFromHours(hours, windowHours);
     const status = manual ?? timeStatus;
 
     // Default time-based pct
-    let pct = recoveryPct(hours);
+    let pct = recoveryPct(hours, windowHours);
     
     // If there's a manual override, enforce a baseline pct so it displays reasonably in the UI
     if (manual) {
@@ -146,7 +227,8 @@ export function computeRecovery(muscles, lastWorkoutTime, manualOverrides) {
 
 /**
  * Compute recovery dynamically per-muscle by scanning raw `/workouts` history.
- * Aggressively scans chronologically discovering the explicit last entry per muscle mapped structurally.
+ * Uses per-muscle recovery windows from RECOVERY_WINDOW_HOURS based on muscle size.
+ * Sub-muscles inherit their parent's recovery window via INHERITANCE_MAP.
  */
 export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
   const now = Date.now();
@@ -162,40 +244,26 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
     });
   });
 
-  const INHERITANCE_MAP = {
-    // MuscleMap ID => DB Parent mapped ID
-    "upperchest": "chest",
-    "lowerchest": "chest",
-    "frontdeltoid": "shoulders",
-    "reardeltoid": "shoulders",
-    "deltoids": "shoulders",
-    "innerquad": "quadriceps",
-    "outerquad": "quadriceps",
-    "uppertrapezius": "traps",
-    "lowertrapezius": "traps",
-    "trapezius": "traps",
-    "upperabs": "abdominals",
-    "lowerabs": "abdominals",
-    "abs": "abdominals"
-  };
-
   const result = {};
   muscles.forEach(muscle => {
     const mKey = muscle.toLowerCase();
     const manual = manualOverrides[muscle] ?? null;
 
+    // Resolve to canonical group for both time lookup and recovery window
+    const canonical = resolveCanonicalGroup(mKey);
+    const windowHours = RECOVERY_WINDOW_HOURS[canonical] ?? 24;
+
     // Direct hit OR parent hit
-    const parentKey = INHERITANCE_MAP[mKey];
     let muscleHitTime = lastHit[mKey];
-    if (!muscleHitTime && parentKey && lastHit[parentKey]) {
-      muscleHitTime = lastHit[parentKey];
+    if (!muscleHitTime && canonical !== mKey && lastHit[canonical]) {
+      muscleHitTime = lastHit[canonical];
     }
 
     const hours = muscleHitTime ? (now - muscleHitTime) / 3600000 : Infinity;
-    const timeStatus = statusFromHours(hours);
+    const timeStatus = statusFromHours(hours, windowHours);
     const status = manual ?? timeStatus;
 
-    let pct = recoveryPct(hours);
+    let pct = recoveryPct(hours, windowHours);
     if (hours === Infinity) pct = 100;
 
     if (manual) {
@@ -214,6 +282,51 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
   });
 
   return result;
+}
+
+/**
+ * Compute a weighted composite muscle readiness score.
+ *
+ * Only muscles trained within `activeWindowDays` count toward the composite.
+ * Untrained muscles are excluded (they must NOT inflate the score at 100%).
+ * Weights are renormalized over just the active subset.
+ *
+ * @param {Object} muscleRecoveryData - Output of computeDynamicRecovery:
+ *   { [muscle]: { pct, hours, status, isManual } }
+ * @param {number} [activeWindowDays=7] - Only muscles trained within this many days are included
+ * @returns {{ score: number, activeCount: number, status: string }}
+ */
+export function computeMuscleReadiness(muscleRecoveryData, activeWindowDays = 7) {
+  const activeWindowHours = activeWindowDays * 24;
+  let totalWeight = 0;
+  let weightedSum = 0;
+  let activeCount = 0;
+
+  for (const [muscle, data] of Object.entries(muscleRecoveryData)) {
+    // hours === 0 means never trained (was Infinity, set to 0 in computeDynamicRecovery)
+    // Skip muscles that have never been trained or are outside the active window
+    if (data.hours === 0 && !data.isManual) continue;
+    if (data.hours > activeWindowHours && !data.isManual) continue;
+
+    const canonical = resolveCanonicalGroup(muscle);
+    const weight = MUSCLE_WEIGHT[canonical] ?? 0;
+    if (weight === 0) continue;
+
+    totalWeight += weight;
+    weightedSum += data.pct * weight;
+    activeCount++;
+  }
+
+  if (totalWeight === 0 || activeCount === 0) {
+    return { score: 100, activeCount: 0, status: "fully_recovered" };
+  }
+
+  const score = Math.round(weightedSum / totalWeight);
+  return {
+    score,
+    activeCount,
+    status: getStatusFromPct(score),
+  };
 }
 
 /**
@@ -254,7 +367,8 @@ export function calculateReadinessScore(data) {
     avg14DayHRV = 1,
     todayRHR = 60,
     avg14DayRHR = 60,
-    hoursSinceLastWorkout = 0
+    hoursSinceLastWorkout = 0,
+    muscleReadinessScore = null
   } = data;
 
   const {
@@ -292,14 +406,18 @@ export function calculateReadinessScore(data) {
     ? Math.min(120, (avg14DayRHR / todayRHR) * 100)
     : 0;
 
-  // 8. Workout Interval Score Calculation
+  // 8. Workout Interval Score Calculation (replaced by muscle readiness if provided)
   let workoutIntervalScore = 100;
-  if (hoursSinceLastWorkout < 12) {
-    workoutIntervalScore = 25;
-  } else if (hoursSinceLastWorkout < 18) {
-    workoutIntervalScore = 50;
-  } else if (hoursSinceLastWorkout < 24) {
-    workoutIntervalScore = 75;
+  if (muscleReadinessScore !== null && muscleReadinessScore !== undefined) {
+    workoutIntervalScore = muscleReadinessScore;
+  } else {
+    if (hoursSinceLastWorkout < 12) {
+      workoutIntervalScore = 25;
+    } else if (hoursSinceLastWorkout < 18) {
+      workoutIntervalScore = 50;
+    } else if (hoursSinceLastWorkout < 24) {
+      workoutIntervalScore = 75;
+    }
   }
 
   // 9. Final Composite Readiness

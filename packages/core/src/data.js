@@ -54,3 +54,167 @@ export const STATUS_LABEL = {
   good:        "Good",
   not_optimal: "Not Optimal",
 };
+
+/**
+ * Extract list of unique logged exercise names from workouts history.
+ * @param {Array} workouts - Array of workout objects containing sets or exercises
+ * @returns {Array<{name: string}>} Array of exercise objects with `name`
+ */
+export function getLoggedExercises(workouts = []) {
+  if (!Array.isArray(workouts)) return [];
+
+  const exerciseMap = new Map();
+
+  workouts.forEach((w) => {
+    if (!w) return;
+
+    if (Array.isArray(w.sets)) {
+      w.sets.forEach((s) => {
+        const name = (s?.exercise_name || s?.name || "").trim();
+        if (name) {
+          const key = name.toLowerCase();
+          if (!exerciseMap.has(key)) {
+            exerciseMap.set(key, name);
+          }
+        }
+      });
+    }
+
+    if (Array.isArray(w.exercises)) {
+      w.exercises.forEach((ex) => {
+        const name = (ex?.name || ex?.exercise_name || "").trim();
+        if (name) {
+          const key = name.toLowerCase();
+          if (!exerciseMap.has(key)) {
+            exerciseMap.set(key, name);
+          }
+        }
+        if (Array.isArray(ex?.sets)) {
+          ex.sets.forEach((s) => {
+            const sName = (s?.exercise_name || s?.name || "").trim();
+            if (sName) {
+              const key = sName.toLowerCase();
+              if (!exerciseMap.has(key)) {
+                exerciseMap.set(key, sName);
+              }
+            }
+          });
+        }
+      });
+    }
+  });
+
+  return Array.from(exerciseMap.values())
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({ name }));
+}
+
+/**
+ * Compute progress data points for a specific exercise over time.
+ * @param {Array} workouts - Array of workout objects
+ * @param {string} exerciseName - Name of the exercise to filter
+ * @param {string} [timeRange="ALL"] - Time range filter ("1W", "1M", "3M", "6M", "1Y", "ALL")
+ * @returns {Array<{date: string|Date, topSetWeight: number, topSetReps: number, estimated1RM: number, sessionVolume: number}>}
+ */
+export function getExerciseProgressPoints(workouts = [], exerciseName = "", timeRange = "ALL") {
+  if (!Array.isArray(workouts) || !exerciseName) return [];
+
+  const targetName = exerciseName.trim().toLowerCase();
+  if (!targetName) return [];
+
+  let cutoff = 0;
+  const now = Date.now();
+  const rangeDays = {
+    "1W": 7,
+    "1M": 30,
+    "3M": 90,
+    "6M": 180,
+    "1Y": 365,
+  };
+
+  if (timeRange && rangeDays[timeRange]) {
+    cutoff = now - rangeDays[timeRange] * 24 * 60 * 60 * 1000;
+  }
+
+  const sortedWorkouts = workouts
+    .filter((w) => {
+      if (!w) return false;
+      const wDateRaw = w.created_at || w.date || w.logged_at;
+      if (!wDateRaw) return true;
+      const t = new Date(wDateRaw).getTime();
+      return isNaN(t) || cutoff === 0 || t >= cutoff;
+    })
+    .sort((a, b) => {
+      const tA = new Date(a.created_at || a.date || a.logged_at || 0).getTime();
+      const tB = new Date(b.created_at || b.date || b.logged_at || 0).getTime();
+      return tA - tB;
+    });
+
+  const points = [];
+
+  sortedWorkouts.forEach((w) => {
+    const matchingSets = [];
+
+    if (Array.isArray(w.sets)) {
+      w.sets.forEach((s) => {
+        const name = (s?.exercise_name || s?.name || "").trim().toLowerCase();
+        if (name === targetName) {
+          matchingSets.push(s);
+        }
+      });
+    }
+
+    if (Array.isArray(w.exercises)) {
+      w.exercises.forEach((ex) => {
+        const exName = (ex?.name || ex?.exercise_name || "").trim().toLowerCase();
+        if (exName === targetName && Array.isArray(ex.sets)) {
+          ex.sets.forEach((s) => matchingSets.push(s));
+        } else if (Array.isArray(ex.sets)) {
+          ex.sets.forEach((s) => {
+            const name = (s?.exercise_name || s?.name || "").trim().toLowerCase();
+            if (name === targetName) {
+              matchingSets.push(s);
+            }
+          });
+        }
+      });
+    }
+
+    if (matchingSets.length === 0) return;
+
+    let topSetWeight = 0;
+    let topSetReps = 0;
+    let sessionVolume = 0;
+    let estimated1RM = 0;
+
+    matchingSets.forEach((s) => {
+      const weight = parseFloat(s.weight) || 0;
+      const reps = parseFloat(s.reps) || 0;
+
+      sessionVolume += weight * reps;
+
+      const e1RM = reps <= 1 ? weight : Math.round(weight * (1 + reps / 30));
+      if (e1RM > estimated1RM) {
+        estimated1RM = e1RM;
+      }
+
+      if (weight > topSetWeight || (weight === topSetWeight && reps > topSetReps)) {
+        topSetWeight = weight;
+        topSetReps = reps;
+      }
+    });
+
+    const wDate = w.created_at || w.date || w.logged_at || new Date().toISOString();
+
+    points.push({
+      date: wDate,
+      topSetWeight,
+      topSetReps,
+      estimated1RM,
+      sessionVolume: Math.round(sessionVolume),
+    });
+  });
+
+  return points;
+}
+

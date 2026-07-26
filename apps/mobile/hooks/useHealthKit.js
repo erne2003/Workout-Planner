@@ -27,15 +27,15 @@ const createMockHealthKit = () => {
     getRestingHeartRateSamples: (options, callback) => {
       console.log('[HealthKit Mock] getRestingHeartRateSamples called');
       callback(null, [
-        { value: 62, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
-        { value: 58, startDate: new Date().toISOString() },
+        { value: 60, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+        { value: 57, startDate: new Date().toISOString() },
       ]);
     },
     getHeartRateVariabilitySamples: (options, callback) => {
       console.log('[HealthKit Mock] getHeartRateVariabilitySamples called');
       callback(null, [
-        { value: 60, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
-        { value: 65, startDate: new Date().toISOString() },
+        { value: 50, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+        { value: 47, startDate: new Date().toISOString() },
       ]);
     },
     getSleepSamples: (options, callback) => {
@@ -195,6 +195,8 @@ export function useHealthKit() {
         hrv: hrvData,
         sleep: sleepData,
       });
+      console.log(`[HealthKit] HRV - Today: ${hrvData.todayHRV} ms, 14-Day Average: ${hrvData.avg14DayHRV} ms`);
+      console.log(`[HealthKit] RHR - Today: ${rhrData.todayRHR} bpm, 14-Day Average: ${rhrData.avg14DayRHR} bpm`);
       setHealthData({
         ...rhrData,
         ...hrvData,
