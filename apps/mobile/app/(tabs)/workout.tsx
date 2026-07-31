@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
-import { useSettings, useData } from "@apex/core";
+import { useSettings, useData, getStorage } from "@apex/core";
 import { useTheme } from "../../hooks/useTheme";
 import { setLastWorkoutTime } from "@apex/core/src/recovery";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
@@ -413,6 +413,43 @@ export default function WorkoutPage() {
   }, [templateRoutines]);
 
   useEffect(() => {
+    const storage = getStorage();
+    if (storage) {
+      const saved = storage.getItem("activeWorkout");
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          setActiveRoutine(data.activeRoutine);
+          setWorkoutPlan(data.workoutPlan);
+          setCompleted(data.completed || {});
+          setStartTime(data.startTime);
+          setRoutineModified(data.routineModified || false);
+          setStarted(true);
+        } catch (e) {
+          console.error("Failed to parse active workout state", e);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const storage = getStorage();
+    if (!storage) return;
+
+    if (started && activeRoutine) {
+      storage.setItem("activeWorkout", JSON.stringify({
+        activeRoutine,
+        workoutPlan,
+        completed,
+        startTime,
+        routineModified
+      }));
+    } else if (!started) {
+      storage.removeItem("activeWorkout");
+    }
+  }, [started, activeRoutine, workoutPlan, completed, startTime, routineModified]);
+
+  useEffect(() => {
     if (!started || !startTime) return;
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTime) / 1000));
@@ -595,6 +632,31 @@ export default function WorkoutPage() {
     } else {
       await saveWorkoutAndFinish(false);
     }
+  };
+
+  const cancelWorkout = () => {
+    Alert.alert(
+      "Cancel Workout",
+      "Are you sure you want to cancel this workout? Progress will not be saved.",
+      [
+        { text: "No", style: "cancel" },
+        { 
+          text: "Yes, Cancel", 
+          style: "destructive", 
+          onPress: () => {
+            setStarted(false);
+            setActiveRoutine(null);
+            setWorkoutPlan([]);
+            setCompleted({});
+            setElapsed(0);
+            setStartTime(null);
+            setRoutineModified(false);
+            const storage = getStorage();
+            if (storage) storage.removeItem("activeWorkout");
+          }
+        }
+      ]
+    );
   };
 
   const deleteRoutine = async (rId: string) => {
@@ -1018,6 +1080,14 @@ export default function WorkoutPage() {
         <Text style={[styles.finishWorkoutBtnText, { color: overallPct === 100 ? "#000" : colors.textPrimary }]}>
           {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
         </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={cancelWorkout}
+        disabled={isSaving}
+        style={{ paddingVertical: 14, alignItems: "center", marginTop: 4, marginBottom: 16 }}
+      >
+        <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600" }}>Cancel Workout</Text>
       </TouchableOpacity>
 
       <Modal visible={swappingExIdx !== null} animationType="slide" transparent>

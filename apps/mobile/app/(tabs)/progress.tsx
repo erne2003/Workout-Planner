@@ -13,13 +13,34 @@ import {
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, G, Line, Text as SvgText, Path, Circle, Rect } from "react-native-svg";
 import { StrengthContent } from "./strength";
 import { useTheme } from "../../hooks/useTheme";
+import { useChartScrubber } from '../../hooks/useChartScrubber';
 
 /* --- Lift config --------------------------------------------- */
 const LIFTS = [
   { key: "bench", label: "Bench Press", color: "#0A84FF", unit: "lbs" },
-  { key: "squat", label: "Back Squat", color: "#FF2D55", unit: "lbs" },
+  { key: "squat", label: "Squat", color: "#FF2D55", unit: "lbs" },
   { key: "deadlift", label: "Deadlift", color: "#FFD60A", unit: "lbs" },
 ];
+
+const isBench = (name: string) => {
+  const n = name?.toLowerCase()?.trim() || "";
+  return n === "bench" || n === "bench press" || n === "barbell bench press" || n === "flat bench press" || n === "chest press";
+};
+const isSquat = (name: string) => {
+  const n = name?.toLowerCase()?.trim() || "";
+  return n === "squat" || n === "barbell squat" || n === "back squat" || n === "back squats" || n === "squats";
+};
+const isDeadlift = (name: string) => {
+  const n = name?.toLowerCase()?.trim() || "";
+  return n === "deadlift" || n === "barbell deadlift" || n === "deadlifts";
+};
+
+const matchLiftKey = (name: string, key: string) => {
+  if (key === "bench") return isBench(name);
+  if (key === "squat") return isSquat(name);
+  if (key === "deadlift") return isDeadlift(name);
+  return false;
+};
 
 /* --- SVG Line Chart ------------------------------------------ */
 function LineChart({ data, dataKey, color, width = 340, height = 160 }: any) {
@@ -29,7 +50,7 @@ function LineChart({ data, dataKey, color, width = 340, height = 160 }: any) {
   const max = values.length ? Math.max(...values) + 20 : 100;
   const range = (max - min) || 1;
 
-  const padL = 8, padR = 8, padT = 12, padB = 28;
+  const padL = 8, padR = 8, padT = 12, padB = 35;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
 
@@ -254,11 +275,10 @@ function ActivityCard({ workoutStats = {} as any }: any) {
   );
 }
 
-/* --- Exercise Progression Chart -------------------------------- */
 /* --- Strength Trajectory Chart Component ----------------------- */
-function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, height = 160 }: any) {
-  const chartWidth = width - 38; // Maximize space for the graph (allocate only 38px on the right for legend)
-  const padL = 28, padR = 5, padT = 10, padB = 20;
+function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, height = 200, onScrubChange }: any) {
+  const chartWidth = width;
+  const padL = 28, padR = 15, padT = 10, padB = 20;
   const innerW = chartWidth - padL - padR;
   const innerH = height - padT - padB;
 
@@ -266,34 +286,72 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
     { key: "bench", color: "#0A84FF", name: "Bench" },
     { key: "squat", color: "#FF2D55", name: "Squat" },
     { key: "deadlift", color: "#FFD60A", name: "Deadlift" },
-    { key: "ohp", color: "#BF5AF2", name: "OHP" },
   ];
 
   const activeLifts = selectedLift === "all" ? lifts : lifts.filter(l => l.key === selectedLift);
-  
-  const allValues = data.flatMap((d: any) => 
+
+  const allValues = data.flatMap((d: any) =>
     activeLifts.map(l => d[l.key]).filter(v => v > 0)
   );
-  const min = allValues.length ? Math.max(0, Math.min(...allValues) - 10) : 0;
-  const max = allValues.length ? Math.max(...allValues) + 10 : 100;
+  
+  let min = 0;
+  let max = 100;
+
+  if (allValues.length > 0) {
+    const rawMax = Math.max(...allValues);
+    const rawMin = Math.min(...allValues);
+    
+    if (selectedLift === "all") {
+      min = 0;
+      max = rawMax + 15;
+    } else {
+      const diff = rawMax - rawMin;
+      let padding = Math.max(5, diff * 0.2); 
+      
+      let newMin = Math.max(0, rawMin - padding);
+      let newMax = rawMax + padding;
+      
+      let newRange = newMax - newMin;
+      newRange = Math.ceil(newRange / 4) * 4; 
+      
+      if (newRange < 4) newRange = 4;
+      if (diff > 10) {
+         newRange = Math.ceil(newRange / 20) * 20;
+      } else if (diff > 5) {
+         newRange = Math.ceil(newRange / 8) * 8;
+      }
+
+      min = Math.floor(newMin);
+      max = min + newRange;
+    }
+  }
+  
   const range = (max - min) || 1;
 
   const toX = (i: number) => padL + (data.length <= 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
   const toY = (v: number) => padT + innerH - ((v - min) / range) * innerH;
 
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", width: "100%", height }}>
-      <Svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth} ${height}`}>
-        <Defs>
-          {lifts.map(l => (
-            <SvgLinearGradient key={l.key} id={`grad-${l.key}`} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor={l.color} stopOpacity="0.15" />
-              <Stop offset="100%" stopColor={l.color} stopOpacity="0" />
-            </SvgLinearGradient>
-          ))}
-        </Defs>
+  const { panHandlers, displayIndex, isScrubbing } = useChartScrubber(data.length, chartWidth, padL, padR, onScrubChange);
+  const activeData = data[displayIndex];
 
-        {[0.25, 0.5, 0.75, 1].map((lvl) => {
+  return (
+    <View style={{ width: "100%", position: "relative" }}>
+      {data.length > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 10 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textPrimary }}>{activeData.date}</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            {activeLifts.map(l => activeData[l.key] > 0 ? (
+              <View key={l.key} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: l.color }} />
+                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textPrimary }}>{activeData[l.key]}</Text>
+              </View>
+            ) : null)}
+          </View>
+        </View>
+      )}
+      <View {...panHandlers} style={{ width: "100%", height, overflow: "visible" }}>
+        <Svg width="100%" height="100%" viewBox={`0 0 ${chartWidth} ${height}`}>
+        {[0, 0.25, 0.5, 0.75, 1].map((lvl) => {
           const y = padT + innerH * (1 - lvl);
           const val = Math.round(min + range * lvl);
           return (
@@ -318,18 +376,31 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
             .map((p: any, i: number) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
             .join(" ");
 
-          const areaD = `${pathD} L${validPoints[validPoints.length - 1].x.toFixed(1)},${(padT + innerH).toFixed(1)} L${validPoints[0].x.toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
-
           return (
             <G key={l.key}>
-              <Path d={areaD} fill={`url(#grad-${l.key})`} />
-              <Path d={pathD} stroke={l.color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              <Path d={pathD} stroke={l.color} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
               {validPoints.map((p: any, idx: number) => (
-                <Circle key={idx} cx={p.x} cy={p.y} r="3.5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="1.5" />
+                <Circle key={idx} cx={p.x} cy={p.y} r="5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
               ))}
             </G>
           );
         })}
+
+        {isScrubbing && activeData && (
+          <G>
+            <Line x1={toX(displayIndex)} y1={padT} x2={toX(displayIndex)} y2={padT + innerH} stroke={colors.border} strokeWidth="1" strokeDasharray="4,4" />
+            {activeLifts.map((l) => {
+              const val = activeData[l.key];
+              if (!val || val <= 0) return null;
+              return (
+                <G key={`hl-${l.key}`}>
+                  <Circle cx={toX(displayIndex)} cy={toY(val)} r="9" fill="transparent" stroke={l.color} strokeWidth="2" opacity="0.3" />
+                  <Circle cx={toX(displayIndex)} cy={toY(val)} r="5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
+                </G>
+              );
+            })}
+          </G>
+        )}
 
         {data.length > 0 && [0, Math.floor(data.length / 2), data.length - 1].map((idx) => {
           if (idx >= data.length || idx < 0) return null;
@@ -346,14 +417,15 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
           );
         })}
       </Svg>
+      </View>
 
-      <View style={{ flex: 1, paddingLeft: 4, marginRight: -11, justifyContent: "center", gap: 8 }}>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 8 }}>
         {lifts.map(l => {
           const active = selectedLift === "all" || selectedLift === l.key;
           return (
             <View key={l.key} style={{ flexDirection: "row", alignItems: "center", gap: 3, opacity: active ? 1 : 0.3 }}>
-              <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: l.color }} />
-              <Text style={{ fontSize: 8, fontWeight: "800", color: colors.textSecondary }}>{l.name}</Text>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: l.color }} />
+              <Text style={{ fontSize: 9, color: colors.textSecondary }}>{l.name}</Text>
             </View>
           );
         })}
@@ -363,7 +435,7 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
 }
 
 /* --- Volume & Intensity Chart Component ----------------------- */
-function VolumeIntensityChart({ data, colors, width = 310, height = 160 }: any) {
+function VolumeIntensityChart({ data, colors, width = 310, height = 160, onScrubChange }: any) {
   const padL = 35, padR = 15, padT = 15, padB = 20;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
@@ -382,9 +454,26 @@ function VolumeIntensityChart({ data, colors, width = 310, height = 160 }: any) 
     ? `${tonnagePathD} L${toX(data.length - 1).toFixed(1)},${(padT + innerH).toFixed(1)} L${toX(0).toFixed(1)},${(padT + innerH).toFixed(1)} Z`
     : "";
 
+  const { panHandlers, displayIndex, isScrubbing } = useChartScrubber(data.length, width, padL, padR, onScrubChange);
+  const activeData = data[displayIndex];
+
   return (
-    <View style={{ width: "100%", height, overflow: "visible" }}>
-      <Svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
+    <View style={{ width: "100%", position: "relative" }}>
+      {data.length > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 10 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textPrimary }}>{activeData.week}</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#30D158" }} />
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textPrimary }}>
+                {activeData.tonnage >= 1000 ? `${(activeData.tonnage / 1000).toFixed(1)}k` : activeData.tonnage} lbs
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+      <View {...panHandlers} style={{ width: "100%", height, overflow: "visible" }}>
+        <Svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
         <Defs>
           <SvgLinearGradient id="grad-volume" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0%" stopColor="#30D158" stopOpacity="0.2" />
@@ -402,7 +491,7 @@ function VolumeIntensityChart({ data, colors, width = 310, height = 160 }: any) 
                 stroke={colors.border} strokeWidth="1" strokeDasharray="3,3"
               />
               <SvgText x={padL - 4} y={y + 3} fontSize="8" fill="#30D158" textAnchor="end">
-                {tonnageVal >= 1000 ? `${(tonnageVal/1000).toFixed(1)}k` : tonnageVal}
+                {tonnageVal >= 1000 ? `${(tonnageVal / 1000).toFixed(1)}k` : tonnageVal}
               </SvgText>
             </G>
           );
@@ -426,6 +515,14 @@ function VolumeIntensityChart({ data, colors, width = 310, height = 160 }: any) 
           </G>
         )}
 
+        {isScrubbing && activeData && (
+          <G>
+            <Line x1={toX(displayIndex)} y1={padT} x2={toX(displayIndex)} y2={padT + innerH} stroke={colors.border} strokeWidth="1" strokeDasharray="4,4" />
+            <Circle cx={toX(displayIndex)} cy={toTonnageY(activeData.tonnage)} r="9" fill="transparent" stroke="#30D158" strokeWidth="2" opacity="0.3" />
+            <Circle cx={toX(displayIndex)} cy={toTonnageY(activeData.tonnage)} r="5" fill="#30D158" stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
+          </G>
+        )}
+
         {data.map((d: any, idx: number) => (
           <SvgText
             key={idx}
@@ -437,12 +534,13 @@ function VolumeIntensityChart({ data, colors, width = 310, height = 160 }: any) 
           </SvgText>
         ))}
       </Svg>
+      </View>
     </View>
   );
 }
 
 /* --- Body Composition Chart Component ------------------------- */
-function BodyCompositionChart({ data, colors, width = 310, height = 160 }: any) {
+function BodyCompositionChart({ data, colors, width = 310, height = 160, onScrubChange }: any) {
   const padL = 30, padR = 25, padT = 15, padB = 20;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
@@ -468,9 +566,32 @@ function BodyCompositionChart({ data, colors, width = 310, height = 160 }: any) 
     .map((d: any, i: number) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toFatY(d.bodyFat).toFixed(1)}`)
     .join(" ");
 
+  const { panHandlers, displayIndex, isScrubbing } = useChartScrubber(data.length, width, padL, padR, onScrubChange);
+  const activeData = data[displayIndex];
+
   return (
-    <View style={{ width: "100%", height, overflow: "visible" }}>
-      <Svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
+    <View style={{ width: "100%", position: "relative" }}>
+      {data.length > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 10 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textPrimary }}>{activeData.date}</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#0A84FF" }} />
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textPrimary }}>{activeData.weight}</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#30D158" }} />
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textPrimary }}>{activeData.leanMass}</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#BF5AF2" }} />
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textPrimary }}>{activeData.bodyFat}%</Text>
+            </View>
+          </View>
+        </View>
+      )}
+      <View {...panHandlers} style={{ width: "100%", height, overflow: "visible" }}>
+        <Svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
         {[0, 0.25, 0.5, 0.75, 1].map((lvl) => {
           const y = padT + innerH * (1 - lvl);
           const wVal = Math.round(minW + rangeW * lvl);
@@ -515,6 +636,21 @@ function BodyCompositionChart({ data, colors, width = 310, height = 160 }: any) 
           />
         ))}
 
+        {isScrubbing && activeData && (
+          <G>
+            <Line x1={toX(displayIndex)} y1={padT} x2={toX(displayIndex)} y2={padT + innerH} stroke={colors.border} strokeWidth="1" strokeDasharray="4,4" />
+            
+            <Circle cx={toX(displayIndex)} cy={toWeightY(activeData.weight)} r="9" fill="transparent" stroke="#0A84FF" strokeWidth="2" opacity="0.3" />
+            <Circle cx={toX(displayIndex)} cy={toWeightY(activeData.weight)} r="5" fill="#0A84FF" stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
+            
+            <Circle cx={toX(displayIndex)} cy={toWeightY(activeData.leanMass)} r="9" fill="transparent" stroke="#30D158" strokeWidth="2" opacity="0.3" />
+            <Circle cx={toX(displayIndex)} cy={toWeightY(activeData.leanMass)} r="5" fill="#30D158" stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
+            
+            <Circle cx={toX(displayIndex)} cy={toFatY(activeData.bodyFat)} r="9" fill="transparent" stroke="#BF5AF2" strokeWidth="2" opacity="0.3" />
+            <Circle cx={toX(displayIndex)} cy={toFatY(activeData.bodyFat)} r="5" fill="#BF5AF2" stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
+          </G>
+        )}
+
         {data.length > 0 && [0, Math.floor(data.length / 2), data.length - 1].map((idx) => {
           if (idx >= data.length || idx < 0) return null;
           const d = data[idx];
@@ -530,6 +666,7 @@ function BodyCompositionChart({ data, colors, width = 310, height = 160 }: any) 
           );
         })}
       </Svg>
+      </View>
 
       <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
@@ -553,10 +690,10 @@ function BodyCompositionChart({ data, colors, width = 310, height = 160 }: any) 
 function MuscleRadarChart({ data, colors }: any) {
   const numPoints = 6;
   const width = 310;
-  const height = 180;
+  const height = 240;
   const center = width / 2;
   const centerY = height / 2;
-  const maxRadius = 55;
+  const maxRadius = 80;
 
   const getCoordinates = (index: number, value: number) => {
     const angle = (index * 2 * Math.PI) / numPoints - Math.PI / 2;
@@ -604,9 +741,9 @@ function MuscleRadarChart({ data, colors }: any) {
             return (
               <Path
                 d={volumePath}
-                fill="rgba(255, 214, 10, 0.25)"
+                fill="rgba(255, 214, 10, 0.40)"
                 stroke="#FFD60A"
-                strokeWidth="2"
+                strokeWidth="3.5"
               />
             );
           })()}
@@ -617,9 +754,9 @@ function MuscleRadarChart({ data, colors }: any) {
             return (
               <Path
                 d={freqPath}
-                fill="rgba(10, 132, 255, 0.12)"
+                fill="rgba(10, 132, 255, 0.30)"
                 stroke="#0A84FF"
-                strokeWidth="1.5"
+                strokeWidth="2.5"
               />
             );
           })()}
@@ -642,7 +779,7 @@ function MuscleRadarChart({ data, colors }: any) {
                 x={labelPos.x}
                 y={textY}
                 textAnchor={anchor}
-                fontSize="8"
+                fontSize="9"
                 fontWeight="700"
                 fill={colors.textSecondary || "rgba(255,255,255,0.6)"}
               >
@@ -669,7 +806,7 @@ function MuscleRadarChart({ data, colors }: any) {
 
 /* --- Exercise Progression Chart -------------------------------- */
 /* --- Exercise Progression Chart -------------------------------- */
-function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: string }) {
+function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: any[]; unit: string; onScrubChange?: (v: boolean) => void }) {
   const { colors, isLight } = useTheme();
   const { prs, metrics } = useData() as any;
   const [activeTab, setActiveTab] = useState<"strength" | "volume" | "body" | "radar">("strength");
@@ -677,52 +814,42 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
   const [selectedWorkout, setSelectedWorkout] = useState("all");
 
   const strengthChartData = useMemo(() => {
-    if (!workouts || workouts.length === 0) return [];
-    
-    const dateMap = new Map<string, { date: string; bench: number; squat: number; deadlift: number; ohp: number }>();
-    const sortedWorkouts = [...workouts].sort((a: any, b: any) => new Date(a.created_at || a.date).getTime() - new Date(b.created_at || b.date).getTime());
-    
-    let runningMax = { bench: 0, squat: 0, deadlift: 0, ohp: 0 };
-    
-    sortedWorkouts.forEach((w: any) => {
-      const dateStr = new Date(w.created_at || w.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      
+    if (!prs || prs.length === 0) return [];
+
+    const dateMap = new Map<string, { date: string; bench: number; squat: number; deadlift: number }>();
+    const sortedPrs = [...prs].sort((a: any, b: any) => new Date(a.achieved_at).getTime() - new Date(b.achieved_at).getTime());
+
+    let runningMax = { bench: 0, squat: 0, deadlift: 0 };
+
+    sortedPrs.forEach((p: any) => {
+      const dateStr = new Date(p.achieved_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const name = p.exercise_name?.toLowerCase() || "";
+      const rawW = parseFloat(p.weight) || 0;
+      const wVal = unit === "kg" ? Math.round(rawW / 2.205) : rawW;
+
       let dayMax = { ...runningMax };
       let updated = false;
-      
-      (w.sets || []).forEach((s: any) => {
-        const name = s.exercise_name?.toLowerCase();
-        const weightLbs = parseFloat(s.weight) || 0;
-        const reps = parseInt(s.reps) || 0;
-        
-        if (weightLbs > 0 && reps > 0) {
-          const est1RM = weightLbs * (1 + reps / 30);
-          const wVal = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
-          
-          if (name === "bench" || name === "bench press") {
-            if (wVal > dayMax.bench) { dayMax.bench = wVal; updated = true; }
-          } else if (name === "squat" || name === "back squat") {
-            if (wVal > dayMax.squat) { dayMax.squat = wVal; updated = true; }
-          } else if (name === "deadlift" || name === "barbell deadlift") {
-            if (wVal > dayMax.deadlift) { dayMax.deadlift = wVal; updated = true; }
-          } else if (name === "ohp" || name === "overhead press") {
-            if (wVal > dayMax.ohp) { dayMax.ohp = wVal; updated = true; }
-          }
-        }
-      });
-      
+
+      if (name === "bench" || name === "bench press" || name === "chest press") {
+        if (wVal > dayMax.bench) { dayMax.bench = wVal; updated = true; }
+      } else if (name === "squat" || name === "back squat" || name === "barbell squat") {
+        if (wVal > dayMax.squat) { dayMax.squat = wVal; updated = true; }
+      } else if (name === "deadlift" || name === "barbell deadlift") {
+        if (wVal > dayMax.deadlift) { dayMax.deadlift = wVal; updated = true; }
+      }
+
       if (updated) {
         runningMax = { ...dayMax };
       }
-      
+
       dateMap.set(dateStr, {
         date: dateStr,
         ...runningMax
       });
     });
-    
+
     return Array.from(dateMap.values());
-  }, [workouts, unit]);
+  }, [prs, unit]);
 
   const workoutTemplates = useMemo(() => {
     if (!workouts || workouts.length === 0) return [];
@@ -735,32 +862,32 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
 
   const volumeChartData = useMemo(() => {
     if (!workouts || workouts.length === 0) return [];
-    
-    const filteredWorkouts = selectedWorkout === "all" 
-      ? workouts 
+
+    const filteredWorkouts = selectedWorkout === "all"
+      ? workouts
       : workouts.filter((w: any) => w.name === selectedWorkout);
 
     if (filteredWorkouts.length === 0) return [];
-    
+
     const now = new Date();
     const weeksData = [];
-    
+
     for (let i = 7; i >= 0; i--) {
       const start = new Date();
       start.setDate(now.getDate() - (i + 1) * 7);
       const end = new Date();
       end.setDate(now.getDate() - i * 7);
-      
+
       const weekWorkouts = filteredWorkouts.filter((w: any) => {
         const d = new Date(w.created_at || w.date);
         return d >= start && d < end;
       });
-      
+
       let weeklyTonnage = 0;
       let totalSets = 0;
       let rpeSum = 0;
       let rpeCount = 0;
-      
+
       weekWorkouts.forEach((w: any) => {
         (w.sets || []).forEach((s: any) => {
           const reps = parseFloat(s.reps) || 0;
@@ -768,7 +895,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           const wVal = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
           weeklyTonnage += wVal * reps;
           totalSets++;
-          
+
           if (s.rir !== undefined && s.rir !== null) {
             const rpe = 10 - parseFloat(s.rir);
             rpeSum += rpe;
@@ -776,7 +903,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           }
         });
       });
-      
+
       const avgRpe = rpeCount > 0 ? parseFloat((rpeSum / rpeCount).toFixed(1)) : 0;
       weeksData.push({
         week: `Wk ${8 - i}`,
@@ -784,20 +911,20 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
         avgRpe: avgRpe || 7.0,
       });
     }
-    
+
     return weeksData;
   }, [workouts, selectedWorkout, unit]);
 
   const bodyChartData = useMemo(() => {
     if (!metrics || metrics.length === 0) return [];
-    
+
     const sorted = [...metrics].sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     return sorted.map((m: any) => {
       const wOriginal = parseFloat(m.weight) || 0;
       const w = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
       const bodyFat = parseFloat(m.body_fat || m.bodyFat) || 0;
       const leanMass = bodyFat > 0 ? parseFloat((w * (1 - bodyFat / 100)).toFixed(1)) : w;
-      
+
       return {
         date: new Date(m.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         weight: w,
@@ -816,7 +943,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
       "Arms": 8,
       "Core": 6
     };
-    
+
     const MUSCLE_MAP: any = {
       "Chest": ["chest"],
       "Back": ["lats", "back", "core"],
@@ -825,16 +952,16 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
       "Arms": ["biceps", "triceps"],
       "Core": ["core"]
     };
-    
+
     const now = new Date();
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(now.getDate() - 28);
-    
+
     const recentWorkouts = (workouts || []).filter((w: any) => new Date(w.created_at) >= fourWeeksAgo);
-    
+
     const counts: any = { "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0, "Core": 0 };
     const frequency: any = { "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0, "Core": 0 };
-    
+
     recentWorkouts.forEach((w: any) => {
       const wMuscleGroups = new Set();
       (w.sets || []).forEach((s: any) => {
@@ -846,20 +973,20 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           }
         });
       });
-      
+
       wMuscleGroups.forEach((subject: any) => {
         frequency[subject]++;
       });
     });
-    
+
     return Object.keys(MUSCLE_TARGETS).map((subject: string) => {
       const weeklyVolumeAvg = counts[subject] / 4;
       const target = MUSCLE_TARGETS[subject];
       const volumePct = Math.min(100, Math.round((weeklyVolumeAvg / target) * 100));
-      
+
       const weeklyFreqAvg = frequency[subject] / 4;
       const freqPct = Math.min(100, Math.round((weeklyFreqAvg / 2) * 100));
-      
+
       return {
         subject,
         volume: volumePct || 30,
@@ -907,7 +1034,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
             <Text style={{ fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, color: colors.textSecondary }}>
               1RM Progression ({unit})
             </Text>
-            
+
             <View style={{ flexDirection: "row", gap: 4 }}>
               {[
                 { id: "all", label: "All" },
@@ -932,11 +1059,11 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           </View>
 
           {strengthChartData.length === 0 ? (
-            <View style={{ height: 160, justifyContent: "center", alignItems: "center" }}>
+            <View style={{ height: 200, justifyContent: "center", alignItems: "center" }}>
               <Text style={{ color: colors.textTertiary, fontSize: 12 }}>No logs yet. Complete workouts to see graph.</Text>
             </View>
           ) : (
-            <StrengthTrajectoryChart data={strengthChartData} selectedLift={selectedLift} colors={colors} width={310} height={160} />
+            <StrengthTrajectoryChart data={strengthChartData} selectedLift={selectedLift} colors={colors} width={310} height={200} onScrubChange={onScrubChange} />
           )}
         </View>
       )}
@@ -946,7 +1073,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           <Text style={{ fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, color: colors.textSecondary, marginBottom: 6 }}>
             Weekly Tonnage Volume
           </Text>
-          
+
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
             <View style={{ flexDirection: "row", gap: 6 }}>
               <TouchableOpacity
@@ -982,7 +1109,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
           </ScrollView>
 
           {volumeChartData.some(d => d.tonnage > 0) ? (
-            <VolumeIntensityChart data={volumeChartData} colors={colors} width={310} height={160} />
+            <VolumeIntensityChart data={volumeChartData} colors={colors} width={310} height={160} onScrubChange={onScrubChange} />
           ) : (
             <View style={{ height: 160, justifyContent: "center", alignItems: "center" }}>
               <Text style={{ color: colors.textTertiary, fontSize: 12 }}>No volume logs for this routine yet.</Text>
@@ -997,7 +1124,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
             Weight vs Lean Mass vs Body Fat (Hidden)
           </Text>
           {bodyChartData.length > 0 ? (
-            <BodyCompositionChart data={bodyChartData} colors={colors} width={310} height={160} />
+            <BodyCompositionChart data={bodyChartData} colors={colors} width={310} height={160} onScrubChange={onScrubChange} />
           ) : (
             <View style={{ height: 160, justifyContent: "center", alignItems: "center" }}>
               <Text style={{ color: colors.textTertiary, fontSize: 12 }}>No body composition metrics logged yet.</Text>
@@ -1019,7 +1146,7 @@ function ExerciseTrajectoryChart({ workouts, unit }: { workouts: any[]; unit: st
 }
 
 /* --- Page Content -------------------------------------------- */
-export function ProgressContent() {
+export function ProgressContent({ onScrubChange }: { onScrubChange?: (v: boolean) => void }) {
   const router = useRouter();
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
@@ -1033,112 +1160,61 @@ export function ProgressContent() {
   const { workouts: allWorkouts, prs, refresh, loading: dataLoading } = useData() as any;
 
   const getLatestEstimated1RM = (liftKey: string) => {
-    if (!allWorkouts || allWorkouts.length === 0) return 0;
-    
-    const exerciseSets: { weight: number; reps: number; date: Date }[] = [];
-    
-    allWorkouts.forEach((w: any) => {
-      const wDate = new Date(w.created_at || w.date);
-      (w.sets || []).forEach((s: any) => {
-        const name = s.exercise_name?.toLowerCase();
-        let match = false;
-        if (liftKey === "bench") match = name === "bench" || name === "bench press";
-        else if (liftKey === "squat") match = name === "squat" || name === "back squat";
-        else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
-        
-        if (match) {
-          exerciseSets.push({
-            weight: parseFloat(s.weight) || 0,
-            reps: parseInt(s.reps) || 0,
-            date: wDate
-          });
-        }
-      });
+    if (!prs || prs.length === 0) return 0;
+    const liftPrs = prs.filter((p: any) => {
+      const name = p.exercise_name?.toLowerCase();
+      let match = false;
+      if (liftKey === "bench") match = name === "bench" || name === "bench press";
+      else if (liftKey === "squat") match = name === "squat" || name === "back squat";
+      else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
+      return match;
     });
-    
-    if (exerciseSets.length === 0) return 0;
-    
-    exerciseSets.sort((a, b) => b.date.getTime() - a.date.getTime());
-    const latestSet = exerciseSets[0];
-    
-    const est1RM = latestSet.weight * (1 + latestSet.reps / 30);
-    const converted = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
-    return converted;
+    if (liftPrs.length === 0) return 0;
+    liftPrs.sort((a: any, b: any) => new Date(b.achieved_at).getTime() - new Date(a.achieved_at).getTime());
+    const wOriginal = parseFloat(liftPrs[0].weight) || 0;
+    return unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
   };
 
   const getFirstEstimated1RM = (liftKey: string) => {
-    if (!allWorkouts || allWorkouts.length === 0) return 0;
-    
-    const exerciseSets: { weight: number; reps: number; date: Date }[] = [];
-    
-    allWorkouts.forEach((w: any) => {
-      const wDate = new Date(w.created_at || w.date);
-      (w.sets || []).forEach((s: any) => {
-        const name = s.exercise_name?.toLowerCase();
-        let match = false;
-        if (liftKey === "bench") match = name === "bench" || name === "bench press";
-        else if (liftKey === "squat") match = name === "squat" || name === "back squat";
-        else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
-        
-        if (match) {
-          exerciseSets.push({
-            weight: parseFloat(s.weight) || 0,
-            reps: parseInt(s.reps) || 0,
-            date: wDate
-          });
-        }
-      });
+    if (!prs || prs.length === 0) return 0;
+    const liftPrs = prs.filter((p: any) => {
+      const name = p.exercise_name?.toLowerCase();
+      let match = false;
+      if (liftKey === "bench") match = name === "bench" || name === "bench press";
+      else if (liftKey === "squat") match = name === "squat" || name === "back squat";
+      else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
+      return match;
     });
-    
-    if (exerciseSets.length === 0) return 0;
-    
-    exerciseSets.sort((a, b) => a.date.getTime() - b.date.getTime());
-    const firstSet = exerciseSets[0];
-    
-    const est1RM = firstSet.weight * (1 + firstSet.reps / 30);
-    const converted = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
-    return converted;
+    if (liftPrs.length === 0) return 0;
+    liftPrs.sort((a: any, b: any) => new Date(a.achieved_at).getTime() - new Date(b.achieved_at).getTime());
+    const wOriginal = parseFloat(liftPrs[0].weight) || 0;
+    return unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
   };
 
   const getSparklineDataForWorkouts = (liftKey: string) => {
-    if (!allWorkouts || allWorkouts.length === 0) return [{ val: 0 }, { val: 0 }];
-    
-    const exerciseSets: { weight: number; reps: number; date: Date }[] = [];
-    
-    allWorkouts.forEach((w: any) => {
-      const wDate = new Date(w.created_at || w.date);
-      (w.sets || []).forEach((s: any) => {
-        const name = s.exercise_name?.toLowerCase();
-        let match = false;
-        if (liftKey === "bench") match = name === "bench" || name === "bench press";
-        else if (liftKey === "squat") match = name === "squat" || name === "back squat";
-        else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
-        
-        if (match) {
-          exerciseSets.push({
-            weight: parseFloat(s.weight) || 0,
-            reps: parseInt(s.reps) || 0,
-            date: wDate
-          });
-        }
-      });
+    if (!prs || prs.length === 0) return [{ val: 0 }, { val: 0 }];
+    const liftPrs = prs.filter((p: any) => {
+      const name = p.exercise_name?.toLowerCase();
+      let match = false;
+      if (liftKey === "bench") match = name === "bench" || name === "bench press";
+      else if (liftKey === "squat") match = name === "squat" || name === "back squat";
+      else if (liftKey === "deadlift") match = name === "deadlift" || name === "barbell deadlift";
+      return match;
     });
-    
-    if (exerciseSets.length === 0) return [{ val: 0 }, { val: 0 }];
-    
-    exerciseSets.sort((a, b) => a.date.getTime() - b.date.getTime());
+    if (liftPrs.length === 0) return [{ val: 0 }, { val: 0 }];
+    liftPrs.sort((a: any, b: any) => new Date(a.achieved_at).getTime() - new Date(b.achieved_at).getTime());
     
     const map = new Map<string, number>();
-    exerciseSets.forEach(set => {
-      const dateStr = set.date.toDateString();
-      const est1RM = set.weight * (1 + set.reps / 30);
-      const converted = unit === "kg" ? Math.round(est1RM / 2.205) : Math.round(est1RM);
+    liftPrs.forEach((set: any) => {
+      const dateStr = new Date(set.achieved_at).toDateString();
+      const wOriginal = parseFloat(set.weight) || 0;
+      const converted = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
       const currentMax = map.get(dateStr) || 0;
       if (converted > currentMax) {
         map.set(dateStr, converted);
       }
     });
-    
+
     const vals = Array.from(map.values()).map(val => ({ val }));
     if (vals.length === 1) return [{ val: vals[0].val }, { val: vals[0].val }];
     return vals;
@@ -1195,7 +1271,7 @@ export function ProgressContent() {
       <View style={styles.topCardsRow}>
         {dataLoading.workouts ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <View key={i} style={[styles.card, { flex: 1, height: 135, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
+            <View key={i} style={[styles.card, { position: 'relative', flex: 1, height: 135, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
           ))
         ) : (
           LIFTS.map((l, i) => {
@@ -1219,7 +1295,7 @@ export function ProgressContent() {
       </View>
 
       {/* Exercise Trajectory Chart */}
-      <ExerciseTrajectoryChart workouts={allWorkouts || []} unit={unit} />
+      <ExerciseTrajectoryChart workouts={allWorkouts || []} unit={unit} onScrubChange={(scrubbing: boolean) => onScrubChange?.(!scrubbing)} />
 
       {/* Muscle Analytics */}
       {dataLoading.workouts ? (
@@ -1245,6 +1321,7 @@ export function ProgressContent() {
 export default function ProgressPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"progress" | "strength">("progress");
+  const [scrollEnabled, setScrollEnabled] = useState(true);
   const { colors, isLight } = useTheme();
 
   return (
@@ -1252,6 +1329,7 @@ export default function ProgressPage() {
       title={activeTab === "progress" ? "Progress" : "Strength"}
       subtitle={activeTab === "progress" ? "Historical · 8 Weeks" : "Analytics · Big Lifts & Recovery"}
       onSettingsClick={() => router.push("/settings" as any)}
+      scrollEnabled={scrollEnabled}
     >
       <View style={[styles.segmentContainer, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
         <TouchableOpacity
@@ -1268,7 +1346,7 @@ export default function ProgressPage() {
         </TouchableOpacity>
       </View>
 
-      {activeTab === "progress" ? <ProgressContent /> : <StrengthContent />}
+      {activeTab === "progress" ? <ProgressContent onScrubChange={setScrollEnabled} /> : <StrengthContent />}
     </PageShell>
   );
 }
@@ -1281,6 +1359,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.09)",
     borderRadius: 20,
+
   },
   cardHeaderSmall: {
     fontSize: 11,
@@ -1293,6 +1372,7 @@ const styles = StyleSheet.create({
   topCardsRow: {
     flexDirection: "row",
     gap: 10,
+    justifyContent: "flex-end"
   },
   liftCardTitle: {
     fontSize: 9,

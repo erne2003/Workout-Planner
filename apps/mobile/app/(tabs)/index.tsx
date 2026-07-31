@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import PlateCalculator from "@/components/PlateCalculator";
 import { useSettings, useData, getStorage } from "@apex/core";
 import { getStatusFromPct, getMuscleSoreness, computeDynamicRecovery, computeMuscleReadiness, RECOVERY_COLOR } from "@apex/core/src/recovery";
-import Svg, { Polygon, Polyline } from "react-native-svg";
+import Svg, { Circle, Polygon, Polyline } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../hooks/useTheme";
 
@@ -82,6 +82,89 @@ function WorkoutExerciseRow({ ex, unit }: any) {
   );
 }
 
+/* --- Past Workout Collapsible Card --------------------------- */
+function PastWorkoutCard({ w, unit, colors, isLight }: any) {
+  const [open, setOpen] = useState(false);
+
+  const sets = w.sets || [];
+  let vol = 0;
+  const exMap: any = {};
+  sets.forEach((s: any) => {
+    const wt = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+    vol += (s.reps || 0) * wt;
+    const nm = s.name || s.exercise_name || "Unknown Exercise";
+    if (!exMap[nm]) { exMap[nm] = { length: 0, sets: [] }; }
+    exMap[nm].length++;
+    exMap[nm].sets.push(s);
+  });
+
+  const exercises = Object.entries(exMap).map(([nm, obj]: any, i: number) => ({
+    id: `ex-${w.id}-${i}`,
+    name: nm,
+    setsLength: obj.length,
+    sets: obj.sets,
+    accentColor: "#0A84FF",
+  }));
+
+  const dateStr = new Date(w.created_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+
+  const dMatch = typeof w.notes === "string" ? w.notes.match(/in (\d+:\d+)/) : null;
+  let dStr = "N/A";
+  if (dMatch) {
+    const [m, sec] = dMatch[1].split(":").map(Number);
+    dStr = m === 0 ? `${m}:${String(sec).padStart(2, "0")} sec` : `${m}:${String(sec).padStart(2, "0")} min`;
+  }
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border, marginBottom: 10 }]}>
+      {/* Collapsed header — always visible */}
+      <TouchableOpacity onPress={() => setOpen(!open)} activeOpacity={0.7}
+        style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{w.name || "Workout Session"}</Text>
+          <Text style={[styles.cardDate, { color: colors.textSecondary, marginTop: 2 }]}>{`${dateStr}  ·  ${sets.length} sets  ·  ${vol.toLocaleString()} ${unit}`}</Text>
+        </View>
+        <View style={[
+          { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center",
+            backgroundColor: open ? "rgba(10,132,255,0.15)" : (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)") }
+        ]}>
+          <View style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}>
+            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={open ? "#0A84FF" : colors.textSecondary} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <Polyline points="6 9 12 15 18 9" />
+            </Svg>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Expanded detail */}
+      {open && (
+        <View style={{ marginTop: 14 }}>
+          <View style={[{ height: 1, backgroundColor: colors.border, marginBottom: 14 }]} />
+          <View style={styles.cardStatsRow}>
+            {[
+              { label: "Duration", value: dStr, align: "flex-start" },
+              { label: "Volume", value: `${vol.toLocaleString()} ${unit}`, align: "center" },
+              { label: "Sets", value: `${sets.length} sets`, align: "flex-end" },
+            ].map(({ label, value, align }) => (
+              <View key={label} style={[styles.cardStatCol, { alignItems: align as any }]}>
+                <Text style={[styles.cardStatLabel, { color: colors.textSecondary }]}>{label}</Text>
+                <Text style={[styles.cardStatValue, { color: colors.textPrimary }]}>{value}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={[{ height: 1, backgroundColor: colors.border, marginBottom: 12, marginTop: 4 }]} />
+          <View style={styles.exercisesList}>
+            {exercises.map((ex) => (
+              <WorkoutExerciseRow key={ex.id} ex={ex} unit={unit} />
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 /* --- Page -------------------------------------------------- */
 export default function HomePage() {
   const router = useRouter();
@@ -93,6 +176,7 @@ export default function HomePage() {
   const [sessionCount, setSessionCount] = useState(0);
   const [strengthScore, setStrengthScore] = useState(0);
   const [recoveryScore, setRecoveryScore] = useState(0);
+  const [showPastWorkouts, setShowPastWorkouts] = useState(false);
   const [lastWorkout, setLastWorkout] = useState({
     name: "No Sessions Logged",
     subtitle: "Start a workout to see stats here",
@@ -114,28 +198,27 @@ export default function HomePage() {
             bw = parseFloat(metData[metData.length - 1].weight) || 1;
         }
 
-        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, rows: 0 };
         prData.forEach((p: any) => {
             const e = p.exercise_name?.toLowerCase();
             const w = parseFloat(p.weight);
             if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
             else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
             else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
-            else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
             else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
         });
 
-        const ELITE = { bench: 1.5, deadlift: 2.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
+        const ELITE = { bench: 1.5, deadlift: 2.5, squat: 2.0, rows: 1.2 };
         const calcScore = (cur: number, target: number) => Math.min(100, Math.round(((cur / bw) / target) * 100));
 
         const benchScore = calcScore(rawMaxes.bench, ELITE.bench);
         const dlScore = calcScore(rawMaxes.deadlift, ELITE.deadlift);
-        const ohpScore = calcScore(rawMaxes.ohp, ELITE.ohp);
         const squatScore = calcScore(rawMaxes.squat, ELITE.squat);
         const rowScore = calcScore(rawMaxes.rows, ELITE.rows);
+        const shoulderScore = Math.round(benchScore * 0.75);
 
         const muscleScores = [
-            benchScore, dlScore, ohpScore, squatScore,
+            benchScore, dlScore, shoulderScore, squatScore,
             Math.round((benchScore * 0.5) + (rowScore * 0.5)),
             Math.max(0, squatScore - 15)
         ];
@@ -274,6 +357,51 @@ export default function HomePage() {
       </View>
 
       {showPlateCalc && <PlateCalculator />}
+
+      {/* Past Workouts Button */}
+      <TouchableOpacity
+        onPress={() => setShowPastWorkouts(true)}
+        style={[styles.pastWorkoutsBtn, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
+      >
+        <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={colors.textSecondary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Polyline points="12 8 12 12 14 14" />
+          <Circle cx="12" cy="12" r="10" fill="none" />
+        </Svg>
+        <Text style={[styles.pastWorkoutsBtnText, { color: colors.textSecondary }]}>Past Workouts</Text>
+        <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={colors.textTertiary} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <Polyline points="9 18 15 12 9 6" />
+        </Svg>
+      </TouchableOpacity>
+
+      {/* Past Workouts Modal */}
+      <Modal visible={showPastWorkouts} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPastWorkouts(false)}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.bgBase }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <View>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Past Workouts</Text>
+              <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>{data?.length || 0} sessions logged</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowPastWorkouts(false)} style={[styles.modalCloseBtn, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+              <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={colors.textSecondary} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <Polyline points="18 6 6 18" />
+                <Polyline points="6 6 18 18" />
+              </Svg>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+            {(data || []).map((w: any, idx: number) => (
+              <PastWorkoutCard key={w.id || idx} w={w} unit={unit} colors={colors} isLight={isLight} />
+            ))}
+            {(!data || data.length === 0) && (
+              <View style={{ alignItems: "center", paddingTop: 60 }}>
+                <Text style={{ fontSize: 32, marginBottom: 12 }}>🏋️</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600" }}>No workouts logged yet</Text>
+                <Text style={{ color: colors.textTertiary, fontSize: 13, marginTop: 4 }}>Start a session to see it here</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </PageShell>
   );
 }
@@ -473,5 +601,91 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FF9F0A",
     marginLeft: 4,
+  },
+  pastWorkoutsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 32,
+  },
+  pastWorkoutsBtnText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginTop: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pastWorkoutCard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+    marginBottom: 10,
+  },
+  pastWorkoutAccent: {
+    width: 4,
+    marginRight: 14,
+    borderRadius: 2,
+  },
+  pastWorkoutName: {
+    fontSize: 15,
+    fontWeight: "700",
+    flex: 1,
+    marginRight: 8,
+  },
+  pastWorkoutDate: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  pastWorkoutExercises: {
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  pastWorkoutStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  pastWorkoutStat: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  pastWorkoutStatDivider: {
+    fontSize: 12,
   },
 });
