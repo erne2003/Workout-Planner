@@ -11,7 +11,7 @@ import { useTheme } from "../../hooks/useTheme";
 /* --- Lift config --------------------------------------------- */
 const LIFTS = [
   { key: "bench",    label: "Bench Press", color: "#0A84FF", unit: "lbs" },
-  { key: "squat",    label: "Back Squat",  color: "#FF2D55", unit: "lbs" },
+  { key: "squat",    label: "Squat",       color: "#FF2D55", unit: "lbs" },
   { key: "deadlift", label: "Deadlift",    color: "#FFD60A", unit: "lbs" },
 ];
 
@@ -434,6 +434,108 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
   );
 }
 
+/* --- Log BW Card Component ----------------------------------- */
+function LogBWCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
+  const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
+  const [weight, setWeight] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!weight || isNaN(parseFloat(weight))) {
+      Alert.alert("Error", "Please enter a valid weight");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const parsedWeight = parseFloat(weight);
+      const dbWeight = unit === "kg" ? Math.round(parsedWeight * 2.205) : parsedWeight;
+      
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/metrics`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          weight: dbWeight
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save bodyweight");
+      }
+
+      Alert.alert("Success", `Logged bodyweight: ${weight} ${unit}!`);
+      setWeight("");
+      refresh("metrics");
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to save bodyweight");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <View style={[styles.card, { borderTopWidth: 3, borderTopColor: "rgba(10, 132, 255, 0.4)", backgroundColor: colors.bgCard, borderColor: colors.border, padding: 16, marginBottom: 12 }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(10, 132, 255, 0.15)", alignItems: "center", justifyContent: "center" }}>
+          <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <Path d="M7 2v10M2 7h10" stroke="#0A84FF" strokeWidth="2" strokeLinecap="round" />
+          </Svg>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textPrimary, textTransform: "uppercase", letterSpacing: 1 }}>
+            Update Bodyweight
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.textTertiary }}>
+            Keep your strength multiplier accurate
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-end" }}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.inputLabel, { color: colors.textTertiary }]}>Bodyweight ({unit})</Text>
+          <TextInput
+            keyboardType="numeric"
+            placeholder="e.g. 185"
+            placeholderTextColor={colors.textTertiary}
+            value={weight}
+            onChangeText={setWeight}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)",
+                borderColor: colors.border,
+                color: colors.textPrimary,
+              }
+            ]}
+          />
+        </View>
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={isSaving}
+          style={[
+            styles.submitBtn,
+            {
+              backgroundColor: "#0A84FF",
+              opacity: isSaving ? 0.7 : 1,
+              flex: 0.5,
+            }
+          ]}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13, textAlign: "center" }}>
+            {isSaving ? "Saving..." : "Save"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 /* --- Personal Record Card ------------------------------------ */
 function PRCard({ prData }: any) {
   const { colors } = useTheme();
@@ -679,6 +781,7 @@ export function StrengthContent() {
       </View>
 
       <LogPRCard refresh={refresh} unit={unit} />
+      <LogBWCard refresh={refresh} unit={unit} />
 
       <Text style={[styles.sectionLabel, { marginTop: 16, color: colors.textSecondary }]}>Strength by Muscle Group</Text>
 
