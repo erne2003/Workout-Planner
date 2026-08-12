@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 21.2.0",
+    "version": ">= 20.3.0",
     "appVersionSource": "remote"
   },
   "build": {
@@ -9,10 +9,16 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
+      }
     }
   },
   "submit": {
