@@ -50,19 +50,39 @@ const createMockHealthKit = () => {
 };
 
 let AppleHealthKit = null;
+let isUsingMock = false;
 if (Platform.OS === 'ios') {
   try {
     const HealthKitPackage = require('react-native-health');
     const hk = HealthKitPackage.default || HealthKitPackage;
     if (hk && typeof hk.initHealthKit === 'function') {
       AppleHealthKit = hk;
+      isUsingMock = false;
+      console.log('═══════════════════════════════════════════════════════');
+      console.log('[HealthKit] ✅ REAL HealthKit native module loaded');
+      console.log('[HealthKit] Data will come from Apple Health on device');
+      console.log('═══════════════════════════════════════════════════════');
     } else {
-      console.warn('[HealthKit] Native methods are not available (expected in Expo Go). Activating developer mock.');
+      console.warn('═══════════════════════════════════════════════════════');
+      console.warn('[HealthKit] ⚠️  MOCK MODE — Native methods not available');
+      console.warn('[HealthKit] Expected in Expo Go. Values are HARDCODED:');
+      console.warn('[HealthKit]   RHR: 58-62 bpm | HRV: 60-65 ms | Sleep: 7.5h');
+      console.warn('[HealthKit] To get real data, use a Development Build.');
+      console.warn('═══════════════════════════════════════════════════════');
       AppleHealthKit = createMockHealthKit();
+      isUsingMock = true;
     }
   } catch (e) {
-    console.warn('[HealthKit] Native package not found (expected in Expo Go / simulator). Activating developer mock. Error:', e.message);
+    console.warn('═══════════════════════════════════════════════════════');
+    console.warn('[HealthKit] ⚠️  MOCK MODE — Native package not found');
+    console.warn('[HealthKit] Error:', e.message);
+    console.warn('[HealthKit] Expected in Expo Go / Simulator.');
+    console.warn('[HealthKit] Values are HARDCODED PLACEHOLDERS:');
+    console.warn('[HealthKit]   RHR: 58-62 bpm | HRV: 60-65 ms | Sleep: 7.5h');
+    console.warn('[HealthKit] To get real data, use a Development Build.');
+    console.warn('═══════════════════════════════════════════════════════');
     AppleHealthKit = createMockHealthKit();
+    isUsingMock = true;
   }
 }
 
@@ -188,11 +208,55 @@ export function useHealthKit() {
         });
       })
     ]).then(([rhrData, hrvData, sleepData]) => {
-      console.log("[HealthKit] Fetched Raw Metrics:", {
-        rhr: rhrData,
-        hrv: hrvData,
-        sleep: sleepData,
-      });
+      const source = isUsingMock ? '⚠️  MOCK (Hardcoded Placeholders)' : '✅ REAL Apple HealthKit';
+      const totalSleepMin = sleepData.sleepStages
+        ? sleepData.sleepStages.deepMinutes + sleepData.sleepStages.coreMinutes + sleepData.sleepStages.remMinutes
+        : 0;
+      const fmtMin = (m) => `${Math.floor(m / 60)}h ${Math.round(m % 60)}m`;
+
+      console.log('');
+      console.log('╔═══════════════════════════════════════════════════════════╗');
+      console.log('║         APEX HealthKit Diagnostic Report                 ║');
+      console.log('╠═══════════════════════════════════════════════════════════╣');
+      console.log(`║  Data Source:  ${source}`);
+      console.log(`║  Fetched At:   ${new Date().toLocaleString()}`);
+      console.log('╠═══════════════════════════════════════════════════════════╣');
+      console.log('║  📊 RESTING HEART RATE (RHR)');
+      console.log(`║     Today:      ${rhrData.todayRHR !== null ? rhrData.todayRHR + ' bpm' : 'N/A'}`);
+      console.log(`║     14-Day Avg: ${rhrData.avg14DayRHR !== null ? Math.round(rhrData.avg14DayRHR * 10) / 10 + ' bpm' : 'N/A'}`);
+      console.log('║  ───────────────────────────────────────────────────────');
+      console.log('║  💓 HEART RATE VARIABILITY (HRV)');
+      console.log(`║     Today:      ${hrvData.todayHRV !== null ? Math.round(hrvData.todayHRV) + ' ms' : 'N/A'}`);
+      console.log(`║     14-Day Avg: ${hrvData.avg14DayHRV !== null ? Math.round(hrvData.avg14DayHRV * 10) / 10 + ' ms' : 'N/A'}`);
+      console.log('║  ───────────────────────────────────────────────────────');
+      console.log('║  🌙 SLEEP ANALYSIS (Last 24h)');
+      if (sleepData.sleepStages) {
+        console.log(`║     Total Sleep: ${fmtMin(totalSleepMin)}`);
+        console.log(`║     Deep:        ${fmtMin(sleepData.sleepStages.deepMinutes)}`);
+        console.log(`║     Core:        ${fmtMin(sleepData.sleepStages.coreMinutes)}`);
+        console.log(`║     REM:         ${fmtMin(sleepData.sleepStages.remMinutes)}`);
+        console.log(`║     Awake:       ${fmtMin(sleepData.sleepStages.awakeMinutes)}`);
+      } else {
+        console.log('║     No sleep data available');
+      }
+      console.log('╚═══════════════════════════════════════════════════════════╝');
+      console.log('');
+
+      if (isUsingMock) {
+        console.log('[HealthKit] ⚠️  The values above are FAKE. Compare them with your');
+        console.log('[HealthKit]    iPhone → Health app → Browse → Heart → HRV / Resting HR');
+        console.log('[HealthKit]    and Sleep to see if they match. If they DO match,');
+        console.log('[HealthKit]    something is wrong — you should see DIFFERENT values.');
+        console.log('[HealthKit]    Build a Development Build to get real HealthKit data.');
+        console.log('');
+      } else {
+        console.log('[HealthKit] ✅ These values come from Apple Health on your device.');
+        console.log('[HealthKit]    Compare with: iPhone → Health app → Browse →');
+        console.log('[HealthKit]    Heart → HRV / Resting Heart Rate, and Sleep.');
+        console.log('[HealthKit]    They should match your real data.');
+        console.log('');
+      }
+
       setHealthData({
         ...rhrData,
         ...hrvData,
