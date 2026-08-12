@@ -21,29 +21,31 @@ export function SettingsProvider({ children }) {
   // Initialize from localStorage
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") || "dark";
-    setThemeState(savedTheme);
     if (savedTheme === "light") {
       document.documentElement.classList.add("light");
     } else {
       document.documentElement.classList.remove("light");
     }
 
-    setWeightUnitState(localStorage.getItem("weightUnit") || "lbs");
-    setLengthUnitState(localStorage.getItem("lengthUnit") || "in");
-    setDefaultRIRState(parseInt(localStorage.getItem("defaultRIR")) || 2);
-    setRestTimerState(parseInt(localStorage.getItem("restTimer")) || 90);
-    setPlateCalcState(localStorage.getItem("plateCalc") !== "false");
-    setBarWeightState(parseFloat(localStorage.getItem("barWeight")) || 45);
-    setAutoStartRestState(localStorage.getItem("autoStartRest") !== "false");
+    setTimeout(() => {
+      setThemeState(savedTheme);
+      setWeightUnitState(localStorage.getItem("weightUnit") || "lbs");
+      setLengthUnitState(localStorage.getItem("lengthUnit") || "in");
+      setDefaultRIRState(parseInt(localStorage.getItem("defaultRIR")) || 2);
+      setRestTimerState(parseInt(localStorage.getItem("restTimer")) || 90);
+      setPlateCalcState(localStorage.getItem("plateCalc") !== "false");
+      setBarWeightState(parseFloat(localStorage.getItem("barWeight")) || 45);
+      setAutoStartRestState(localStorage.getItem("autoStartRest") !== "false");
 
-    try {
-      const notifs = JSON.parse(localStorage.getItem("notifications") || '{"reminders": true, "alerts": true}');
-      setNotificationsState(notifs);
-    } catch {
-      // Ignored
-    }
-    
-    setIsLoaded(true);
+      try {
+        const notifs = JSON.parse(localStorage.getItem("notifications") || '{"reminders": true, "alerts": true}');
+        setNotificationsState(notifs);
+      } catch {
+        // Ignored
+      }
+      
+      setIsLoaded(true);
+    }, 0);
   }, []);
 
   const save = (key, val) => {

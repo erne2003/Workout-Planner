@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { getRoutinesByUser, createRoutine, deleteRoutine } = require("../queries/routines.queries");
+const { getRoutinesByUser, createRoutine, deleteRoutine, updateRoutine } = require("../queries/routines.queries");
 
 // GET /routines - Fetch all routines for a user
 router.get("/", async (req, res) => {
@@ -41,6 +41,26 @@ router.delete("/:id", async (req, res) => {
     } catch (e) {
         console.error("DELETE /routines/:id error:", e.message);
         res.status(500).json({ error: "Failed to delete routine" });
+    }
+});
+
+// PUT /routines/:id - Update an existing routine's exercises list
+router.put("/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, exercises } = req.body;
+        if (!name || !exercises || !exercises.length) {
+            return res.status(400).json({ error: "Missing name or exercises" });
+        }
+
+        const updated = await updateRoutine({ userId: req.userId, routineId: id, name, exercises });
+        if (!updated) {
+            return res.status(404).json({ error: "Routine not found" });
+        }
+        res.json(updated);
+    } catch (e) {
+        console.error("PUT /routines/:id error:", e.message);
+        res.status(500).json({ error: "Failed to update routine" });
     }
 });
 

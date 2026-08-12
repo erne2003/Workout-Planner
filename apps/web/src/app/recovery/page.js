@@ -10,6 +10,7 @@ import {
   setMuscleSoreness,
   computeRecovery,
   computeDynamicRecovery,
+  computeMuscleReadiness,
   parseLocalISO,
 } from "../../lib/recovery";
 import { useData } from "../../contexts/DataContext";
@@ -186,12 +187,10 @@ function MuscleRow({ name, data, manualLevel, onSelect, onClear, delay }) {
 
 /* ─── Overall Score Ring ────────────────────────────────────── */
 function OverallScore({ muscleData }) {
-  const values = Object.values(muscleData);
-  if (!values.length) return null;
-  const avg = Math.round(values.reduce((s, m) => s + m.pct, 0) / values.length);
-  const color = avg >= 75 ? "#30D158" : avg >= 50 ? "#FF9F0A" : "#FF2D55";
+  const { score } = computeMuscleReadiness(muscleData);
+  const color = score >= 75 ? "#30D158" : score >= 50 ? "#FF9F0A" : "#FF2D55";
   const circumference = 2 * Math.PI * 44;
-  const offset = circumference * (1 - avg / 100);
+  const offset = circumference * (1 - score / 100);
 
   return (
     <div style={{ textAlign: "center" }}>
@@ -213,7 +212,7 @@ function OverallScore({ muscleData }) {
           }}
         >
           <span style={{ fontFamily: "var(--font-display)", fontSize: "24px", fontWeight: 800, color, letterSpacing: "-1px", lineHeight: 1 }}>
-            {avg}
+            {score}
           </span>
           <span style={{ fontSize: "9px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.8px" }}>
             Overall

@@ -1,5 +1,6 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { getSecureStorage } from "./storage";
 
 const DataContext = createContext({});
 
@@ -27,8 +28,44 @@ export function DataProvider({ children }) {
     metrics: null,
   });
 
+  const [token, setTokenState] = useState(null);
+  const [tokenLoading, setTokenLoading] = useState(true);
+
+  // Initialize token from secure storage (async, awaited)
+  useEffect(() => {
+    (async () => {
+      try {
+        const secureStorage = getSecureStorage();
+        if (secureStorage) {
+          const savedToken = await secureStorage.getItemAsync("token");
+          setTokenState(savedToken ?? null);
+        }
+      } catch (e) {
+        console.warn("[DataContext] Failed to load token:", e);
+      } finally {
+        setTokenLoading(false);
+      }
+    })();
+  }, []);
+
+  // Persist token via secure storage — async and awaited by callers
+  const setToken = useCallback(async (newToken) => {
+    const secureStorage = getSecureStorage();
+    if (secureStorage) {
+      try {
+        if (newToken) {
+          await secureStorage.setItemAsync("token", newToken);
+        } else {
+          await secureStorage.removeItemAsync("token");
+        }
+      } catch (e) {
+        console.warn("[DataContext] Failed to persist token:", e);
+      }
+    }
+    setTokenState(newToken);
+  }, []);
+
   const fetchResource = useCallback(async (key, endpoint) => {
-    const token = localStorage.getItem("token");
     if (!token) return;
 
     setLoading((prev) => ({ ...prev, [key]: true }));
@@ -39,6 +76,11 @@ export function DataProvider({ children }) {
       const res = await fetch(`${apiUrl}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (res.status === 401) {
+        await setToken(null);
+        throw new Error("Session expired or invalid token. Please log in again.");
+      }
 
       if (!res.ok) {
         throw new Error(`Failed to fetch ${key}`);
@@ -52,12 +94,12 @@ export function DataProvider({ children }) {
     } finally {
       setLoading((prev) => ({ ...prev, [key]: false }));
     }
-  }, []);
+  }, [token, setToken]);
 
   const prefetchAll = useCallback(async () => {
-    const token = localStorage.getItem("token");
     if (!token) {
-        setLoading({ workouts: false, prs: false, metrics: false });
+        setData({ workouts: null, routines: null, prs: null, metrics: null });
+        setLoading({ workouts: false, routines: false, prs: false, metrics: false });
         return;
     }
 
@@ -65,10 +107,16 @@ export function DataProvider({ children }) {
     setErrors({ workouts: null, routines: null, prs: null, metrics: null });
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL;
+    let unauthorizedOccurred = false;
+
     const fetchWithAuth = (endpoint) =>
       fetch(`${apiUrl}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then((res) => {
+        if (res.status === 401) {
+          unauthorizedOccurred = true;
+          throw new Error("Unauthorized - invalid token signature");
+        }
         if (!res.ok) throw new Error(`Failed to fetch ${endpoint}`);
         return res.json();
       });
@@ -83,6 +131,9 @@ export function DataProvider({ children }) {
 
       setData({ workouts, routines, prs, metrics });
     } catch (err) {
+      if (unauthorizedOccurred) {
+        await setToken(null);
+      }
       console.error("Prefetch error:", err);
       setErrors({
           workouts: err.message,
@@ -93,11 +144,14 @@ export function DataProvider({ children }) {
     } finally {
       setLoading({ workouts: false, routines: false, prs: false, metrics: false });
     }
-  }, []);
+  }, [token, setToken]);
 
+  // Only prefetch after token has been loaded from secure storage
   useEffect(() => {
-    prefetchAll();
-  }, [prefetchAll]);
+    if (!tokenLoading) {
+      prefetchAll();
+    }
+  }, [prefetchAll, tokenLoading]);
 
   const refresh = useCallback((key) => {
     const endpoints = {
@@ -118,6 +172,9 @@ export function DataProvider({ children }) {
     errors,
     refresh,
     prefetchAll,
+    token,
+    setToken,
+    tokenLoading,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

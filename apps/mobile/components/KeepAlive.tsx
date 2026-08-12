@@ -9,7 +9,7 @@ export default function KeepAlive() {
     
     // Initial ping on mount
     const ping = async () => {
-        const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
         if (!apiUrl) return;
         try {
             await fetch(`${apiUrl}/health`, pingParams);

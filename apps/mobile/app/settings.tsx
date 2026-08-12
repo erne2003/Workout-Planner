@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
-import { useSettings, useData } from "@apex/core";
+import { useSettings, useData, getStorage } from "@apex/core";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
 import { useTheme } from "../hooks/useTheme";
 import { useHealthKit } from "../hooks/useHealthKit";
@@ -83,7 +83,7 @@ export default function SettingsPage() {
     if (!deletePassword) return;
     setIsDeleting(true);
     try {
-      const token = global.localStorage?.getItem("token");
+
       const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
       const response = await fetch(`${apiUrl}/auth/delete-account`, {
         method: "POST",
@@ -109,10 +109,11 @@ export default function SettingsPage() {
     }
   };
 
+  const { token, setToken } = useData() as any;
   const ctx = useSettings() as any;
 
   useEffect(() => {
-    setUserName(global.localStorage?.getItem("userName") || "");
+    setUserName(getStorage()?.getItem("userName") || "");
   }, []);
 
   if (!ctx) return null;
@@ -131,16 +132,14 @@ export default function SettingsPage() {
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
 
   const handleNameBlur = () => {
-    global.localStorage?.setItem("userName", userName);
+    getStorage()?.setItem("userName", userName);
   };
 
-  const { setToken } = useData() as any;
-
-  const logout = () => {
-    global.localStorage?.removeItem("userId");
-    setToken(null);
-    global.localStorage?.removeItem("userName");
-    global.localStorage?.removeItem("userEmail");
+  const logout = async () => {
+    getStorage()?.removeItem("userId");
+    await setToken(null);
+    getStorage()?.removeItem("userName");
+    getStorage()?.removeItem("userEmail");
     router.replace("/login");
   };
 

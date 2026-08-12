@@ -10,6 +10,7 @@ import {
   computeDynamicRecovery,
   parseLocalISO,
   calculateReadinessScore,
+  computeMuscleReadiness,
 } from "@apex/core/src/recovery";
 import { useData } from "@apex/core";
 import MuscleMap from "@/components/MuscleMap";
@@ -126,14 +127,17 @@ function MuscleRow({ name, data, manualLevel, onSelect, onClear }: any) {
 }
 
 /* ─── Overall Score Ring ────────────────────────────────────── */
-function OverallScore({ muscleData }: any) {
+function OverallScore({ muscleData, score }: any) {
   const { colors } = useTheme();
-  const values = Object.values(muscleData);
-  if (!values.length) return null;
-  const avg = Math.round(values.reduce((s: number, m: any) => s + m.pct, 0) / values.length);
-  const color = avg >= 75 ? "#30D158" : avg >= 50 ? "#FF9F0A" : "#FF2D55";
+  
+  let displayScore = score;
+  if (displayScore === undefined) {
+    displayScore = computeMuscleReadiness(muscleData).score;
+  }
+
+  const color = displayScore >= 75 ? "#30D158" : displayScore >= 50 ? "#FF9F0A" : "#FF2D55";
   const circumference = 2 * Math.PI * 44;
-  const offset = circumference * (1 - avg / 100);
+  const offset = circumference * (1 - displayScore / 100);
 
   return (
     <View style={styles.scoreRingContainer}>
@@ -146,7 +150,7 @@ function OverallScore({ muscleData }: any) {
         />
       </Svg>
       <View style={styles.scoreRingInner}>
-        <Text style={[styles.scoreRingText, { color }]}>{avg}</Text>
+        <Text style={[styles.scoreRingText, { color }]}>{displayScore}</Text>
         <Text style={[styles.scoreRingLabel, { color: colors.textSecondary }]}>Overall</Text>
       </View>
     </View>
@@ -184,7 +188,7 @@ function LastWorkoutBanner({ lastTime, onReset }: any) {
 }
 
 /* ─── HealthKit Readiness Score ─────────────────────────────── */
-function HealthKitReadiness({ healthData, hasPermission, loading, error, onRequestPermissions, hoursSinceLastWorkout }: any) {
+function HealthKitReadiness({ healthData, hasPermission, loading, error, onRequestPermissions, hoursSinceLastWorkout, scoreData, unifiedScore }: any) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
 
@@ -241,38 +245,26 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
     );
   }
 
-  // Determine availability of data
-  const hasSleep = healthData.sleepStages !== null;
-  const hasHRV = healthData.todayHRV !== null;
-  const hasRHR = healthData.todayRHR !== null;
-  const hasActualData = hasSleep && hasHRV && hasRHR;
-
-  // Use safe default fallbacks for calculateReadinessScore if data is missing
-  const scoreData = calculateReadinessScore({
-    sleepStages: healthData.sleepStages || { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
-    todayHRV: healthData.todayHRV || 50,
-    avg14DayHRV: healthData.avg14DayHRV || 50,
-    todayRHR: healthData.todayRHR || 60,
-    avg14DayRHR: healthData.avg14DayRHR || 60,
-    hoursSinceLastWorkout
-  });
-
   if (!scoreData) return null;
 
   const {
-    compositeReadiness,
     sleepQualityScore,
     hrvScore,
     rhrScore,
     workoutIntervalScore
   } = scoreData;
 
+  const hasSleep = healthData.sleepStages !== null;
+  const hasHRV = healthData.todayHRV !== null;
+  const hasRHR = healthData.todayRHR !== null;
+  const hasActualData = hasSleep && hasHRV && hasRHR;
+
   const scoreColor = hasActualData
-    ? (compositeReadiness >= 75 ? "#30D158" : compositeReadiness >= 50 ? "#FF9F0A" : "#FF2D55")
+    ? (unifiedScore >= 75 ? "#30D158" : unifiedScore >= 50 ? "#FF9F0A" : "#FF2D55")
     : colors.textSecondary; // Gray if N/A
 
   const circumference = 2 * Math.PI * 34;
-  const offset = hasActualData ? circumference * (1 - compositeReadiness / 100) : circumference;
+  const offset = hasActualData ? circumference * (1 - unifiedScore / 100) : circumference;
 
   const totalSleepTime = hasSleep
     ? (healthData.sleepStages.deepMinutes + healthData.sleepStages.coreMinutes + healthData.sleepStages.remMinutes)
@@ -301,7 +293,7 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
           </Svg>
           <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 20, fontWeight: '800', color: scoreColor }}>
-              {hasActualData ? `${compositeReadiness}%` : "N/A"}
+              {hasActualData ? `${unifiedScore}%` : "N/A"}
             </Text>
           </View>
         </View>
@@ -348,11 +340,11 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
             </View>
           </View>
 
-          {/* Workout Interval */}
+          {/* Muscle Readiness */}
           <View style={{ gap: 4 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Workout Interval</Text>
-              <Text style={{ fontSize: 11, color: colors.textSecondary }}>{Math.round(hoursSinceLastWorkout)}h elapsed ({workoutIntervalScore}%)</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Muscle Readiness</Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>{workoutIntervalScore}%</Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
               <View style={{ height: '100%', width: `${workoutIntervalScore}%`, backgroundColor: '#FF9F0A' }} />
@@ -437,6 +429,27 @@ export default function RecoveryPage() {
     (a, b) => (muscleData[a]?.pct ?? 0) - (muscleData[b]?.pct ?? 0)
   );
 
+  const muscleReadinessScore = computeMuscleReadiness(muscleData).score;
+
+  const hasSleep = healthData?.sleepStages !== null && healthData?.sleepStages !== undefined;
+  const hasHRV = healthData?.todayHRV !== null && healthData?.todayHRV !== undefined;
+  const hasRHR = healthData?.todayRHR !== null && healthData?.todayRHR !== undefined;
+  const hasActualData = hasSleep && hasHRV && hasRHR;
+
+  const scoreData = calculateReadinessScore({
+    sleepStages: healthData?.sleepStages || { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
+    todayHRV: healthData?.todayHRV || 50,
+    avg14DayHRV: healthData?.avg14DayHRV || 50,
+    todayRHR: healthData?.todayRHR || 60,
+    avg14DayRHR: healthData?.avg14DayRHR || 60,
+    hoursSinceLastWorkout,
+    muscleReadinessScore
+  });
+
+  const unifiedScore = (hasPermission && hasActualData && scoreData)
+    ? scoreData.compositeReadiness
+    : muscleReadinessScore;
+
   return (
     <PageShell title="Recovery" subtitle="Muscle Readiness · Today" onSettingsClick={() => router.push("/settings" as any)}>
       {loading.workouts ? (
@@ -453,6 +466,8 @@ export default function RecoveryPage() {
           error={healthError}
           onRequestPermissions={requestPermissions}
           hoursSinceLastWorkout={hoursSinceLastWorkout}
+          scoreData={scoreData}
+          unifiedScore={unifiedScore}
         />
       )}
 
@@ -461,9 +476,9 @@ export default function RecoveryPage() {
       ) : (
         <View style={[styles.card, { padding: 20, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
           <View style={styles.heroHeaderRow}>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[styles.heroTitle, { color: colors.textPrimary }]}>Muscle Readiness</Text>
-              <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>Tap a muscle row to set soreness</Text>
+              <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>Tap a muscle to see details</Text>
               <View style={[styles.viewToggleGroup, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)" }]}>
                 <TouchableOpacity onPress={() => setView("front")} style={[styles.viewToggleBtn, view === "front" && { backgroundColor: "#0A84FF" }]}>
                   <Text style={{ color: view === "front" ? "#fff" : colors.textPrimary, fontSize: 12, fontWeight: "600" }}>Front</Text>
@@ -473,7 +488,7 @@ export default function RecoveryPage() {
                 </TouchableOpacity>
               </View>
             </View>
-            <OverallScore muscleData={muscleData} />
+            <OverallScore muscleData={muscleData} score={unifiedScore} />
           </View>
 
           <View style={{ alignItems: "center", marginBottom: 32, height: 400 }}>

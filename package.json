@@ -10,13 +10,20 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "web": "turbo run dev --filter=@apex/web"
+    "web": "turbo run dev --filter=@apex/web",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "eslint-plugin-security": "^4.0.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
     "turbo": "latest"
   },
   "overrides": {
     "react": "19.1.0",
     "react-dom": "19.1.0"
+  },
+  "lint-staged": {
+    "backend/**/*.js": "npm run lint --prefix backend --"
   }
 }

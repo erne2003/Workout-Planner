@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useAnimation, useMotionValue } from "framer-motion";
 import { Trash2 } from "lucide-react";
@@ -493,13 +493,15 @@ function ExerciseSearch({ onAdd }) {
   const handleBlur = () => setTimeout(() => setOpen(false), 200);
 
   useEffect(() => {
-    setDoneSearching(false);
-    setShowAddNew(false);
-    setAddError("");
+    const timer = setTimeout(() => {
+      setDoneSearching(false);
+      setShowAddNew(false);
+      setAddError("");
+    }, 0);
     // Only search if user typed something new and it's not just the selected exercise name
     if (query.trim() === "" || (selectedEx && query === selectedEx.name)) {
-      setResults([]);
-      return;
+      setTimeout(() => setResults([]), 0);
+      return () => clearTimeout(timer);
     }
     const t = setTimeout(async () => {
       setIsLoading(true);
@@ -513,7 +515,10 @@ function ExerciseSearch({ onAdd }) {
       } catch { setResults([]); setDoneSearching(true); }
       finally { setIsLoading(false); }
     }, 500);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(t);
+    };
   }, [query, selectedEx]);
 
   const handleAddNew = async () => {
@@ -708,11 +713,11 @@ function ExerciseSearch({ onAdd }) {
           }}
         >
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "13px", color: "#0A84FF" }}>
-            Add "{query.trim()}" as a new exercise
+            Add &quot;{query.trim()}&quot; as a new exercise
           </div>
 
           <div style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: "1.4" }}>
-            Select the target muscle. The exercise name must contain the muscle name (e.g. "Iso-Lateral <strong>Chest</strong> Press" → Chest).
+            Select the target muscle. The exercise name must contain the muscle name (e.g. &quot;Iso-Lateral <strong>Chest</strong> Press&quot; &rarr; Chest).
           </div>
 
           {/* Custom muscle group dropdown */}
@@ -872,9 +877,9 @@ export default function WorkoutPage() {
   const [restTimer, setRestTimer] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [startTime, setStartTime] = useState(null);
 
   // ── Routine Management States ──
-  const [routines, setRoutines] = useState([]);
   const [activeRoutine, setActiveRoutine] = useState(null);
   const [isManagingRoutines, setIsManagingRoutines] = useState(false);
   const [isCreatingRoutine, setIsCreatingRoutine] = useState(false);
@@ -885,22 +890,25 @@ export default function WorkoutPage() {
   const pathname = usePathname();
   const { workouts, routines: templateRoutines, loading: dataLoading, refresh } = useData();
 
-  useEffect(() => {
-    if (templateRoutines) {
-      const sorted = [...templateRoutines].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      setRoutines(sorted);
-    }
+  const routines = useMemo(() => {
+    if (!templateRoutines) return [];
+    return [...templateRoutines].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }, [templateRoutines]);
 
   useEffect(() => {
-    if (!started) return;
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    if (!started || !startTime) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [started]);
+  }, [started, startTime]);
 
   useEffect(() => {
     if (!isResting) return;
-    if (restTimer <= 0) { setIsResting(false); return; }
+    if (restTimer <= 0) {
+      const t = setTimeout(() => setIsResting(false), 0);
+      return () => clearTimeout(t);
+    }
     const t = setTimeout(() => setRestTimer((r) => r - 1), 1000);
     return () => clearTimeout(t);
   }, [isResting, restTimer]);
@@ -994,6 +1002,7 @@ export default function WorkoutPage() {
       setStarted(false);
       setElapsed(0);
       setCompleted({});
+      setStartTime(null);
     } catch (err) {
       console.error("Error saving workout:", err);
       // Still close the workout view, even on error so they aren't stuck forever.
@@ -1068,38 +1077,36 @@ export default function WorkoutPage() {
         });
       });
       plan = Object.values(exercisesMap);
-    } else if (lastSession) {
-      // Pre-fill a new workout from the last time this routine was performed
-      const exercisesMap = {};
-      lastSession.sets.forEach(set => {
-        if (!exercisesMap[set.exercise_id]) {
-          exercisesMap[set.exercise_id] = {
-            exerciseId: set.exercise_id,
-            id: set.exercise_id,
-            name: set.name || set.exercise_name,
-            muscle: set.muscle_group,
-            accentColor: "#0A84FF",
-            sets: []
-          };
-        }
-        exercisesMap[set.exercise_id].sets.push({
-          reps: set.reps, 
-          weight: unit === "kg" ? Math.round(Number(set.weight) / 2.205) : Number(set.weight), 
-          rir: set.rir !== null ? set.rir : 0
-        });
-      });
-      plan = Object.values(exercisesMap);
     } else {
-      // It's a template routine with bulk exercise params
+      // It's a template routine. Base the plan on template's exercises.
+      // If a lastSession exists, pre-populate individual exercise sets from it.
       plan = item.exercises.map(ex => {
-        const setsObj = Array(ex.sets).fill(0).map(() => ({
-          reps: ex.reps, weight: unit === "kg" ? Math.round(Number(ex.weight) / 2.205) : Number(ex.weight), rir: ex.rir
-        }));
+        const exId = ex.exercise_id || ex.id;
+        const lastExSets = lastSession 
+          ? lastSession.sets.filter(s => s.exercise_id === exId) 
+          : [];
+
+        let setsObj = [];
+        if (lastExSets.length > 0) {
+          setsObj = lastExSets.map(s => ({
+            reps: s.reps,
+            weight: unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight),
+            rir: s.rir !== null ? s.rir : 0
+          }));
+        } else {
+          setsObj = Array(ex.sets || 3).fill(0).map(() => ({
+            reps: ex.reps || 10,
+            weight: unit === "kg" ? Math.round(Number(ex.weight || 0) / 2.205) : Number(ex.weight || 0),
+            rir: ex.rir || 0
+          }));
+        }
+
         return {
           ...ex,
-          id: ex.exercise_id,
+          id: exId,
+          exerciseId: exId,
           sets: setsObj,
-          accentColor: "#0A84FF", // Default color
+          accentColor: "#0A84FF",
         };
       });
     }
@@ -1108,6 +1115,8 @@ export default function WorkoutPage() {
     setWorkoutPlan(plan);
     setStarted(false);
     setIsEditing(false);
+    setElapsed(0);
+    setStartTime(null);
   };
 
 
@@ -1368,7 +1377,7 @@ export default function WorkoutPage() {
         </div>
 
         <button
-          onClick={() => setStarted(true)}
+          onClick={() => { setStarted(true); setStartTime(Date.now()); }}
           style={{ width: "100%", padding: "18px", borderRadius: "18px", background: "linear-gradient(135deg, #0A84FF 0%, #BF5AF2 100%)", border: "none", color: "#fff", fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 800, letterSpacing: "0.3px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", boxShadow: "0 8px 32px rgba(10,132,255,0.25)", transition: "transform 0.15s" }}
           onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
           onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}

@@ -13,6 +13,7 @@ export default function PageShell({
   badgeColor = "blue",
   backAction,
   onSettingsClick,
+  scrollEnabled = true,
   children,
 }: any) {
   const { colors, isLight } = useTheme();
@@ -64,7 +65,7 @@ export default function PageShell({
       </View>
 
       {/* Scrollable content */}
-      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent} scrollEnabled={scrollEnabled}>
         {children}
       </ScrollView>
     </SafeAreaView>

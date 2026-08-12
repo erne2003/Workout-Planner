@@ -11,7 +11,7 @@ import { useTheme } from "../../hooks/useTheme";
 /* --- Lift config --------------------------------------------- */
 const LIFTS = [
   { key: "bench",    label: "Bench Press", color: "#0A84FF", unit: "lbs" },
-  { key: "squat",    label: "Back Squat",  color: "#FF2D55", unit: "lbs" },
+  { key: "squat",    label: "Squat",       color: "#FF2D55", unit: "lbs" },
   { key: "deadlift", label: "Deadlift",    color: "#FFD60A", unit: "lbs" },
 ];
 
@@ -22,8 +22,8 @@ function OverallRing({ score, bw, age, index }: any) {
   const circumference = 2 * Math.PI * r;
   const offset = circumference * (1 - score / 100);
 
-  const grade = score >= 90 ? "Elite" : score >= 75 ? "Advanced" : score >= 60 ? "Intermediate" : "Developing";
-  const gradeColor = score >= 90 ? "#FFD60A" : score >= 75 ? "#30D158" : score >= 60 ? "#0A84FF" : "#FF9F0A";
+  const grade = score >= 90 ? "Elite" : score >= 75 ? "Advanced" : score >= 60 ? "Intermediate" : "Novice";
+  const gradeColor = score >= 90 ? "#FFD60A" : score >= 75 ? "#FF3B30" : score >= 60 ? "#0A84FF" : "#30D158";
   const percentile = score >= 90 ? "2%" : score >= 75 ? "8%" : score >= 60 ? "15%" : "45%";
 
   return (
@@ -74,34 +74,120 @@ function OverallRing({ score, bw, age, index }: any) {
   );
 }
 
+/* --- Biomechanical Classifier Parameters --------------------- */
+const MALE_REF_WT = 80.0;
+const MALE_REF_HT = 178.0;
+const FEMALE_REF_WT = 60.0;
+const FEMALE_REF_HT = 163.0;
+
+const MULTIPLIERS = {
+  male: {
+    squat:    { novice: 1.15, intermediate: 1.50, advanced: 2.00, elite: 2.40 },
+    bench:    { novice: 0.85, intermediate: 1.15, advanced: 1.40, elite: 1.75 },
+    deadlift: { novice: 1.30, intermediate: 1.75, advanced: 2.25, elite: 2.75 }
+  },
+  female: {
+    squat:    { novice: 0.75, intermediate: 1.10, advanced: 1.50, elite: 1.85 },
+    bench:    { novice: 0.50, intermediate: 0.75, advanced: 1.00, elite: 1.25 },
+    deadlift: { novice: 0.90, intermediate: 1.30, advanced: 1.75, elite: 2.15 }
+  }
+};
+
+function parseHeightToCm(heightStr: string | null | undefined): number {
+  if (!heightStr) return 178;
+  const clean = heightStr.trim().toLowerCase();
+  if (clean.endsWith("cm")) {
+    return parseFloat(clean) || 178;
+  }
+  const match = clean.match(/^(\d+)'(\d+)"?$/);
+  if (match) {
+    const feet = parseInt(match[1]) || 0;
+    const inches = parseInt(match[2]) || 0;
+    return feet * 30.48 + inches * 2.54;
+  }
+  const justNum = parseFloat(clean);
+  if (!isNaN(justNum)) {
+    if (justNum > 100) return justNum;
+    return justNum * 30.48;
+  }
+  return 178;
+}
+
+function calculateStrengthTier(gender: string, weight_kg: number, height_cm: number, lift_type: "bench" | "squat" | "deadlift", actual_lift_kg: number) {
+  const isFemale = String(gender).toLowerCase() === "female";
+  const refWt = isFemale ? FEMALE_REF_WT : MALE_REF_WT;
+  const refHt = isFemale ? FEMALE_REF_HT : MALE_REF_HT;
+  
+  const sAllometric = refWt * Math.pow(Math.max(1, weight_kg) / refWt, 2/3);
+  const cRaw = 1.0 - 0.012 * (height_cm - refHt);
+  const cLeverage = Math.min(Math.max(cRaw, 0.80), 1.20);
+  
+  const mults = isFemale ? MULTIPLIERS.female[lift_type] : MULTIPLIERS.male[lift_type];
+  if (!mults) return { grade: "Novice", pct: 0, targetKg: 0 };
+  
+  const tNovice = mults.novice * sAllometric * cLeverage;
+  const tIntermediate = mults.intermediate * sAllometric * cLeverage;
+  const tAdvanced = mults.advanced * sAllometric * cLeverage;
+  const tElite = mults.elite * sAllometric * cLeverage;
+  
+  let grade = "Novice";
+  let gradeColor = "#30D158";
+  let pct = 0;
+  let targetKg = tNovice;
+  
+  if (actual_lift_kg < tNovice) {
+    grade = "Novice";
+    gradeColor = "#30D158";
+    pct = (actual_lift_kg / tNovice) * 25;
+    targetKg = tNovice;
+  } else if (actual_lift_kg < tIntermediate) {
+    grade = "Novice";
+    gradeColor = "#30D158";
+    pct = 25 + ((actual_lift_kg - tNovice) / (tIntermediate - tNovice)) * 25;
+    targetKg = tIntermediate;
+  } else if (actual_lift_kg < tAdvanced) {
+    grade = "Intermediate";
+    gradeColor = "#0A84FF";
+    pct = 50 + ((actual_lift_kg - tIntermediate) / (tAdvanced - tIntermediate)) * 25;
+    targetKg = tAdvanced;
+  } else if (actual_lift_kg < tElite) {
+    grade = "Advanced";
+    gradeColor = "#FF3B30";
+    pct = 75 + ((actual_lift_kg - tAdvanced) / (tElite - tAdvanced)) * 25;
+    targetKg = tElite;
+  } else {
+    grade = "Elite";
+    gradeColor = "#FFD60A";
+    pct = 100;
+    targetKg = tElite;
+  }
+  
+  return {
+    grade,
+    gradeColor,
+    pct: Math.round(Math.min(100, Math.max(0, pct))),
+    targetKg
+  };
+}
+
 /* --- Lift Card (BW Multiplier) ------------------------------- */
-function LiftCard({ liftName, weight, bw }: any) {
+function LiftCard({ liftName, weight, bw, gender, height, unit }: any) {
   const { colors } = useTheme();
   const multiplier = bw > 0 ? (weight / bw) : 0;
   
-  let grade = "Unassigned";
-  let gradeColor = "rgba(255,255,255,0.4)";
-  let pct = 0;
-
-  if (liftName === "bench") {
-    if (multiplier >= 1.5)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
-    else if (multiplier >= 1.2) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
-    else if (multiplier >= 1.0) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
-    else if (multiplier >= 0.7) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
-    else                        { grade = "Beginner"; gradeColor = "rgba(255,255,255,0.4)"; pct = weight > 0 ? 20 : 0; }
-  } else if (liftName === "squat") {
-    if (multiplier >= 2.0)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
-    else if (multiplier >= 1.5) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
-    else if (multiplier >= 1.2) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
-    else if (multiplier >= 0.9) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
-    else                        { grade = "Beginner"; gradeColor = "rgba(255,255,255,0.4)"; pct = weight > 0 ? 20 : 0; }
-  } else if (liftName === "deadlift") {
-    if (multiplier >= 2.5)      { grade = "Elite"; gradeColor = "#FFD60A"; pct = 100; }
-    else if (multiplier >= 2.0) { grade = "Advanced"; gradeColor = "#30D158"; pct = 80; }
-    else if (multiplier >= 1.5) { grade = "Intermediate"; gradeColor = "#0A84FF"; pct = 60; }
-    else if (multiplier >= 1.1) { grade = "Novice"; gradeColor = "#BF5AF2"; pct = 40; }
-    else                        { grade = "Beginner"; gradeColor = "rgba(255,255,255,0.4)"; pct = weight > 0 ? 20 : 0; }
-  }
+  const bwKg = unit === "kg" ? bw : bw / 2.20462262;
+  const actualLiftKg = unit === "kg" ? weight : weight / 2.20462262;
+  const heightCm = parseHeightToCm(height);
+  
+  const { grade, gradeColor, pct, targetKg } = calculateStrengthTier(
+    gender || "male",
+    bwKg,
+    heightCm,
+    liftName,
+    actualLiftKg
+  );
+  
+  const displayTarget = unit === "kg" ? Math.round(targetKg) : Math.round(targetKg * 2.20462262);
 
   return (
     <View style={[styles.card, { padding: 16, marginBottom: 12, borderTopWidth: 2, borderTopColor: `${gradeColor}40`, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
@@ -109,11 +195,16 @@ function LiftCard({ liftName, weight, bw }: any) {
         <View>
           <Text style={[styles.liftNameLabel, { color: colors.textSecondary }]}>{liftName}</Text>
           <Text style={[styles.liftWeightText, { color: colors.textPrimary }]}>
-            {weight} <Text style={[styles.liftWeightUnit, { color: colors.textTertiary }]}>lbs</Text>
+            {weight} <Text style={[styles.liftWeightUnit, { color: colors.textTertiary }]}>{unit}</Text>
           </Text>
         </View>
 
         <View style={{ alignItems: "flex-end" }}>
+          {grade !== "Elite" && targetKg > 0 && (
+            <Text style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 2 }}>
+              Next Tier Target: {displayTarget} {unit}
+            </Text>
+          )}
           <Text style={[styles.liftMultiplierText, { color: gradeColor }]}>{multiplier.toFixed(2)}x BW</Text>
           <Text style={[styles.liftGradeLabel, { color: colors.textSecondary }]}>{grade}</Text>
         </View>
@@ -155,6 +246,7 @@ function StrengthRow({ item }: any) {
 /* --- Log PR Card Component ----------------------------------- */
 function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
   const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
   const [exercise, setExercise] = useState("bench");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("1");
@@ -180,7 +272,7 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           exerciseName: exercise,
@@ -342,6 +434,108 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
   );
 }
 
+/* --- Log BW Card Component ----------------------------------- */
+function LogBWCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
+  const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
+  const [weight, setWeight] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!weight || isNaN(parseFloat(weight))) {
+      Alert.alert("Error", "Please enter a valid weight");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const parsedWeight = parseFloat(weight);
+      const dbWeight = unit === "kg" ? Math.round(parsedWeight * 2.205) : parsedWeight;
+      
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/metrics`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          weight: dbWeight
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save bodyweight");
+      }
+
+      Alert.alert("Success", `Logged bodyweight: ${weight} ${unit}!`);
+      setWeight("");
+      refresh("metrics");
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to save bodyweight");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <View style={[styles.card, { borderTopWidth: 3, borderTopColor: "rgba(10, 132, 255, 0.4)", backgroundColor: colors.bgCard, borderColor: colors.border, padding: 16, marginBottom: 12 }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "rgba(10, 132, 255, 0.15)", alignItems: "center", justifyContent: "center" }}>
+          <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <Path d="M7 2v10M2 7h10" stroke="#0A84FF" strokeWidth="2" strokeLinecap="round" />
+          </Svg>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textPrimary, textTransform: "uppercase", letterSpacing: 1 }}>
+            Update Bodyweight
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.textTertiary }}>
+            Keep your strength multiplier accurate
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-end" }}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.inputLabel, { color: colors.textTertiary }]}>Bodyweight ({unit})</Text>
+          <TextInput
+            keyboardType="numeric"
+            placeholder="e.g. 185"
+            placeholderTextColor={colors.textTertiary}
+            value={weight}
+            onChangeText={setWeight}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)",
+                borderColor: colors.border,
+                color: colors.textPrimary,
+              }
+            ]}
+          />
+        </View>
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={isSaving}
+          style={[
+            styles.submitBtn,
+            {
+              backgroundColor: "#0A84FF",
+              opacity: isSaving ? 0.7 : 1,
+              flex: 0.5,
+            }
+          ]}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13, textAlign: "center" }}>
+            {isSaving ? "Saving..." : "Save"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 /* --- Personal Record Card ------------------------------------ */
 function PRCard({ prData }: any) {
   const { colors } = useTheme();
@@ -369,7 +563,7 @@ export function StrengthContent() {
   const router = useRouter();
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
-  const [metrics, setMetrics] = useState({ weight: 0, trainingYears: 0 });
+  const [metrics, setMetrics] = useState({ weight: 0, trainingYears: 0, gender: "male", height: "Not Selected" });
   const [prs, setPrs] = useState({ 
     bench: { weight: 0, unit: "lbs", gain: "+0" }, 
     squat: { weight: 0, unit: "lbs", gain: "+0" }, 
@@ -385,7 +579,7 @@ export function StrengthContent() {
       { muscle: "Core",      score: 0, color: "#FF3B30", prev: 0 },
   ]);
 
-  const { workouts, prs: prData, metrics: metData, loading, refresh } = useData() as any;
+  const { workouts, prs: prData, metrics: metData, loading, refresh, token } = useData() as any;
 
   useEffect(() => {
       try {
@@ -394,12 +588,31 @@ export function StrengthContent() {
             const latest = metData[metData.length - 1];
             const rawBw = parseFloat(latest.weight) || 1;
             bw = unit === "kg" ? Math.round(rawBw / 2.205) : rawBw;
-            setMetrics({ weight: bw, trainingYears: latest.training_years || 0 });
+            
+            const firstMetric = metData[0];
+            let trainingYears = parseFloat(firstMetric.training_years) || 0;
+            if (firstMetric.logged_at) {
+                const startDate = new Date(firstMetric.logged_at);
+                const now = new Date();
+                const diffYears = now.getFullYear() - startDate.getFullYear();
+                const diffMonths = now.getMonth() - startDate.getMonth();
+                let monthsElapsed = diffYears * 12 + diffMonths;
+                if (now.getDate() < startDate.getDate()) {
+                    monthsElapsed--;
+                }
+                trainingYears = Math.max(0, trainingYears + (Math.max(0, monthsElapsed) / 12));
+            }
+            setMetrics({ 
+                weight: bw, 
+                trainingYears: parseFloat(trainingYears.toFixed(1)),
+                gender: latest.gender || "male",
+                height: latest.height || "Not Selected"
+            });
         }
         
         if (prData) {
             const liftHistory: any = { bench: [], squat: [], deadlift: [] };
-            const rawMaxes: any = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+            const rawMaxes: any = { bench: 0, squat: 0, deadlift: 0, rows: 0 };
             
             if (prData.length > 0) {
                 prData.forEach((p: any) => {
@@ -418,7 +631,6 @@ export function StrengthContent() {
                         liftHistory.deadlift.push(w);
                         rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
                     }
-                    else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
                     else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
                 });
                 const getGain = (arr: any) => {
@@ -435,22 +647,45 @@ export function StrengthContent() {
                 });
             }
 
-            const ELITE = { bench: 1.5, deadlift: 2.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
-            const calcScore = (cur: number, target: number) => Math.min(100, Math.round(((cur / bw) / target) * 100));
+            const latest = (metData && metData.length > 0) ? metData[metData.length - 1] : { gender: "male", height: "178cm" };
+            const isFemale = String(latest.gender || "male").toLowerCase() === "female";
+            const refWt = isFemale ? FEMALE_REF_WT : MALE_REF_WT;
+            const refHt = isFemale ? FEMALE_REF_HT : MALE_REF_HT;
+            
+            const bwKg = unit === "kg" ? bw : bw / 2.20462262;
+            const heightCm = parseHeightToCm(latest.height);
+            
+            const sAllometric = refWt * Math.pow(Math.max(1, bwKg) / refWt, 2/3);
+            const cRaw = 1.0 - 0.012 * (heightCm - refHt);
+            const cLeverage = Math.min(Math.max(cRaw, 0.80), 1.20);
+            
+            const mults = isFemale ? MULTIPLIERS.female : MULTIPLIERS.male;
+            
+            const tEliteBench = mults.bench.elite * sAllometric * cLeverage;
+            const tEliteSquat = mults.squat.elite * sAllometric * cLeverage;
+            const tEliteDeadlift = mults.deadlift.elite * sAllometric * cLeverage;
+            
+            const tEliteBenchUnit = unit === "kg" ? tEliteBench : tEliteBench * 2.20462262;
+            const tEliteSquatUnit = unit === "kg" ? tEliteSquat : tEliteSquat * 2.20462262;
+            const tEliteDeadliftUnit = unit === "kg" ? tEliteDeadlift : tEliteDeadlift * 2.20462262;
+            
+            const tEliteRowsUnit = tEliteBenchUnit * 0.8;
+            
+            const calcScore = (cur: number, target: number) => target > 0 ? Math.min(100, Math.round((cur / target) * 100)) : 0;
 
             const scores = [
-                { muscle: "Chest",     score: calcScore(rawMaxes.bench, ELITE.bench), color: "#0A84FF", prev: 0 },
-                { muscle: "Back",      score: calcScore(rawMaxes.deadlift, ELITE.deadlift), color: "#BF5AF2", prev: 0 },
-                { muscle: "Shoulders", score: calcScore(rawMaxes.ohp, ELITE.ohp), color: "#FF9F0A", prev: 0 },
-                { muscle: "Legs",      score: calcScore(rawMaxes.squat, ELITE.squat), color: "#FFD60A", prev: 0 },
+                { muscle: "Chest",     score: calcScore(rawMaxes.bench, tEliteBenchUnit), color: "#0A84FF", prev: 0 },
+                { muscle: "Back",      score: calcScore(rawMaxes.deadlift, tEliteDeadliftUnit), color: "#BF5AF2", prev: 0 },
+                { muscle: "Shoulders", score: Math.round(calcScore(rawMaxes.bench, tEliteBenchUnit) * 0.75), color: "#FF9F0A", prev: 0 },
+                { muscle: "Legs",      score: calcScore(rawMaxes.squat, tEliteSquatUnit), color: "#FFD60A", prev: 0 },
                 { 
                   muscle: "Arms",      
-                  score: Math.round((calcScore(rawMaxes.bench, ELITE.bench) * 0.5) + (calcScore(rawMaxes.rows, ELITE.rows) * 0.5)), 
+                  score: Math.round((calcScore(rawMaxes.bench, tEliteBenchUnit) * 0.5) + (calcScore(rawMaxes.rows, tEliteRowsUnit) * 0.5)), 
                   color: "#30D158", prev: 0 
                 },
                 { 
                   muscle: "Core",      
-                  score: Math.max(0, calcScore(rawMaxes.squat, ELITE.squat) - 15), 
+                  score: Math.max(0, calcScore(rawMaxes.squat, tEliteSquatUnit) - 15), 
                   color: "#FF3B30", prev: 0 
                 },
             ];
@@ -463,7 +698,6 @@ export function StrengthContent() {
   }, [unit, workouts, prData, metData]);
 
   const { strengthIndex, derivedOverall } = useMemo(() => {
-    const volScore = Math.round(dynamicScores.reduce((acc, curr) => acc + curr.score, 0) / (dynamicScores.length || 1));
     const bw = metrics.weight || 1;
     const bMultiplier = prs.bench.weight / bw;
     const sMultiplier = prs.squat.weight / bw;
@@ -471,11 +705,48 @@ export function StrengthContent() {
     const rawIndex = (bMultiplier + sMultiplier + dMultiplier) / 3;
     const indexStr = rawIndex.toFixed(1);
 
-    const performanceBasis = (rawIndex / 1.5) * 100;
-    const score = Math.min(100, Math.round((performanceBasis * 0.7) + (volScore * 0.3)));
+    const isFemale = String(metrics.gender).toLowerCase() === "female";
+    const refWt = isFemale ? FEMALE_REF_WT : MALE_REF_WT;
+    const refHt = isFemale ? FEMALE_REF_HT : MALE_REF_HT;
+    
+    const bwKg = unit === "kg" ? bw : bw / 2.20462262;
+    const heightCm = parseHeightToCm(metrics.height);
+    
+    const sAllometric = refWt * Math.pow(Math.max(1, bwKg) / refWt, 2/3);
+    const cRaw = 1.0 - 0.012 * (heightCm - refHt);
+    const cLeverage = Math.min(Math.max(cRaw, 0.80), 1.20);
+    
+    const getProgress = (liftKey: "bench" | "squat" | "deadlift", weightVal: number) => {
+      if (bw <= 0 || weightVal <= 0) return 0;
+      const actualLiftKg = unit === "kg" ? weightVal : weightVal / 2.20462262;
+      const mults = isFemale ? MULTIPLIERS.female[liftKey] : MULTIPLIERS.male[liftKey];
+      
+      const tNovice = mults.novice * sAllometric * cLeverage;
+      const tIntermediate = mults.intermediate * sAllometric * cLeverage;
+      const tAdvanced = mults.advanced * sAllometric * cLeverage;
+      const tElite = mults.elite * sAllometric * cLeverage;
+      
+      if (actualLiftKg < tNovice) {
+        return (actualLiftKg / tNovice) * 25;
+      } else if (actualLiftKg < tIntermediate) {
+        return 25 + ((actualLiftKg - tNovice) / (tIntermediate - tNovice)) * 25;
+      } else if (actualLiftKg < tAdvanced) {
+        return 50 + ((actualLiftKg - tIntermediate) / (tAdvanced - tIntermediate)) * 25;
+      } else if (actualLiftKg < tElite) {
+        return 75 + ((actualLiftKg - tAdvanced) / (tElite - tAdvanced)) * 25;
+      } else {
+        return 100;
+      }
+    };
+    
+    const benchProgress = getProgress("bench", prs.bench.weight);
+    const squatProgress = getProgress("squat", prs.squat.weight);
+    const deadliftProgress = getProgress("deadlift", prs.deadlift.weight);
+    
+    const score = Math.round((benchProgress + squatProgress + deadliftProgress) / 3);
     
     return { strengthIndex: indexStr, derivedOverall: score };
-  }, [dynamicScores, metrics, prs]);
+  }, [metrics, prs, unit]);
 
   const { colors } = useTheme();
 
@@ -495,9 +766,9 @@ export function StrengthContent() {
         ))
       ) : (
         <View>
-          <LiftCard liftName="bench" weight={prs.bench.weight} bw={metrics.weight} />
-          <LiftCard liftName="squat" weight={prs.squat.weight} bw={metrics.weight} />
-          <LiftCard liftName="deadlift" weight={prs.deadlift.weight} bw={metrics.weight} />
+          <LiftCard liftName="bench" weight={prs.bench.weight} bw={metrics.weight} gender={metrics.gender} height={metrics.height} unit={unit} />
+          <LiftCard liftName="squat" weight={prs.squat.weight} bw={metrics.weight} gender={metrics.gender} height={metrics.height} unit={unit} />
+          <LiftCard liftName="deadlift" weight={prs.deadlift.weight} bw={metrics.weight} gender={metrics.gender} height={metrics.height} unit={unit} />
         </View>
       )}
 
@@ -510,6 +781,7 @@ export function StrengthContent() {
       </View>
 
       <LogPRCard refresh={refresh} unit={unit} />
+      <LogBWCard refresh={refresh} unit={unit} />
 
       <Text style={[styles.sectionLabel, { marginTop: 16, color: colors.textSecondary }]}>Strength by Muscle Group</Text>
 

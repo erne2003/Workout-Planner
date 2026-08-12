@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
-import { useSettings, useData } from "@apex/core";
+import { useSettings, useData, getStorage } from "@apex/core";
 import { useTheme } from "../../hooks/useTheme";
 import { setLastWorkoutTime } from "@apex/core/src/recovery";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
@@ -37,10 +37,19 @@ function ExerciseSearch({ onAdd }: any) {
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedEx, setSelectedEx] = useState<any>(null);
+  const [isCreatingCustom, setIsCreatingCustom] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [selectedMuscle, setSelectedMuscle] = useState("Chest");
   const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
+
+  const MUSCLE_OPTIONS = [
+    "Chest", "Back", "Shoulders", "Biceps", "Triceps", "Abs",
+    "Quadriceps", "Hamstrings", "Glutes", "Calves", "Forearms", "Traps", "Full Body"
+  ];
 
   useEffect(() => {
-    if (query.trim() === "" || (selectedEx && query === selectedEx.name)) {
+    if (query.trim() === "" || (selectedEx && query === selectedEx.name) || isCreatingCustom) {
       setResults([]);
       return;
     }
@@ -48,7 +57,7 @@ function ExerciseSearch({ onAdd }: any) {
       setIsLoading(true);
       try {
         const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises/search?name=${encodeURIComponent(query)}`, {
-            headers: { "Authorization": `Bearer ${global.localStorage?.getItem("token")}` }
+          headers: { "Authorization": `Bearer ${token}` }
         });
         const data = res.ok ? await res.json() : [];
         setResults(data);
@@ -56,7 +65,71 @@ function ExerciseSearch({ onAdd }: any) {
       finally { setIsLoading(false); }
     }, 500);
     return () => clearTimeout(t);
-  }, [query, selectedEx]);
+  }, [query, selectedEx, isCreatingCustom]);
+
+  const saveCustomExercise = async () => {
+    if (!customName.trim()) return;
+    try {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: customName.trim(), muscle: selectedMuscle })
+      });
+      const newEx = res.ok ? await res.json() : { id: Date.now(), name: customName.trim(), muscle: selectedMuscle, muscle_group: selectedMuscle };
+      onAdd({ ...newEx, muscle: selectedMuscle, muscle_group: selectedMuscle });
+      setQuery("");
+      setSelectedEx(null);
+      setIsCreatingCustom(false);
+    } catch {
+      const fallbackEx = { id: Date.now(), name: customName.trim(), muscle: selectedMuscle, muscle_group: selectedMuscle };
+      onAdd(fallbackEx);
+      setQuery("");
+      setSelectedEx(null);
+      setIsCreatingCustom(false);
+    }
+  };
+
+  if (isCreatingCustom) {
+    return (
+      <View style={{ gap: 12, marginBottom: 10 }}>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary }}>Creating Custom Exercise: "{customName}"</Text>
+        <Text style={{ fontSize: 12, color: colors.textSecondary }}>Select Target Muscle Group:</Text>
+        <ScrollView style={{ maxHeight: 150, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)" }}>
+          {MUSCLE_OPTIONS.map((m) => (
+            <TouchableOpacity
+              key={m}
+              onPress={() => setSelectedMuscle(m)}
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                backgroundColor: selectedMuscle === m ? (isLight ? "rgba(48,209,88,0.15)" : "rgba(48,209,88,0.2)") : "transparent"
+              }}
+            >
+              <Text style={{ color: selectedMuscle === m ? "#30D158" : colors.textPrimary, fontWeight: selectedMuscle === m ? "700" : "400" }}>{m}</Text>
+              {selectedMuscle === m && <Text style={{ color: "#30D158", fontWeight: "800" }}>✓</Text>}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: "row", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+          <TouchableOpacity onPress={() => setIsCreatingCustom(false)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.textSecondary, fontWeight: "600" }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={saveCustomExercise} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, backgroundColor: "#30D158" }}>
+            <Text style={{ color: "#000", fontWeight: "700" }}>Save & Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={{ zIndex: 50, marginBottom: 10 }}>
@@ -67,6 +140,8 @@ function ExerciseSearch({ onAdd }: any) {
             onChangeText={(t) => { setQuery(t); setSelectedEx(null); }}
             placeholder="Type to search exercises..."
             placeholderTextColor={colors.textSecondary}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
             style={[styles.searchInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]}
           />
           {query.trim() !== "" && !selectedEx && results.length > 0 && (
@@ -86,6 +161,20 @@ function ExerciseSearch({ onAdd }: any) {
                   </TouchableOpacity>
                 ))}
               </ScrollView>
+            </View>
+          )}
+
+          {query.trim() !== "" && !selectedEx && !isLoading && results.length === 0 && (
+            <View style={[styles.searchResults, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={() => {
+                  setCustomName(query.trim());
+                  setIsCreatingCustom(true);
+                }}
+                style={[styles.searchResultItem, { paddingVertical: 14 }]}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#30D158" }}>+ Create custom exercise "{query.trim()}"</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -108,6 +197,41 @@ function ExerciseSearch({ onAdd }: any) {
   );
 }
 
+/* ─── ClearOnFocusInput ─────────────────────────────────────── */
+function ClearOnFocusInput({ numericValue, onChangeText, placeholder, ...rest }: any) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [editText, setEditText] = useState('');
+  const savedValue = useRef(numericValue);
+
+  const displayValue = isFocused ? editText : (numericValue === 0 ? '' : String(numericValue));
+
+  return (
+    <TextInput
+      {...rest}
+      keyboardType="numeric"
+      returnKeyType="done"
+      onSubmitEditing={Keyboard.dismiss}
+      value={displayValue}
+      placeholder={isFocused ? '' : placeholder}
+      onFocus={() => {
+        savedValue.current = numericValue;
+        setEditText('');
+        setIsFocused(true);
+      }}
+      onBlur={() => {
+        if (editText === '') {
+          onChangeText(String(savedValue.current));
+        }
+        setIsFocused(false);
+      }}
+      onChangeText={(t: string) => {
+        setEditText(t);
+        onChangeText(t);
+      }}
+    />
+  );
+}
+
 /* ─── SetRow ────────────────────────────────────────────────── */
 function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet, prevSet }: any) {
   const ctx = useSettings() as any;
@@ -116,8 +240,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
 
   return (
     <View style={styles.setRowContainer}>
-      <TouchableOpacity
-        onPress={() => !isDone && onToggle(exIdx, setIdx)}
+      <View
         style={[
           styles.setRowInner,
           {
@@ -131,8 +254,8 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
         <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
           {prevSet ? (
             <>
-              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>{prevSet.weight}<Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text></Text>
-              <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.reps}{prevSet.rir != null && prevSet.rir !== undefined && ` ${prevSet.rir}rir`}</Text>
+              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>{Math.round(prevSet.weight)}<Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}</Text>
+              {prevSet.rir != null && prevSet.rir !== undefined && prevSet.rir > 0 && <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.rir}rir</Text>}
             </>
           ) : (
             <Text style={{ fontSize: 10, color: colors.textTertiary }}>—</Text>
@@ -141,10 +264,9 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
 
         <View style={styles.setInputsRow}>
           <View style={styles.inputGroup}>
-            <TextInput
-              keyboardType="numeric"
-              value={set.weight === 0 ? "" : String(set.weight)}
-              onChangeText={(t) => onUpdateSet(exIdx, setIdx, "weight", t)}
+            <ClearOnFocusInput
+              numericValue={set.weight}
+              onChangeText={(t: string) => onUpdateSet(exIdx, setIdx, "weight", t)}
               placeholder="0"
               placeholderTextColor={colors.textTertiary}
               editable={!isDone}
@@ -154,10 +276,9 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
           </View>
 
           <View style={styles.inputGroup}>
-            <TextInput
-              keyboardType="numeric"
-              value={set.reps === 0 ? "" : String(set.reps)}
-              onChangeText={(t) => onUpdateSet(exIdx, setIdx, "reps", t)}
+            <ClearOnFocusInput
+              numericValue={set.reps}
+              onChangeText={(t: string) => onUpdateSet(exIdx, setIdx, "reps", t)}
               placeholder="0"
               placeholderTextColor={colors.textTertiary}
               editable={!isDone}
@@ -167,32 +288,37 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
           </View>
         </View>
 
-        <TouchableOpacity onPress={() => onToggle(exIdx, setIdx)} style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}>
+        <TouchableOpacity
+          onPress={() => onToggle(exIdx, setIdx)}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}
+        >
           {isDone && (
             <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <Path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           )}
         </TouchableOpacity>
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 /* ─── ExerciseCard ──────────────────────────────────────────── */
-function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet }: any) {
+function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise }: any) {
   const [prevSets, setPrevSets] = useState([]);
   const { colors, isLight } = useTheme();
+  const { token } = useData() as any;
 
   useEffect(() => {
     const exerciseId = exercise.exerciseId || exercise.id;
-    if (!exerciseId || String(exerciseId).startsWith("e")) return; 
+    if (!exerciseId || String(exerciseId).startsWith("e")) return;
 
     const apiUrl = process.env.EXPO_PUBLIC_API_URL;
     if (!apiUrl) return;
 
     fetch(`${apiUrl}/workouts/history/${exerciseId}`, {
-        headers: { "Authorization": `Bearer ${global.localStorage?.getItem("token")}` }
+      headers: { "Authorization": `Bearer ${token}` }
     })
       .then((r) => r.ok ? r.json() : [])
       .then((data) => setPrevSets(Array.isArray(data) ? data : [] as any))
@@ -206,10 +332,14 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAdd
     <View style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
       <View style={styles.exCardHeader}>
         <View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity
+            onLongPress={() => onSwapExercise && onSwapExercise(exIdx)}
+            delayLongPress={800}
+            style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+          >
             <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
             <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-          </View>
+          </TouchableOpacity>
           <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
         </View>
         <Text style={[styles.exCardDoneCount, { color: done === exercise.sets.length ? "#30D158" : colors.textSecondary }]}>
@@ -264,11 +394,16 @@ export default function WorkoutPage() {
   const [activeRoutine, setActiveRoutine] = useState<any>(null);
   const [isManagingRoutines, setIsManagingRoutines] = useState(false);
   const [isCreatingRoutine, setIsCreatingRoutine] = useState(false);
+  const [isAddingExerciseModal, setIsAddingExerciseModal] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState("");
   const [newRoutineConfig, setNewRoutineConfig] = useState<any[]>([]);
   const [expandedOverviewEx, setExpandedOverviewEx] = useState<number | null>(null);
 
-  const { workouts, routines: templateRoutines, loading: dataLoading, refresh } = useData() as any;
+  const [swappingExIdx, setSwappingExIdx] = useState<number | null>(null);
+  const [routineModified, setRoutineModified] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+
+  const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token } = useData() as any;
 
   useEffect(() => {
     if (templateRoutines) {
@@ -278,10 +413,49 @@ export default function WorkoutPage() {
   }, [templateRoutines]);
 
   useEffect(() => {
-    if (!started) return;
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const storage = getStorage();
+    if (storage) {
+      const saved = storage.getItem("activeWorkout");
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          setActiveRoutine(data.activeRoutine);
+          setWorkoutPlan(data.workoutPlan);
+          setCompleted(data.completed || {});
+          setStartTime(data.startTime);
+          setRoutineModified(data.routineModified || false);
+          setStarted(true);
+        } catch (e) {
+          console.error("Failed to parse active workout state", e);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const storage = getStorage();
+    if (!storage) return;
+
+    if (started && activeRoutine) {
+      storage.setItem("activeWorkout", JSON.stringify({
+        activeRoutine,
+        workoutPlan,
+        completed,
+        startTime,
+        routineModified
+      }));
+    } else if (!started) {
+      storage.removeItem("activeWorkout");
+    }
+  }, [started, activeRoutine, workoutPlan, completed, startTime, routineModified]);
+
+  useEffect(() => {
+    if (!started || !startTime) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [started]);
+  }, [started, startTime]);
 
   useEffect(() => {
     if (!isResting) return;
@@ -316,7 +490,7 @@ export default function WorkoutPage() {
   };
   const updateSet = (exIdx: number, setIdx: number, field: string, val: string) => {
     const newPlan = [...workoutPlan];
-    newPlan[exIdx].sets[setIdx][field] = Number(val);
+    newPlan[exIdx].sets[setIdx][field] = field === 'weight' ? Math.round(Number(val)) : Number(val);
     setWorkoutPlan(newPlan);
   };
   const removeExercise = (exIdx: number) => {
@@ -338,15 +512,69 @@ export default function WorkoutPage() {
     setWorkoutPlan(newPlan);
   };
 
-  const finishWorkout = async () => {
-    if (isSaving) return;
+  const swapExercise = (exIdx: number, newExercise: any) => {
+    if (!newExercise) return;
+    const newPlan = [...workoutPlan];
+    const originalEx = newPlan[exIdx];
+
+    const updatedSets = originalEx.sets.map((set: any, si: number) => {
+      const isSetDone = !!completed[`${exIdx}-${si}`];
+      if (isSetDone) {
+        return set;
+      }
+      return {
+        ...set,
+        weight: 0,
+        reps: 0,
+        rir: 0
+      };
+    });
+
+    newPlan[exIdx] = {
+      ...originalEx,
+      ...newExercise,
+      muscle: newExercise.muscle_group || newExercise.muscle,
+      accentColor: originalEx.accentColor || "#30D158",
+      exerciseId: newExercise.id,
+      name: newExercise.name,
+      sets: updatedSets
+    };
+
+    setWorkoutPlan(newPlan);
+    setRoutineModified(true);
+  };
+
+  const saveWorkoutAndFinish = async (shouldUpdateRoutine: boolean) => {
     setIsSaving(true);
     try {
+      if (shouldUpdateRoutine && activeRoutine && !activeRoutine.isPastWorkout) {
+        const payloadExercises = workoutPlan.map((ex: any) => ({
+          exercise_id: ex.exerciseId || ex.id,
+          sets: ex.sets.length,
+          reps: ex.sets[0]?.reps || 10,
+          weight: ex.sets[0]?.weight || 0,
+          rir: ex.sets[0]?.rir || 0
+        }));
+
+        await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${activeRoutine.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            name: activeRoutine.name,
+            exercises: payloadExercises
+          }),
+        });
+        refresh("routines");
+      }
+
       const workoutRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts`, {
         method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           name: activeRoutine?.name || "Workout Session",
@@ -364,9 +592,9 @@ export default function WorkoutPage() {
             const set = exercise.sets[si];
             await fetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts/${workoutId}/sets`, {
               method: "POST",
-              headers: { 
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
               },
               body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) * 2.205) : Number(set.weight), rir: set.rir || 0 }),
             });
@@ -379,31 +607,75 @@ export default function WorkoutPage() {
       setStarted(false);
       setElapsed(0);
       setCompleted({});
+      setRoutineModified(false);
+      setStartTime(null);
     } catch (err) {
       console.error("Error saving workout:", err);
-      setActiveRoutine(null);
-      setStarted(false);
-      setLastWorkoutTime(new Date());
+      Alert.alert("Error", "Failed to save workout session.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  const finishWorkout = async () => {
+    if (isSaving) return;
+    if (routineModified && activeRoutine && !activeRoutine.isPastWorkout) {
+      Alert.alert(
+        "Update Routine?",
+        "You swapped exercises in this workout. Would you like to update the routine template for future sessions?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "No, Only Save Session", onPress: () => saveWorkoutAndFinish(false) },
+          { text: "Yes, Update Routine", onPress: () => saveWorkoutAndFinish(true) },
+        ]
+      );
+    } else {
+      await saveWorkoutAndFinish(false);
+    }
+  };
+
+  const cancelWorkout = () => {
+    Alert.alert(
+      "Cancel Workout",
+      "Are you sure you want to cancel this workout? Progress will not be saved.",
+      [
+        { text: "No", style: "cancel" },
+        { 
+          text: "Yes, Cancel", 
+          style: "destructive", 
+          onPress: () => {
+            setStarted(false);
+            setActiveRoutine(null);
+            setWorkoutPlan([]);
+            setCompleted({});
+            setElapsed(0);
+            setStartTime(null);
+            setRoutineModified(false);
+            const storage = getStorage();
+            if (storage) storage.removeItem("activeWorkout");
+          }
+        }
+      ]
+    );
+  };
+
   const deleteRoutine = async (rId: string) => {
     Alert.alert("Delete", "Delete this routine?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => {
-        try {
-          await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, { 
+      {
+        text: "Delete", style: "destructive", onPress: async () => {
+          try {
+            await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, {
               method: "DELETE",
-              headers: { "Authorization": `Bearer ${global.localStorage?.getItem("token")}` }
-          });
-          refresh("workouts");
-          refresh("routines");
-        } catch (e) {
-          console.error(e);
+              headers: { "Authorization": `Bearer ${token}` }
+            });
+            refresh("workouts");
+            refresh("routines");
+          } catch (e) {
+            console.error(e);
+          }
         }
-      }}
+      }
     ]);
   };
 
@@ -412,9 +684,9 @@ export default function WorkoutPage() {
     try {
       await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines`, {
         method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${global.localStorage?.getItem("token")}`
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ name: newRoutineName, exercises: newRoutineConfig }),
       });
@@ -452,34 +724,34 @@ export default function WorkoutPage() {
         });
       });
       plan = Object.values(exercisesMap);
-    } else if (lastSession) {
-      const exercisesMap: any = {};
-      lastSession.sets.forEach((set: any) => {
-        if (!exercisesMap[set.exercise_id]) {
-          exercisesMap[set.exercise_id] = {
-            exerciseId: set.exercise_id,
-            id: set.exercise_id,
-            name: set.name || set.exercise_name,
-            muscle: set.muscle_group,
-            accentColor: "#0A84FF",
-            sets: []
-          };
-        }
-        exercisesMap[set.exercise_id].sets.push({
-          reps: set.reps, 
-          weight: unit === "kg" ? Math.round(Number(set.weight) / 2.205) : Number(set.weight), 
-          rir: set.rir !== null ? set.rir : 0
-        });
-      });
-      plan = Object.values(exercisesMap);
     } else {
+      // It's a template routine. Base the plan on template's exercises.
+      // If a lastSession exists, pre-populate individual exercise sets from it.
       plan = item.exercises.map((ex: any) => {
-        const setsObj = Array(ex.sets).fill(0).map(() => ({
-          reps: ex.reps, weight: unit === "kg" ? Math.round(Number(ex.weight) / 2.205) : Number(ex.weight), rir: ex.rir
-        }));
+        const exId = ex.exercise_id || ex.id;
+        const lastExSets = lastSession 
+          ? lastSession.sets.filter((s: any) => s.exercise_id === exId) 
+          : [];
+
+        let setsObj = [];
+        if (lastExSets.length > 0) {
+          setsObj = lastExSets.map((s: any) => ({
+            reps: s.reps,
+            weight: unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight),
+            rir: s.rir !== null ? s.rir : 0
+          }));
+        } else {
+          setsObj = Array(ex.sets || 3).fill(0).map(() => ({
+            reps: ex.reps || 10,
+            weight: unit === "kg" ? Math.round(Number(ex.weight || 0) / 2.205) : Number(ex.weight || 0),
+            rir: ex.rir || 0
+          }));
+        }
+
         return {
           ...ex,
-          id: ex.exercise_id,
+          id: exId,
+          exerciseId: exId,
           sets: setsObj,
           accentColor: "#0A84FF",
         };
@@ -490,6 +762,8 @@ export default function WorkoutPage() {
     setWorkoutPlan(plan);
     setStarted(false);
     setIsEditing(false);
+    setElapsed(0);
+    setStartTime(null);
   };
 
   /* ── Routines List View ──────────────────────────────────────── */
@@ -522,6 +796,8 @@ export default function WorkoutPage() {
               onChangeText={setNewRoutineName}
               placeholder="Workout Name (e.g. Pull Day)"
               placeholderTextColor={colors.textSecondary}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
               style={[styles.routineNameInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.05)", borderColor: colors.border, color: colors.textPrimary }]}
             />
 
@@ -556,6 +832,10 @@ export default function WorkoutPage() {
             routines.map(r => {
               const ls = workouts?.find((w: any) => w.name === r.name);
               const lsDate = ls ? new Date(ls.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+              const lsVolume = ls?.sets ? Math.round(ls.sets.reduce((sum: number, s: any) => {
+                const w = unit === "kg" ? Math.round(Number(s.weight || 0) / 2.205) : Number(s.weight || 0);
+                return sum + (Number(s.reps || 0) * w);
+              }, 0)) : 0;
 
               return (
                 <TouchableOpacity
@@ -564,7 +844,7 @@ export default function WorkoutPage() {
                   onPress={() => selectRoutine(r)}
                   disabled={isManagingRoutines}
                 >
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <Text style={[styles.routineTitle, { color: colors.textPrimary }]}>{r.name}</Text>
                       {r.isPastWorkout && <Text style={[styles.pastWorkoutBadge, { color: colors.textTertiary }]}>Completed Session</Text>}
@@ -577,7 +857,7 @@ export default function WorkoutPage() {
                       </Text>
                       {ls && !r.isPastWorkout && (
                         <Text style={styles.routineLastSessionText}>
-                          Last Session: {lsDate} · {ls.sets?.length || 0} sets
+                          Last Session: {lsDate} · {lsVolume.toLocaleString()} {unit} · {ls.sets?.length || 0} sets
                         </Text>
                       )}
                     </View>
@@ -621,22 +901,22 @@ export default function WorkoutPage() {
               {ex.sets.map((set: any, si: number) => (
                 <View key={si} style={styles.editSetRow}>
                   <Text style={[styles.editSetNum, { color: colors.textSecondary }]}>S{si + 1}</Text>
-                  
+
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.weight)} onChangeText={(t) => updateSet(ei, si, "weight", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <ClearOnFocusInput numericValue={set.weight} onChangeText={(t: string) => updateSet(ei, si, "weight", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>{unit}</Text>
                   </View>
-                  
+
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.reps)} onChangeText={(t) => updateSet(ei, si, "reps", t)} style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <ClearOnFocusInput numericValue={set.reps} onChangeText={(t: string) => updateSet(ei, si, "reps", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>reps</Text>
                   </View>
 
                   <View style={styles.editSetInputGroup}>
-                    <TextInput keyboardType="numeric" value={String(set.rir !== undefined ? set.rir : 0)} onChangeText={(t) => updateSet(ei, si, "rir", t)} style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
+                    <ClearOnFocusInput numericValue={set.rir !== undefined ? set.rir : 0} onChangeText={(t: string) => updateSet(ei, si, "rir", t)} placeholder="0" style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>RIR</Text>
                   </View>
-                  
+
                   <TouchableOpacity onPress={() => removeSet(ei, si)} style={styles.removeSetBtn}>
                     <Text style={styles.removeSetBtnText}>✕</Text>
                   </TouchableOpacity>
@@ -649,11 +929,26 @@ export default function WorkoutPage() {
             </View>
           ))}
 
-          <View style={[styles.card, { padding: 16, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgCard, marginBottom: 40 }]}>
-            <Text style={{ fontSize: 12, fontWeight: "700", marginBottom: 10, color: colors.textSecondary }}>Add Exercise to Workout</Text>
-            <ExerciseSearch onAdd={addExercise} />
-          </View>
+          <TouchableOpacity onPress={() => setIsAddingExerciseModal(true)} style={[styles.card, { padding: 16, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgCard, marginBottom: 40, alignItems: "center", justifyContent: "center" }]}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#0A84FF" }}>+ Add Exercise to Workout</Text>
+          </TouchableOpacity>
         </View>
+
+        <Modal visible={isAddingExerciseModal} animationType="slide" transparent>
+          <View style={[styles.modalOverlay, { backgroundColor: isLight ? "rgba(255,255,255,0.98)" : "rgba(0,0,0,0.95)" }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Add Exercise</Text>
+              <TouchableOpacity onPress={() => setIsAddingExerciseModal(false)}>
+                <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ExerciseSearch onAdd={(ex: any) => {
+              addExercise(ex);
+              setIsAddingExerciseModal(false);
+            }} />
+          </View>
+        </Modal>
 
         <TouchableOpacity onPress={() => setIsEditing(false)} style={styles.doneEditingFloatingBtn}>
           <Text style={styles.doneEditingFloatingBtnText}>Done Editing</Text>
@@ -706,7 +1001,7 @@ export default function WorkoutPage() {
                       <View key={si} style={styles.overviewSetRow}>
                         <Text style={[styles.overviewSetNum, { color: colors.textSecondary }]}>Set {si + 1}</Text>
                         <Text style={[styles.overviewSetDetails, { color: colors.textSecondary }]}>
-                          <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.weight}</Text> {unit} × <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.reps}</Text> reps
+                          <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{Math.round(set.weight)}</Text> {unit} × <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.reps}</Text> reps
                           {set.rir > 0 && <Text style={{ color: colors.textTertiary }}> (RIR: {set.rir})</Text>}
                         </Text>
                       </View>
@@ -718,7 +1013,7 @@ export default function WorkoutPage() {
           })}
         </View>
 
-        <TouchableOpacity onPress={() => setStarted(true)} style={styles.startWorkoutBtn}>
+        <TouchableOpacity onPress={() => { setStarted(true); setStartTime(Date.now()); }} style={styles.startWorkoutBtn}>
           <Text style={styles.startWorkoutBtnText}>Start Workout</Text>
         </TouchableOpacity>
 
@@ -773,7 +1068,7 @@ export default function WorkoutPage() {
 
       <View style={{ gap: 12 }}>
         {workoutPlan.map((ex, ei) => (
-          <ExerciseCard key={ex.id} exercise={ex} exIdx={ei} completed={completed} onToggle={toggle} onUpdateSet={updateSet} onAddSet={addSet} onRemoveSet={removeSet} />
+          <ExerciseCard key={ex.id} exercise={ex} exIdx={ei} completed={completed} onToggle={toggle} onUpdateSet={updateSet} onAddSet={addSet} onRemoveSet={removeSet} onSwapExercise={setSwappingExIdx} />
         ))}
       </View>
 
@@ -786,6 +1081,40 @@ export default function WorkoutPage() {
           {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
         </Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={cancelWorkout}
+        disabled={isSaving}
+        style={{ paddingVertical: 14, alignItems: "center", marginTop: 4, marginBottom: 16 }}
+      >
+        <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600" }}>Cancel Workout</Text>
+      </TouchableOpacity>
+
+      <Modal visible={swappingExIdx !== null} animationType="slide" transparent>
+        <View style={[styles.modalOverlay, { backgroundColor: isLight ? "rgba(255,255,255,0.98)" : "rgba(0,0,0,0.95)" }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Swap Exercise</Text>
+            <TouchableOpacity onPress={() => setSwappingExIdx(null)}>
+              <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {swappingExIdx !== null && (
+            <Text style={{ fontSize: 16, color: colors.textSecondary, marginBottom: 20 }}>
+              Replace <Text style={{ fontWeight: "700", color: colors.textPrimary }}>&quot;{workoutPlan[swappingExIdx]?.name}&quot;</Text> with:
+            </Text>
+          )}
+
+          <ExerciseSearch
+            onAdd={(newEx: any) => {
+              if (swappingExIdx !== null) {
+                swapExercise(swappingExIdx, newEx);
+                setSwappingExIdx(null);
+              }
+            }}
+          />
+        </View>
+      </Modal>
     </PageShell>
   );
 }

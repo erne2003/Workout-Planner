@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
+import { getStorage } from '@apex/core';
 
 const createMockHealthKit = () => {
   return {
@@ -26,15 +27,15 @@ const createMockHealthKit = () => {
     getRestingHeartRateSamples: (options, callback) => {
       console.log('[HealthKit Mock] getRestingHeartRateSamples called');
       callback(null, [
-        { value: 62, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
-        { value: 58, startDate: new Date().toISOString() },
+        { value: 60, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+        { value: 57, startDate: new Date().toISOString() },
       ]);
     },
     getHeartRateVariabilitySamples: (options, callback) => {
       console.log('[HealthKit Mock] getHeartRateVariabilitySamples called');
       callback(null, [
-        { value: 60, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
-        { value: 65, startDate: new Date().toISOString() },
+        { value: 50, startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+        { value: 47, startDate: new Date().toISOString() },
       ]);
     },
     getSleepSamples: (options, callback) => {
@@ -88,8 +89,9 @@ if (Platform.OS === 'ios') {
 
 export function useHealthKit() {
   const [hasPermission, setHasPermission] = useState(() => {
-    if (typeof window !== 'undefined' && global.localStorage) {
-      return global.localStorage.getItem('has_connected_healthkit') === 'true';
+    const storage = getStorage();
+    if (storage) {
+      return storage.getItem('has_connected_healthkit') === 'true';
     }
     return false;
   });
@@ -298,7 +300,7 @@ export function useHealthKit() {
         return;
       }
 
-      global.localStorage?.setItem('has_connected_healthkit', 'true');
+      getStorage()?.setItem('has_connected_healthkit', 'true');
       setHasPermission(true);
       fetchHealthData();
     });
@@ -306,7 +308,7 @@ export function useHealthKit() {
 
   const disconnect = useCallback(() => {
     console.log("[HealthKit] Disconnecting and clearing state");
-    global.localStorage?.removeItem('has_connected_healthkit');
+    getStorage()?.removeItem('has_connected_healthkit');
     setHasPermission(false);
     setHealthData(null);
     setError(null);
@@ -314,7 +316,7 @@ export function useHealthKit() {
 
   useEffect(() => {
     if (Platform.OS === 'ios' && AppleHealthKit) {
-      const alreadyConnected = global.localStorage?.getItem('has_connected_healthkit') === 'true';
+      const alreadyConnected = getStorage()?.getItem('has_connected_healthkit') === 'true';
       if (alreadyConnected) {
         console.log("[HealthKit] Auto-syncing since integration is enabled");
         requestPermissions();
@@ -332,7 +334,7 @@ export function useHealthKit() {
           }, (err, results) => {
             if (!err && results && results.permissions && results.permissions.read && results.permissions.read.every(status => status === 2)) {
               console.log("[HealthKit] Auto-syncing from fallback AuthStatus authorized check");
-              global.localStorage?.setItem('has_connected_healthkit', 'true');
+              getStorage()?.setItem('has_connected_healthkit', 'true');
               setHasPermission(true);
               requestPermissions();
             } else {

@@ -17,11 +17,12 @@ router.post("/", [
     body("weight").isFloat(),
     body("height").isString().isLength({ max: 255 }),
     body("bodyFat").optional({ nullable: true }).isFloat(),
+    body("gender").optional().isString().isLength({ max: 10 }),
     validate
 ], async (req, res) => {
-  const { trainingYears, weight, height, bodyFat } = req.body;
+  const { trainingYears, weight, height, bodyFat, gender } = req.body;
   try {
-    const newMetric = await metricsQueries.logMetrics(req.userId, trainingYears, weight, height, bodyFat);
+    const newMetric = await metricsQueries.logMetrics(req.userId, trainingYears, weight, height, bodyFat, gender);
     res.status(201).json(newMetric);
   } catch (err) {
     console.error("Failed to log Body Metrics:", err);

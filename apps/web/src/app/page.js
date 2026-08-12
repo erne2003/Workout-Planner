@@ -11,6 +11,7 @@ import {
   getStatusFromPct,
   getMuscleSoreness,
   computeDynamicRecovery,
+  computeMuscleReadiness,
 } from "../lib/recovery";
 
 /* --- Helpers ----------------------------------------------- */
@@ -182,30 +183,29 @@ export default function HomePage() {
             bw = parseFloat(metData[metData.length - 1].weight) || 1;
         }
 
-        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, ohp: 0, rows: 0 };
+        const rawMaxes = { bench: 0, squat: 0, deadlift: 0, rows: 0 };
         prData.forEach(p => {
             const e = p.exercise_name?.toLowerCase();
             const w = parseFloat(p.weight);
             if (["bench press", "bench", "chest press"].includes(e)) rawMaxes.bench = Math.max(rawMaxes.bench, w);
             else if (["squat", "barbell squat", "back squat"].includes(e)) rawMaxes.squat = Math.max(rawMaxes.squat, w);
             else if (["deadlift", "barbell deadlift", "rdl"].includes(e)) rawMaxes.deadlift = Math.max(rawMaxes.deadlift, w);
-            else if (["ohp", "overhead press", "shoulder press"].includes(e)) rawMaxes.ohp = Math.max(rawMaxes.ohp, w);
             else if (["rows", "barbell row", "seated row", "pull"].includes(e)) rawMaxes.rows = Math.max(rawMaxes.rows, w);
         });
 
-        const ELITE = { bench: 1.5, deadlift: 2.5, ohp: 0.9, squat: 2.0, rows: 1.2 };
+        const ELITE = { bench: 1.5, deadlift: 2.5, squat: 2.0, rows: 1.2 };
         const calcScore = (cur, target) => Math.min(100, Math.round(((cur / bw) / target) * 100));
 
         const benchScore = calcScore(rawMaxes.bench, ELITE.bench);
         const dlScore = calcScore(rawMaxes.deadlift, ELITE.deadlift);
-        const ohpScore = calcScore(rawMaxes.ohp, ELITE.ohp);
         const squatScore = calcScore(rawMaxes.squat, ELITE.squat);
         const rowScore = calcScore(rawMaxes.rows, ELITE.rows);
+        const shoulderScore = Math.round(benchScore * 0.75);
 
         const muscleScores = [
             benchScore,
             dlScore,
-            ohpScore,
+            shoulderScore,
             squatScore,
             Math.round((benchScore * 0.5) + (rowScore * 0.5)), // Arms proxy
             Math.max(0, squatScore - 15) // Core proxy
@@ -226,8 +226,8 @@ export default function HomePage() {
         const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
         setRecoveryData(recData);
         
-        const avgRec = Math.round(Object.values(recData).reduce((a, b) => a + b.pct, 0) / ALL_MUSCLES.length);
-        setRecoveryScore(avgRec);
+        const { score } = computeMuscleReadiness(recData);
+        setRecoveryScore(score);
 
         if (data.length > 0) {
           // -- Aggregates: the Last 7 Days --
@@ -260,7 +260,12 @@ export default function HomePage() {
 
           // Check if completion time was written in notes string securely
           const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (\d+:\d+)/) : null;
-          const dStr = dMatch ? `${dMatch[1]} min` : "N/A";
+          let dStr = "N/A";
+          if (dMatch) {
+            const [m, s] = dMatch[1].split(":").map(Number);
+            const timeStr = `${m}:${String(s).padStart(2, "0")}`;
+            dStr = m === 0 ? `${timeStr} sec` : `${timeStr} min`;
+          }
 
           setLastWorkout({
             name: lw.name || "Workout Session",
@@ -304,7 +309,7 @@ export default function HomePage() {
           label="Strength" 
           value={strengthScore} 
           unit="/ 100" 
-          color={strengthScore >= 90 ? "#FFD60A" : strengthScore >= 75 ? "#30D158" : strengthScore >= 60 ? "#0A84FF" : "#FF9F0A"} 
+          color={strengthScore >= 90 ? "#FFD60A" : strengthScore >= 75 ? "#FF3B30" : strengthScore >= 60 ? "#0A84FF" : "#30D158"} 
           delay={3} 
         />
       </div>
@@ -389,17 +394,7 @@ export default function HomePage() {
             {lastWorkout.date}
           </span>
         </div>
-        <div
-          style={{
-            fontSize: "11px",
-            color: "var(--text-tertiary)",
-            textTransform: "uppercase",
-            letterSpacing: "1px",
-            marginBottom: "14px",
-          }}
-        >
-          {lastWorkout.subtitle}
-        </div>
+
 
         {/* Stats row */}
         <div style={{ display: "flex", gap: "0", marginBottom: "14px" }}>

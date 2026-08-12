@@ -10,10 +10,6 @@ export default function PlateCalculator() {
   const unit = ctx?.weightUnit || "lbs";
   const barWeight = ctx?.barWeight || 45;
 
-  useEffect(() => {
-    calculatePlates(targetWeight, barWeight);
-  }, [targetWeight, barWeight]);
-
   const calculatePlates = (target, bar) => {
     let weightPerSide = (target - bar) / 2;
     if (weightPerSide <= 0) {
@@ -40,6 +36,11 @@ export default function PlateCalculator() {
 
     setPlates(needed);
   };
+
+  useEffect(() => {
+    const t = setTimeout(() => calculatePlates(targetWeight, barWeight), 0);
+    return () => clearTimeout(t);
+  }, [targetWeight, barWeight]);
 
   return (
     <div 

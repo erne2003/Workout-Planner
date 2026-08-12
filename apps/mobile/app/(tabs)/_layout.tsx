@@ -5,7 +5,7 @@ import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../hooks/useTheme';
-import { useData } from '@apex/core';
+import { useData, getStorage } from '@apex/core';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const router = useRouter();
@@ -13,10 +13,10 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 
   const { setToken } = useData() as any;
 
-  const handleLogout = () => {
-    global.localStorage.removeItem("userId");
-    setToken(null);
-    global.localStorage.removeItem("userName");
+  const handleLogout = async () => {
+    getStorage()?.removeItem("userId");
+    await setToken(null);
+    getStorage()?.removeItem("userName");
     router.replace("/login");
   };
 
@@ -52,10 +52,10 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
             const color = isFocused ? colors.accentBlue : colors.textTertiary;
 
             // Custom Icons based on web BottomNav
-            let IconComponent;
+            let iconElement = null;
             switch (route.name) {
               case 'index':
-                IconComponent = () => (
+                iconElement = (
                   <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                     <Path d="M3 9.5L11 3l8 6.5V19a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                     <Path d="M8 20v-8h6v8" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -63,14 +63,14 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                 );
                 break;
               case 'workout':
-                IconComponent = () => (
+                iconElement = (
                   <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                     <Path d="M3 11h2m12 0h2M5 11l2-4 4 8 4-8 2 4" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </Svg>
                 );
                 break;
               case 'recovery':
-                IconComponent = () => (
+                iconElement = (
                   <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                     <Path d="M11 3C7.686 3 5 5.686 5 9c0 4 6 10 6 10s6-6 6-10c0-3.314-2.686-6-6-6z" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                     <Circle cx="11" cy="9" r="2" stroke={color} strokeWidth="1.8" />
@@ -78,7 +78,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                 );
                 break;
               case 'strength':
-                IconComponent = () => (
+                iconElement = (
                   <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                     <Rect x="2" y="9" width="3" height="4" rx="1" stroke={color} strokeWidth="1.8" />
                     <Rect x="17" y="9" width="3" height="4" rx="1" stroke={color} strokeWidth="1.8" />
@@ -89,7 +89,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                 );
                 break;
               case 'progress':
-                IconComponent = () => (
+                iconElement = (
                   <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                     <Polyline points="3,16 7,10 11,13 15,7 19,4" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
                     <Line x1="3" y1="19" x2="19" y2="19" stroke={color} strokeWidth="1.4" strokeLinecap="round" />
@@ -97,7 +97,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                 );
                 break;
               default:
-                IconComponent = () => null;
+                iconElement = null;
             }
 
             return (
@@ -109,7 +109,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                   isFocused && [styles.tabButtonFocused, { backgroundColor: isLight ? 'rgba(10,132,255,0.08)' : 'rgba(10,132,255,0.12)' }]
                 ]}
               >
-                <IconComponent />
+                {iconElement}
                 <Text style={[styles.tabLabel, { color: isFocused ? colors.accentBlue : colors.textTertiary }]}>
                   {label as string}
                 </Text>

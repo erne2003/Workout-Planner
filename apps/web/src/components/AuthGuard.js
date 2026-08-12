@@ -12,7 +12,7 @@ export default function AuthGuard({ children }) {
         if (!token && pathname !== "/login") {
             router.replace("/login");
         } else {
-            setChecked(true);
+            setTimeout(() => setChecked(true), 0);
         }
     }, [pathname, router]);
 

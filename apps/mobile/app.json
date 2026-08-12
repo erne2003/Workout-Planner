@@ -1,15 +1,16 @@
 {
   "expo": {
-    "name": "Apex-mobile",
-    "slug": "Apex-mobile",
+    "name": "Virtus Fitness",
+    "slug": "apex",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "apexmobile",
+    "icon": "./assets/images/VirtusIconImage.png",
+    "scheme": "virtusfitness",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "2",
       "infoPlist": {
         "NSHealthShareUsageDescription": "Apex needs access to your sleep and heart rate data to calculate your daily readiness score.",
         "NSHealthUpdateUsageDescription": "Apex needs access to your sleep and heart rate data to calculate your daily readiness score.",
@@ -51,7 +52,8 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

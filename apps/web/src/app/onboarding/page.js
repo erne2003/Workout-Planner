@@ -6,6 +6,7 @@ export default function OnboardingPage() {
     const router = useRouter();
     const [years, setYears] = useState("");
     const [weight, setWeight] = useState("");
+    const [gender, setGender] = useState("male");
     
     // Explicit Height Metrics constraints
     const [hUnit, setHUnit] = useState("ft"); // "ft" or "cm"
@@ -19,8 +20,6 @@ export default function OnboardingPage() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-
-
 
         let finalHeight = "Not Selected";
         if (hUnit === "ft" && (feet || inches)) {
@@ -40,7 +39,8 @@ export default function OnboardingPage() {
                     trainingYears: parseFloat(years) || 0,
                     weight: parseFloat(weight),
                     height: finalHeight,
-                    bodyFat: bodyFat ? parseFloat(bodyFat) : null
+                    bodyFat: bodyFat ? parseFloat(bodyFat) : null,
+                    gender: gender
                 })
             });
             // Complete layout and forward to dashboard!
@@ -103,6 +103,17 @@ export default function OnboardingPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    <div>
+                        <label style={labelStyle}>Gender</label>
+                        <div style={{ display: "flex", background: "rgba(0,0,0,0.4)", borderRadius: "12px", padding: "4px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                            <button type="button" onClick={() => setGender("male")} style={{ flex: 1, background: gender === "male" ? "rgba(255,255,255,0.15)" : "transparent", color: gender === "male" ? "#fff" : "rgba(255,255,255,0.4)", border: "none", borderRadius: "8px", fontSize: "13px", fontWeight: 700, padding: "10px", cursor: "pointer", transition: "all 0.2s" }}>
+                                Male
+                            </button>
+                            <button type="button" onClick={() => setGender("female")} style={{ flex: 1, background: gender === "female" ? "rgba(255,255,255,0.15)" : "transparent", color: gender === "female" ? "#fff" : "rgba(255,255,255,0.4)", border: "none", borderRadius: "8px", fontSize: "13px", fontWeight: 700, padding: "10px", cursor: "pointer", transition: "all 0.2s" }}>
+                                Female
+                            </button>
+                        </div>
+                    </div>
                     <div>
                         <label style={labelStyle}>Training Age (Years)</label>
                         <input type="number" step="0.5" placeholder="e.g. 2.5" value={years} onChange={e => setYears(e.target.value)} style={inputStyle} required />
