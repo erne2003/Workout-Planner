@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { getStorage } from "./storage";
+import { getStorage } from "./storage.js";
 
 const SettingsContext = createContext({});
 

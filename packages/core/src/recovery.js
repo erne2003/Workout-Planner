@@ -14,7 +14,7 @@
  *   "muscleSoreness"    - JSON object { [muscleName]: "fresh"|"moderate"|"sore" }
  */
 
-import { getStorage } from "./storage";
+import { getStorage } from "./storage.js";
 
 export const RECOVERY_COLOR = {
   fully_recovered:     "#30D158", // Green ✅
@@ -365,8 +365,12 @@ export function calculateReadinessScore(data) {
     sleepStages = { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
     todayHRV = 0,
     avg14DayHRV = 1,
+    meanLnHRV = null,
+    stdDevLnHRV = null,
     todayRHR = 60,
     avg14DayRHR = 60,
+    meanRHR = null,
+    stdDevRHR = null,
     hoursSinceLastWorkout = 0,
     muscleReadinessScore = null
   } = data;
@@ -396,15 +400,38 @@ export function calculateReadinessScore(data) {
   // 5. Sleep Quality Score = (Duration Score * 0.5) + (((Deep Component + REM Component) / 2) * 0.5)
   const sleepQualityScore = (durationScore * 0.5) + (((deepComponent + remComponent) / 2) * 0.5);
 
-  // 6. HRV Score = Math.min(120, (todayHRV / avg14DayHRV) * 100)
-  const hrvScore = avg14DayHRV > 0
-    ? Math.min(120, (todayHRV / avg14DayHRV) * 100)
-    : 0;
+  // 6. HRV Score using sports science z-score:
+  // zHRV = (ln(RMSSD_today) - mu_LnHRV) / sigma_LnHRV
+  const rmssdToday = todayHRV > 0 ? todayHRV : 1;
+  const lnRMSSD = Math.log(rmssdToday);
+  const mu_LnHRV = (meanLnHRV !== null && meanLnHRV !== undefined)
+    ? meanLnHRV
+    : (avg14DayHRV > 0 ? Math.log(avg14DayHRV) : Math.log(50));
+  const sigma_LnHRV = (stdDevLnHRV && stdDevLnHRV !== 0) ? stdDevLnHRV : 0.30;
+  
+  const zHRV = (lnRMSSD - mu_LnHRV) / sigma_LnHRV;
 
-  // 7. RHR Score = Math.min(120, (avg14DayRHR / todayRHR) * 100)
-  const rhrScore = todayRHR > 0
-    ? Math.min(120, (avg14DayRHR / todayRHR) * 100)
-    : 0;
+  // 7. RHR Score using inverted z-score:
+  // zRHR = (RHR_today - mu_RHR) / sigma_RHR
+  const mu_RHR = (meanRHR !== null && meanRHR !== undefined)
+    ? meanRHR
+    : (avg14DayRHR || 60);
+  const sigma_RHR = (stdDevRHR && stdDevRHR !== 0) ? stdDevRHR : 3.0;
+
+  const zRHR = (todayRHR - mu_RHR) / sigma_RHR;
+
+  // Calculate S_HRV = 75 + 15 * zHRV
+  let hrvScore = 75 + 15 * zHRV;
+
+  // Parasympathetic Saturation Guard: If zHRV > +2.5 and zRHR < -1.5, cap S_HRV = 85
+  if (zHRV > 2.5 && zRHR < -1.5) {
+    hrvScore = 85;
+  } else {
+    hrvScore = Math.min(100, Math.max(0, hrvScore));
+  }
+
+  // Calculate S_RHR = 75 - 15 * zRHR
+  const rhrScore = Math.min(100, Math.max(0, 75 - 15 * zRHR));
 
   // 8. Workout Interval Score Calculation (replaced by muscle readiness if provided)
   let workoutIntervalScore = 100;
@@ -436,6 +463,8 @@ export function calculateReadinessScore(data) {
     remComponent,
     hrvScore,
     rhrScore,
-    workoutIntervalScore
+    workoutIntervalScore,
+    zHRV,
+    zRHR
   };
 }

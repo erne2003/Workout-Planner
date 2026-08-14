@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "2",
+      "buildNumber": "26",
       "infoPlist": {
         "NSHealthShareUsageDescription": "Virtus Fitness needs access to your sleep and heart rate data to calculate your daily readiness score.",
         "NSHealthUpdateUsageDescription": "Virtus Fitness needs access to your sleep and heart rate data to calculate your daily readiness score.",
@@ -52,7 +52,15 @@
         }
       ],
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Virtus Fitness needs access to your sleep and heart rate data to calculate your daily readiness score.",
+          "NSHealthUpdateUsageDescription": "Virtus Fitness needs access to your sleep and heart rate data to calculate your daily readiness score.",
+          "background": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -63,6 +71,12 @@
       "eas": {
         "projectId": "4870d17c-9278-4254-a777-c0b12ad108e1"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/4870d17c-9278-4254-a777-c0b12ad108e1"
     }
   }
 }
