@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { getSecureStorage } from "./storage";
+import { getSecureStorage } from "./storage.js";
 
 const DataContext = createContext({});
 

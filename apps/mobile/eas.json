@@ -1,24 +1,27 @@
 {
   "cli": {
     "version": ">= 20.3.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {

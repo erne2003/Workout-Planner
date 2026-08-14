@@ -205,11 +205,12 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
   }
 
   if (error) {
+    const errorMsg = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
     return (
       <View style={[styles.card, { padding: 18, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border, gap: 8 }]}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: '#FF2D55' }}>Health Sync Issue</Text>
         <Text style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 15 }}>
-          Could not retrieve data. Please ensure APEX is allowed to read Sleep, Heart Rate Variability, and Resting Heart Rate in the iOS Health app.
+          {errorMsg}
         </Text>
         <TouchableOpacity 
           onPress={onRequestPermissions}
@@ -323,7 +324,7 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${hasHRV ? Math.min(100, (hrvScore / 120) * 100) : 0}%`, backgroundColor: '#0A84FF' }} />
+              <View style={{ height: '100%', width: `${hasHRV ? Math.min(100, Math.max(0, hrvScore)) : 0}%`, backgroundColor: '#0A84FF' }} />
             </View>
           </View>
 
@@ -336,7 +337,7 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${hasRHR ? Math.min(100, (rhrScore / 120) * 100) : 0}%`, backgroundColor: '#BF5AF2' }} />
+              <View style={{ height: '100%', width: `${hasRHR ? Math.min(100, Math.max(0, rhrScore)) : 0}%`, backgroundColor: '#BF5AF2' }} />
             </View>
           </View>
 
@@ -440,8 +441,12 @@ export default function RecoveryPage() {
     sleepStages: healthData?.sleepStages || { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
     todayHRV: healthData?.todayHRV || 50,
     avg14DayHRV: healthData?.avg14DayHRV || 50,
+    meanLnHRV: healthData?.meanLnHRV,
+    stdDevLnHRV: healthData?.stdDevLnHRV,
     todayRHR: healthData?.todayRHR || 60,
     avg14DayRHR: healthData?.avg14DayRHR || 60,
+    meanRHR: healthData?.meanRHR,
+    stdDevRHR: healthData?.stdDevRHR,
     hoursSinceLastWorkout,
     muscleReadinessScore
   });

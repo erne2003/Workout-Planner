@@ -1,4 +1,4 @@
-import recoveryModule from "./recovery.js";
+import * as recoveryModule from "./recovery.js";
 const {
   RECOVERY_WINDOW_HOURS,
   MUSCLE_WEIGHT,
