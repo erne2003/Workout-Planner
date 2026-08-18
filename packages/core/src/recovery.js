@@ -362,78 +362,23 @@ export function calculateReadinessScore(data) {
   if (!data) return null;
 
   const {
-    sleepStages = { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
-    todayHRV = 0,
-    avg14DayHRV = 1,
+    sleepStages = null,
+    todayHRV = null,
+    avg14DayHRV = null,
     meanLnHRV = null,
     stdDevLnHRV = null,
-    todayRHR = 60,
-    avg14DayRHR = 60,
+    todayRHR = null,
+    avg14DayRHR = null,
     meanRHR = null,
     stdDevRHR = null,
     hoursSinceLastWorkout = 0,
     muscleReadinessScore = null
   } = data;
 
-  const {
-    deepMinutes = 0,
-    coreMinutes = 0,
-    remMinutes = 0
-  } = sleepStages;
+  let totalWeight = 0;
+  let weightedSum = 0;
 
-  // 1. Total Sleep Time = Sum of deep, core, and rem minutes.
-  const totalSleepTime = deepMinutes + coreMinutes + remMinutes;
-
-  // 2. Duration Score = Math.min(100, (Total Sleep Time / 480) * 100)
-  const durationScore = Math.min(100, (totalSleepTime / 480) * 100);
-
-  // 3. Deep Component = Math.min(100, (deepMinutes / (Total Sleep Time * 0.15)) * 100)
-  const deepComponent = totalSleepTime > 0
-    ? Math.min(100, (deepMinutes / (totalSleepTime * 0.15)) * 100)
-    : 0;
-
-  // 4. REM Component = Math.min(100, (remMinutes / (Total Sleep Time * 0.20)) * 100)
-  const remComponent = totalSleepTime > 0
-    ? Math.min(100, (remMinutes / (totalSleepTime * 0.20)) * 100)
-    : 0;
-
-  // 5. Sleep Quality Score = (Duration Score * 0.5) + (((Deep Component + REM Component) / 2) * 0.5)
-  const sleepQualityScore = (durationScore * 0.5) + (((deepComponent + remComponent) / 2) * 0.5);
-
-  // 6. HRV Score using sports science z-score:
-  // zHRV = (ln(RMSSD_today) - mu_LnHRV) / sigma_LnHRV
-  const rmssdToday = todayHRV > 0 ? todayHRV : 1;
-  const lnRMSSD = Math.log(rmssdToday);
-  const mu_LnHRV = (meanLnHRV !== null && meanLnHRV !== undefined)
-    ? meanLnHRV
-    : (avg14DayHRV > 0 ? Math.log(avg14DayHRV) : Math.log(50));
-  const sigma_LnHRV = (stdDevLnHRV && stdDevLnHRV !== 0) ? stdDevLnHRV : 0.30;
-  
-  const zHRV = (lnRMSSD - mu_LnHRV) / sigma_LnHRV;
-
-  // 7. RHR Score using inverted z-score:
-  // zRHR = (RHR_today - mu_RHR) / sigma_RHR
-  const mu_RHR = (meanRHR !== null && meanRHR !== undefined)
-    ? meanRHR
-    : (avg14DayRHR || 60);
-  const sigma_RHR = (stdDevRHR && stdDevRHR !== 0) ? stdDevRHR : 3.0;
-
-  const zRHR = (todayRHR - mu_RHR) / sigma_RHR;
-
-  // Calculate S_HRV = 75 + 15 * zHRV
-  let hrvScore = 75 + 15 * zHRV;
-
-  // Parasympathetic Saturation Guard: If zHRV > +2.5 and zRHR < -1.5, cap S_HRV = 85
-  if (zHRV > 2.5 && zRHR < -1.5) {
-    hrvScore = 85;
-  } else {
-    hrvScore = Math.min(100, Math.max(0, hrvScore));
-  }
-
-  // Calculate S_RHR = 75 - 15 * zRHR
-  const rhrScore = Math.min(100, Math.max(0, 75 - 15 * zRHR));
-
-  // 8. Workout Interval Score Calculation (replaced by muscle readiness if provided)
+  // 1. Workout Interval Score Calculation (replaced by muscle readiness if provided)
   let workoutIntervalScore = 100;
   if (muscleReadinessScore !== null && muscleReadinessScore !== undefined) {
     workoutIntervalScore = muscleReadinessScore;
@@ -446,14 +391,79 @@ export function calculateReadinessScore(data) {
       workoutIntervalScore = 75;
     }
   }
+  weightedSum += workoutIntervalScore * 0.15;
+  totalWeight += 0.15;
 
-  // 9. Final Composite Readiness
-  const compositeReadiness = Math.min(100, 
-    (sleepQualityScore * 0.50) + 
-    (hrvScore * 0.20) + 
-    (rhrScore * 0.15) + 
-    (workoutIntervalScore * 0.15)
-  );
+  // 2. Sleep Quality Score (if sleepStages is present)
+  let sleepQualityScore = null;
+  let durationScore = null;
+  let deepComponent = null;
+  let remComponent = null;
+  if (sleepStages !== null && sleepStages !== undefined) {
+    const {
+      deepMinutes = 0,
+      coreMinutes = 0,
+      remMinutes = 0
+    } = sleepStages;
+    const totalSleepTime = deepMinutes + coreMinutes + remMinutes;
+    durationScore = Math.min(100, (totalSleepTime / 480) * 100);
+    deepComponent = totalSleepTime > 0
+      ? Math.min(100, (deepMinutes / (totalSleepTime * 0.15)) * 100)
+      : 0;
+    remComponent = totalSleepTime > 0
+      ? Math.min(100, (remMinutes / (totalSleepTime * 0.20)) * 100)
+      : 0;
+    sleepQualityScore = (durationScore * 0.5) + (((deepComponent + remComponent) / 2) * 0.5);
+
+    weightedSum += sleepQualityScore * 0.50;
+    totalWeight += 0.50;
+  }
+
+  // 3. HRV Score using sports science z-score (if todayHRV is present)
+  let hrvScore = null;
+  let zHRV = null;
+  if (todayHRV !== null && todayHRV !== undefined) {
+    const rmssdToday = todayHRV > 0 ? todayHRV : 1;
+    const lnRMSSD = Math.log(rmssdToday);
+    const mu_LnHRV = (meanLnHRV !== null && meanLnHRV !== undefined)
+      ? meanLnHRV
+      : ((avg14DayHRV && avg14DayHRV > 0) ? Math.log(avg14DayHRV) : Math.log(50));
+    const sigma_LnHRV = (stdDevLnHRV && stdDevLnHRV !== 0) ? stdDevLnHRV : 0.30;
+    
+    zHRV = (lnRMSSD - mu_LnHRV) / sigma_LnHRV;
+    hrvScore = 75 + 15 * zHRV;
+  }
+
+  // 4. RHR Score using inverted z-score (if todayRHR is present)
+  let rhrScore = null;
+  let zRHR = null;
+  if (todayRHR !== null && todayRHR !== undefined) {
+    const mu_RHR = (meanRHR !== null && meanRHR !== undefined)
+      ? meanRHR
+      : (avg14DayRHR || 60);
+    const sigma_RHR = (stdDevRHR && stdDevRHR !== 0) ? stdDevRHR : 3.0;
+
+    zRHR = (todayRHR - mu_RHR) / sigma_RHR;
+    rhrScore = Math.min(100, Math.max(0, 75 - 15 * zRHR));
+  }
+
+  // Parasympathetic Saturation Guard: If zHRV > +2.5 and zRHR < -1.5, cap S_HRV = 85
+  if (hrvScore !== null) {
+    if (zHRV > 2.5 && zRHR !== null && zRHR < -1.5) {
+      hrvScore = 85;
+    } else {
+      hrvScore = Math.min(100, Math.max(0, hrvScore));
+    }
+    weightedSum += hrvScore * 0.20;
+    totalWeight += 0.20;
+  }
+
+  if (rhrScore !== null) {
+    weightedSum += rhrScore * 0.15;
+    totalWeight += 0.15;
+  }
+
+  const compositeReadiness = totalWeight > 0 ? Math.min(100, weightedSum / totalWeight) : 100;
 
   return {
     compositeReadiness: Math.round(compositeReadiness),
