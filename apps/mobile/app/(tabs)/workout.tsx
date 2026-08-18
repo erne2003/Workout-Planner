@@ -13,6 +13,18 @@ function fmt(secs: number) {
   return `${m}:${s}`;
 }
 
+function formatWorkoutTime(secs: number) {
+  const hours = Math.floor(secs / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  
+  if (hours === 0) {
+    return `${mins} minutes`;
+  } else {
+    const mm = String(mins).padStart(2, "0");
+    return `${hours} : ${mm} minutes`;
+  }
+}
+
 function totalVolume(exercises: any[], completed: any) {
   let vol = 0;
   exercises.forEach((ex, ei) =>
@@ -254,7 +266,10 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
         <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
           {prevSet ? (
             <>
-              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>{Math.round(prevSet.weight)}<Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}</Text>
+              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>
+                {unit === "kg" ? Number((prevSet.weight / 2.205).toFixed(2)) : prevSet.weight}
+                <Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}
+              </Text>
               {prevSet.rir != null && prevSet.rir !== undefined && prevSet.rir > 0 && <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.rir}rir</Text>}
             </>
           ) : (
@@ -405,6 +420,17 @@ export default function WorkoutPage() {
 
   const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token } = useData() as any;
 
+  const findLastSetsForExercise = (exId: number) => {
+    if (!workouts || !Array.isArray(workouts)) return [];
+    for (const w of workouts) {
+      const matchingSets = w.sets?.filter((s: any) => (s.exercise_id || s.id) === exId);
+      if (matchingSets && matchingSets.length > 0) {
+        return matchingSets;
+      }
+    }
+    return [];
+  };
+
   useEffect(() => {
     if (templateRoutines) {
       const sorted = [...templateRoutines].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -490,7 +516,7 @@ export default function WorkoutPage() {
   };
   const updateSet = (exIdx: number, setIdx: number, field: string, val: string) => {
     const newPlan = [...workoutPlan];
-    newPlan[exIdx].sets[setIdx][field] = field === 'weight' ? Math.round(Number(val)) : Number(val);
+    newPlan[exIdx].sets[setIdx][field] = Number(val);
     setWorkoutPlan(newPlan);
   };
   const removeExercise = (exIdx: number) => {
@@ -500,14 +526,28 @@ export default function WorkoutPage() {
   };
   const addExercise = (exercise: any) => {
     if (!exercise) return;
+    const exId = exercise.id;
+    const lastExSets = findLastSetsForExercise(exId);
+    
+    let setsObj = [];
+    if (lastExSets.length > 0) {
+      setsObj = lastExSets.map((s: any) => ({
+        reps: s.reps,
+        weight: unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight),
+        rir: s.rir !== null ? s.rir : 0
+      }));
+    } else {
+      setsObj = [{ reps: 10, weight: 0, rir: 0 }];
+    }
+
     const newPlan = [...workoutPlan];
     newPlan.push({
       ...exercise,
       muscle: exercise.muscle_group || exercise.muscle,
       accentColor: "#30D158",
-      exerciseId: exercise.id,
+      exerciseId: exId,
       id: Date.now(),
-      sets: [{ reps: 10, weight: 0, rir: 0 }],
+      sets: setsObj,
     });
     setWorkoutPlan(newPlan);
   };
@@ -516,17 +556,21 @@ export default function WorkoutPage() {
     if (!newExercise) return;
     const newPlan = [...workoutPlan];
     const originalEx = newPlan[exIdx];
+    const lastExSets = findLastSetsForExercise(newExercise.id);
 
     const updatedSets = originalEx.sets.map((set: any, si: number) => {
       const isSetDone = !!completed[`${exIdx}-${si}`];
       if (isSetDone) {
         return set;
       }
+      const prevSet = lastExSets[si] || lastExSets[lastExSets.length - 1];
       return {
         ...set,
-        weight: 0,
-        reps: 0,
-        rir: 0
+        reps: prevSet ? prevSet.reps : 10,
+        weight: prevSet 
+          ? (unit === "kg" ? Number((Number(prevSet.weight) / 2.205).toFixed(2)) : Number(prevSet.weight))
+          : 0,
+        rir: prevSet?.rir !== null && prevSet?.rir !== undefined ? prevSet.rir : 0
       };
     });
 
@@ -578,7 +622,7 @@ export default function WorkoutPage() {
         },
         body: JSON.stringify({
           name: activeRoutine?.name || "Workout Session",
-          notes: `Finished with ${Math.round(overallPct)}% completion in ${fmt(elapsed)}`,
+          notes: `Finished with ${Math.round(overallPct)}% completion in ${formatWorkoutTime(elapsed)}`,
         }),
       });
       if (!workoutRes.ok) throw new Error("Failed to create workout");
@@ -596,7 +640,7 @@ export default function WorkoutPage() {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
               },
-              body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) * 2.205) : Number(set.weight), rir: set.rir || 0 }),
+              body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Number((Number(set.weight) * 2.205).toFixed(2)) : Number(set.weight), rir: set.rir || 0 }),
             });
           }
         }
@@ -705,7 +749,6 @@ export default function WorkoutPage() {
     if (isManagingRoutines) return;
 
     let plan = [];
-    const lastSession = workouts.find((w: any) => w.name === item.name);
 
     if (item.isPastWorkout) {
       const exercisesMap: any = {};
@@ -720,7 +763,7 @@ export default function WorkoutPage() {
           };
         }
         exercisesMap[set.exercise_id].sets.push({
-          reps: set.reps, weight: unit === "kg" ? Math.round(Number(set.weight) / 2.205) : Number(set.weight), rir: set.rir !== null ? set.rir : 0
+          reps: set.reps, weight: unit === "kg" ? Number((Number(set.weight) / 2.205).toFixed(2)) : Number(set.weight), rir: set.rir !== null ? set.rir : 0
         });
       });
       plan = Object.values(exercisesMap);
@@ -729,21 +772,19 @@ export default function WorkoutPage() {
       // If a lastSession exists, pre-populate individual exercise sets from it.
       plan = item.exercises.map((ex: any) => {
         const exId = ex.exercise_id || ex.id;
-        const lastExSets = lastSession 
-          ? lastSession.sets.filter((s: any) => s.exercise_id === exId) 
-          : [];
+        const lastExSets = findLastSetsForExercise(exId);
 
         let setsObj = [];
         if (lastExSets.length > 0) {
           setsObj = lastExSets.map((s: any) => ({
             reps: s.reps,
-            weight: unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight),
+            weight: unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight),
             rir: s.rir !== null ? s.rir : 0
           }));
         } else {
           setsObj = Array(ex.sets || 3).fill(0).map(() => ({
             reps: ex.reps || 10,
-            weight: unit === "kg" ? Math.round(Number(ex.weight || 0) / 2.205) : Number(ex.weight || 0),
+            weight: unit === "kg" ? Number((Number(ex.weight || 0) / 2.205).toFixed(2)) : Number(ex.weight || 0),
             rir: ex.rir || 0
           }));
         }
@@ -833,7 +874,7 @@ export default function WorkoutPage() {
               const ls = workouts?.find((w: any) => w.name === r.name);
               const lsDate = ls ? new Date(ls.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
               const lsVolume = ls?.sets ? Math.round(ls.sets.reduce((sum: number, s: any) => {
-                const w = unit === "kg" ? Math.round(Number(s.weight || 0) / 2.205) : Number(s.weight || 0);
+                const w = unit === "kg" ? Number((Number(s.weight || 0) / 2.205).toFixed(2)) : Number(s.weight || 0);
                 return sum + (Number(s.reps || 0) * w);
               }, 0)) : 0;
 
@@ -1001,7 +1042,7 @@ export default function WorkoutPage() {
                       <View key={si} style={styles.overviewSetRow}>
                         <Text style={[styles.overviewSetNum, { color: colors.textSecondary }]}>Set {si + 1}</Text>
                         <Text style={[styles.overviewSetDetails, { color: colors.textSecondary }]}>
-                          <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{Math.round(set.weight)}</Text> {unit} × <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.reps}</Text> reps
+                          <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.weight}</Text> {unit} × <Text style={{ color: colors.textPrimary, fontWeight: "700" }}>{set.reps}</Text> reps
                           {set.rir > 0 && <Text style={{ color: colors.textTertiary }}> (RIR: {set.rir})</Text>}
                         </Text>
                       </View>
@@ -1030,7 +1071,7 @@ export default function WorkoutPage() {
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
         <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
           <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Duration</Text>
-          <Text style={[styles.activeStatValue, { color: colors.textPrimary }]}>{fmt(elapsed)}</Text>
+          <Text style={[styles.activeStatValue, { color: colors.textPrimary }]}>{formatWorkoutTime(elapsed)}</Text>
         </View>
         <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
           <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Volume</Text>
