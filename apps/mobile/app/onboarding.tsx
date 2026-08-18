@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import Svg, { Path, Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../hooks/useTheme";
-import { useData } from "@apex/core";
+import { useData, fetchWithTimeout } from "@apex/core";
 
 export default function OnboardingPage() {
     const router = useRouter();
@@ -35,7 +35,7 @@ export default function OnboardingPage() {
  
         try {
             const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
-            await fetch(`${apiUrl}/metrics`, {
+            await fetchWithTimeout(`${apiUrl}/metrics`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",

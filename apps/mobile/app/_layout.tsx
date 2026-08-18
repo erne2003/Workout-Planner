@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
-import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage } from '@apex/core';
+import { AppState } from 'react-native';
+import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
 
 import { useTheme } from '../hooks/useTheme';
@@ -29,6 +30,28 @@ function AppNavigator() {
       <StatusBar style={isLight ? "dark" : "light"} />
     </>
   );
+}
+
+/* Re-fetch all data whenever the app returns to the foreground */
+function ForegroundRefresh() {
+  const { prefetchAll, token } = useData() as any;
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextState === 'active' &&
+        token
+      ) {
+        prefetchAll();
+      }
+      appState.current = nextState;
+    });
+    return () => sub.remove();
+  }, [prefetchAll, token]);
+
+  return null;
 }
 
 export default function RootLayout() {
@@ -98,6 +121,19 @@ export default function RootLayout() {
           delete cache['token'];
           await AsyncStorage.removeItem('token');
         }
+
+        // ── Warm up the backend server before the app renders ───────────
+        // The backend may be on a cold-start hosting tier. Fire a non-blocking
+        // ping so the server is awake when DataContext starts fetching.
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+        if (apiUrl) {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            await fetch(`${apiUrl}/health`, { signal: controller.signal }).catch(() => {});
+            clearTimeout(timer);
+          } catch { /* best-effort, ignore failures */ }
+        }
       } catch (e) {
         console.warn(e);
       } finally {
@@ -121,6 +157,7 @@ export default function RootLayout() {
   return (
     <SettingsProvider>
       <DataProvider>
+        <ForegroundRefresh />
         <AuthGuard>
           <AppNavigator />
         </AuthGuard>

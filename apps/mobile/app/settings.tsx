@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
-import { useSettings, useData, getStorage } from "@apex/core";
+import { useSettings, useData, getStorage, fetchWithTimeout } from "@apex/core";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
 import { useTheme } from "../hooks/useTheme";
 import { useHealthKit } from "../hooks/useHealthKit";
@@ -85,7 +85,7 @@ export default function SettingsPage() {
     try {
 
       const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
-      const response = await fetch(`${apiUrl}/auth/delete-account`, {
+      const response = await fetchWithTimeout(`${apiUrl}/auth/delete-account`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

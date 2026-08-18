@@ -95,7 +95,7 @@ function ExerciseSearch({ onAdd }: any) {
   if (isCreatingCustom) {
     return (
       <View style={{ gap: 12, marginBottom: 10 }}>
-        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary }}>Creating Custom Exercise: "{customName}"</Text>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary }}>Creating Custom Exercise: &quot;{customName}&quot;</Text>
         <Text style={{ fontSize: 12, color: colors.textSecondary }}>Select Target Muscle Group:</Text>
         <ScrollView style={{ maxHeight: 150, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)" }}>
           {MUSCLE_OPTIONS.map((m) => (
@@ -173,7 +173,7 @@ function ExerciseSearch({ onAdd }: any) {
                 }}
                 style={[styles.searchResultItem, { paddingVertical: 14 }]}
               >
-                <Text style={{ fontSize: 13, fontWeight: "700", color: "#30D158" }}>+ Create custom exercise "{query.trim()}"</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#30D158" }}>+ Create custom exercise &quot;{query.trim()}&quot;</Text>
               </TouchableOpacity>
             </View>
           )}
