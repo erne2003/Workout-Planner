@@ -259,12 +259,22 @@ export default function HomePage() {
           });
 
           // Check if completion time was written in notes string securely
-          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (\d+:\d+)/) : null;
+          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (?:(\d+)\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/) : null;
           let dStr = "N/A";
           if (dMatch) {
-            const [m, s] = dMatch[1].split(":").map(Number);
-            const timeStr = `${m}:${String(s).padStart(2, "0")}`;
-            dStr = m === 0 ? `${timeStr} sec` : `${timeStr} min`;
+            const hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
+            const mins = parseInt(dMatch[2], 10);
+            const secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
+            if (hr > 0) {
+              dStr = `${hr} : ${String(mins).padStart(2, "0")} minutes`;
+            } else {
+              if (dMatch[3]) {
+                const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
+                dStr = mins === 0 ? `${timeStr} sec` : `${timeStr} min`;
+              } else {
+                dStr = `${mins} minutes`;
+              }
+            }
           }
 
           setLastWorkout({
