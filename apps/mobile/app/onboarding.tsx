@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Keyboard, TouchableWithoutFeedback } from "react-native";
 import { useRouter } from "expo-router";
 import Svg, { Path, Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
@@ -58,8 +58,9 @@ export default function OnboardingPage() {
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.bgBase }]}>
-            <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={[styles.container, { backgroundColor: colors.bgBase }]}>
+                <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
                 <View style={styles.headerContainer}>
                     <LinearGradient colors={["#0A84FF", "#BF5AF2"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.iconContainer}>
                         <Svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -151,8 +152,9 @@ export default function OnboardingPage() {
                         )}
                     </TouchableOpacity>
                 </View>
+                </View>
             </View>
-        </View>
+        </TouchableWithoutFeedback>
     );
 }
 

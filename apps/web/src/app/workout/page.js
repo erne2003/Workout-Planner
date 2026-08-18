@@ -25,6 +25,18 @@ function fmt(secs) {
   return `${m}:${s}`;
 }
 
+function formatWorkoutTime(secs) {
+  const hours = Math.floor(secs / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  
+  if (hours === 0) {
+    return `${mins} minutes`;
+  } else {
+    const mm = String(mins).padStart(2, "0");
+    return `${hours} : ${mm} minutes`;
+  }
+}
+
 function totalVolume(exercises, completed) {
   let vol = 0;
   exercises.forEach((ex, ei) =>
@@ -973,7 +985,7 @@ export default function WorkoutPage() {
         },
         body: JSON.stringify({
           name: activeRoutine?.name || "Workout Session",
-          notes: `Finished with ${Math.round(overallPct)}% completion in ${fmt(elapsed)}`,
+          notes: `Finished with ${Math.round(overallPct)}% completion in ${formatWorkoutTime(elapsed)}`,
         }),
       });
       if (!workoutRes.ok) throw new Error("Failed to create workout");
@@ -1409,7 +1421,7 @@ export default function WorkoutPage() {
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
         <div className="glass-card animate-fade-up delay-1" style={{ flex: 1, padding: "14px 16px" }}>
           <div style={{ fontSize: "10px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}>Duration</div>
-          <div style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 800, letterSpacing: "-1.5px", color: "var(--text-primary)" }}>{fmt(elapsed)}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 800, letterSpacing: "-1.5px", color: "var(--text-primary)" }}>{formatWorkoutTime(elapsed)}</div>
         </div>
         <div className="glass-card animate-fade-up delay-2" style={{ flex: 1, padding: "14px 16px" }}>
           <div style={{ fontSize: "10px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}>Volume</div>
