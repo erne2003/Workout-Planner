@@ -258,7 +258,7 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
   const hasSleep = healthData.sleepStages !== null;
   const hasHRV = healthData.todayHRV !== null;
   const hasRHR = healthData.todayRHR !== null;
-  const hasActualData = hasSleep && hasHRV && hasRHR;
+  const hasActualData = hasSleep || hasHRV || hasRHR;
 
   const scoreColor = hasActualData
     ? (unifiedScore >= 75 ? "#30D158" : unifiedScore >= 50 ? "#FF9F0A" : "#FF2D55")
@@ -435,16 +435,16 @@ export default function RecoveryPage() {
   const hasSleep = healthData?.sleepStages !== null && healthData?.sleepStages !== undefined;
   const hasHRV = healthData?.todayHRV !== null && healthData?.todayHRV !== undefined;
   const hasRHR = healthData?.todayRHR !== null && healthData?.todayRHR !== undefined;
-  const hasActualData = hasSleep && hasHRV && hasRHR;
+  const hasActualData = hasSleep || hasHRV || hasRHR;
 
   const scoreData = calculateReadinessScore({
-    sleepStages: healthData?.sleepStages || { deepMinutes: 0, coreMinutes: 0, remMinutes: 0, awakeMinutes: 0 },
-    todayHRV: healthData?.todayHRV || 50,
-    avg14DayHRV: healthData?.avg14DayHRV || 50,
+    sleepStages: healthData?.sleepStages,
+    todayHRV: healthData?.todayHRV,
+    avg14DayHRV: healthData?.avg14DayHRV,
     meanLnHRV: healthData?.meanLnHRV,
     stdDevLnHRV: healthData?.stdDevLnHRV,
-    todayRHR: healthData?.todayRHR || 60,
-    avg14DayRHR: healthData?.avg14DayRHR || 60,
+    todayRHR: healthData?.todayRHR,
+    avg14DayRHR: healthData?.avg14DayRHR,
     meanRHR: healthData?.meanRHR,
     stdDevRHR: healthData?.stdDevRHR,
     hoursSinceLastWorkout,

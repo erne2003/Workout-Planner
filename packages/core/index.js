@@ -4,3 +4,5 @@ export * from './src/data.js';
 export * from './src/DataContext.js';
 export * from './src/SettingsContext.js';
 export * from './src/muscle-paths.js';
+export * from './src/utils.js';
+

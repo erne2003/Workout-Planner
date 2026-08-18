@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "../hooks/useTheme";
-import { useData, getStorage } from "@apex/core";
+import { useData, getStorage, fetchWithTimeout } from "@apex/core";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -30,7 +30,7 @@ export default function LoginPage() {
         try {
             const endpoint = isRegister ? "/auth/register" : "/auth/login";
             const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
-            const res = await fetch(`${apiUrl}${endpoint}`, {
+            const res = await fetchWithTimeout(`${apiUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name, email, password }),
@@ -57,7 +57,7 @@ export default function LoginPage() {
             
             // Check metrics via backend
             try {
-                const metricsReq = await fetch(`${apiUrl}/metrics`, {
+                const metricsReq = await fetchWithTimeout(`${apiUrl}/metrics`, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
                 const metrics = await metricsReq.json();
