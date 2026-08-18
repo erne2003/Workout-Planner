@@ -825,7 +825,7 @@ function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: 
       const dateStr = new Date(p.achieved_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const name = p.exercise_name?.toLowerCase() || "";
       const rawW = parseFloat(p.weight) || 0;
-      const wVal = unit === "kg" ? Math.round(rawW / 2.205) : rawW;
+      const wVal = unit === "kg" ? Number((rawW / 2.205).toFixed(2)) : rawW;
 
       let dayMax = { ...runningMax };
       let updated = false;
@@ -892,7 +892,7 @@ function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: 
         (w.sets || []).forEach((s: any) => {
           const reps = parseFloat(s.reps) || 0;
           const wOriginal = parseFloat(s.weight) || 0;
-          const wVal = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+          const wVal = unit === "kg" ? Number((wOriginal / 2.205).toFixed(2)) : wOriginal;
           weeklyTonnage += wVal * reps;
           totalSets++;
 
@@ -921,7 +921,7 @@ function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: 
     const sorted = [...metrics].sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     return sorted.map((m: any) => {
       const wOriginal = parseFloat(m.weight) || 0;
-      const w = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+      const w = unit === "kg" ? Number((wOriginal / 2.205).toFixed(2)) : wOriginal;
       const bodyFat = parseFloat(m.body_fat || m.bodyFat) || 0;
       const leanMass = bodyFat > 0 ? parseFloat((w * (1 - bodyFat / 100)).toFixed(1)) : w;
 
@@ -1172,7 +1172,7 @@ export function ProgressContent({ onScrubChange }: { onScrubChange?: (v: boolean
     if (liftPrs.length === 0) return 0;
     liftPrs.sort((a: any, b: any) => new Date(b.achieved_at).getTime() - new Date(a.achieved_at).getTime());
     const wOriginal = parseFloat(liftPrs[0].weight) || 0;
-    return unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+    return unit === "kg" ? Number((wOriginal / 2.205).toFixed(2)) : wOriginal;
   };
 
   const getFirstEstimated1RM = (liftKey: string) => {
@@ -1188,7 +1188,7 @@ export function ProgressContent({ onScrubChange }: { onScrubChange?: (v: boolean
     if (liftPrs.length === 0) return 0;
     liftPrs.sort((a: any, b: any) => new Date(a.achieved_at).getTime() - new Date(b.achieved_at).getTime());
     const wOriginal = parseFloat(liftPrs[0].weight) || 0;
-    return unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+    return unit === "kg" ? Number((wOriginal / 2.205).toFixed(2)) : wOriginal;
   };
 
   const getSparklineDataForWorkouts = (liftKey: string) => {
@@ -1208,7 +1208,7 @@ export function ProgressContent({ onScrubChange }: { onScrubChange?: (v: boolean
     liftPrs.forEach((set: any) => {
       const dateStr = new Date(set.achieved_at).toDateString();
       const wOriginal = parseFloat(set.weight) || 0;
-      const converted = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+      const converted = unit === "kg" ? Number((wOriginal / 2.205).toFixed(2)) : wOriginal;
       const currentMax = map.get(dateStr) || 0;
       if (converted > currentMax) {
         map.set(dateStr, converted);
@@ -1229,7 +1229,7 @@ export function ProgressContent({ onScrubChange }: { onScrubChange?: (v: boolean
         sorted.forEach((pr: any) => {
           const exName = pr.exercise_name?.toLowerCase();
           const wOriginal = parseFloat(pr.weight);
-          const w = unit === "kg" ? Math.round(wOriginal / 2.205) : wOriginal;
+          const w = unit === "kg" ? Number((wOriginal / 2.205).toFixed(2)) : wOriginal;
           if (exName in runningMax) runningMax[exName] = w;
           formatted.push({
             week: new Date(pr.achieved_at).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),

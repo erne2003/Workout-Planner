@@ -63,7 +63,7 @@ function WorkoutExerciseRow({ ex, unit }: any) {
       {open && (
         <View style={styles.exerciseSetsList}>
           {ex.sets.map((s: any, i: number) => {
-            const displayWeight = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            const displayWeight = unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight);
             return (
               <View key={s.id || i} style={[styles.setRow, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.02)" }]}>
                 <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Set {s.set_order || i + 1}</Text>
@@ -90,7 +90,7 @@ function PastWorkoutCard({ w, unit, colors, isLight }: any) {
   let vol = 0;
   const exMap: any = {};
   sets.forEach((s: any) => {
-    const wt = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+    const wt = unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight);
     vol += (s.reps || 0) * wt;
     const nm = s.name || s.exercise_name || "Unknown Exercise";
     if (!exMap[nm]) { exMap[nm] = { length: 0, sets: [] }; }
@@ -108,11 +108,22 @@ function PastWorkoutCard({ w, unit, colors, isLight }: any) {
 
   const dateStr = new Date(w.created_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 
-  const dMatch = typeof w.notes === "string" ? w.notes.match(/in (\d+:\d+)/) : null;
+  const dMatch = typeof w.notes === "string" ? w.notes.match(/in (?:(\d+)\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/) : null;
   let dStr = "N/A";
   if (dMatch) {
-    const [m, sec] = dMatch[1].split(":").map(Number);
-    dStr = m === 0 ? `${m}:${String(sec).padStart(2, "0")} sec` : `${m}:${String(sec).padStart(2, "0")} min`;
+    const hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
+    const mins = parseInt(dMatch[2], 10);
+    const secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
+    if (hr > 0) {
+      dStr = `${hr} : ${String(mins).padStart(2, "0")} minutes`;
+    } else {
+      if (dMatch[3]) {
+        const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
+        dStr = mins === 0 ? `${timeStr} sec` : `${timeStr} min`;
+      } else {
+        dStr = `${mins} minutes`;
+      }
+    }
   }
 
   return (
@@ -258,7 +269,7 @@ export default function HomePage() {
           const exMap: any = {};
 
           lw.sets?.forEach((s: any) => {
-            const w = unit === "kg" ? Math.round(Number(s.weight) / 2.205) : Number(s.weight);
+            const w = unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight);
             lwVol += (s.reps * w);
             const nm = s.name || s.exercise_name || "Unknown Exercise";
             if (!exMap[nm]) { exMap[nm] = { length: 0, sets: [] }; }
@@ -266,12 +277,22 @@ export default function HomePage() {
             exMap[nm].sets.push(s);
           });
 
-          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (\d+:\d+)/) : null;
+          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (?:(\d+)\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/) : null;
           let dStr = "N/A";
           if (dMatch) {
-            const [m, s] = dMatch[1].split(":").map(Number);
-            const timeStr = `${m}:${String(s).padStart(2, "0")}`;
-            dStr = m === 0 ? `${timeStr} sec` : `${timeStr} min`;
+            const hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
+            const mins = parseInt(dMatch[2], 10);
+            const secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
+            if (hr > 0) {
+              dStr = `${hr} : ${String(mins).padStart(2, "0")} minutes`;
+            } else {
+              if (dMatch[3]) {
+                const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
+                dStr = mins === 0 ? `${timeStr} sec` : `${timeStr} min`;
+              } else {
+                dStr = `${mins} minutes`;
+              }
+            }
           }
 
           setLastWorkout({

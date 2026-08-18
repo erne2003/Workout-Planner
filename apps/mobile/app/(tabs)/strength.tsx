@@ -266,7 +266,7 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
     setIsSaving(true);
     try {
       const parsedWeight = parseFloat(weight);
-      const dbWeight = unit === "kg" ? Math.round(parsedWeight * 2.205) : parsedWeight;
+      const dbWeight = unit === "kg" ? Number((parsedWeight * 2.205).toFixed(2)) : parsedWeight;
       
       const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/prs`, {
         method: "POST",
@@ -450,7 +450,7 @@ function LogBWCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
     setIsSaving(true);
     try {
       const parsedWeight = parseFloat(weight);
-      const dbWeight = unit === "kg" ? Math.round(parsedWeight * 2.205) : parsedWeight;
+      const dbWeight = unit === "kg" ? Number((parsedWeight * 2.205).toFixed(2)) : parsedWeight;
       
       const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/metrics`, {
         method: "POST",
@@ -587,7 +587,7 @@ export function StrengthContent() {
         if (metData && metData.length > 0) {
             const latest = metData[metData.length - 1];
             const rawBw = parseFloat(latest.weight) || 1;
-            bw = unit === "kg" ? Math.round(rawBw / 2.205) : rawBw;
+            bw = unit === "kg" ? Number((rawBw / 2.205).toFixed(2)) : rawBw;
             
             const firstMetric = metData[0];
             let trainingYears = parseFloat(firstMetric.training_years) || 0;
@@ -618,7 +618,7 @@ export function StrengthContent() {
                 prData.forEach((p: any) => {
                     const e = p.exercise_name?.toLowerCase();
                     const rawW = parseFloat(p.weight);
-                    const w = unit === "kg" ? Math.round(rawW / 2.205) : rawW;
+                    const w = unit === "kg" ? Number((rawW / 2.205).toFixed(2)) : rawW;
                     if (["bench press", "bench", "chest press"].includes(e)) {
                         liftHistory.bench.push(w);
                         rawMaxes.bench = Math.max(rawMaxes.bench, w);
