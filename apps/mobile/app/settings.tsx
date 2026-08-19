@@ -85,11 +85,10 @@ export default function SettingsPage() {
     try {
 
       const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
-      const response = await fetchWithTimeout(`${apiUrl}/auth/delete-account`, {
+      const response = await authFetch(`${apiUrl}/auth/delete-account`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({ password: deletePassword }),
       });
@@ -109,7 +108,7 @@ export default function SettingsPage() {
     }
   };
 
-  const { token, setToken } = useData() as any;
+  const { token, setToken, logout: doLogout, authFetch } = useData() as any;
   const ctx = useSettings() as any;
 
   useEffect(() => {
@@ -136,10 +135,7 @@ export default function SettingsPage() {
   };
 
   const logout = async () => {
-    getStorage()?.removeItem("userId");
-    await setToken(null);
-    getStorage()?.removeItem("userName");
-    getStorage()?.removeItem("userEmail");
+    await doLogout();
     router.replace("/login");
   };
 

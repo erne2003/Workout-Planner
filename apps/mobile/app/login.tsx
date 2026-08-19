@@ -13,7 +13,7 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const { colors, isLight } = useTheme();
-    const { token, tokenLoading, setToken } = useData() as any;
+    const { token, tokenLoading, login: doLogin, authFetch } = useData() as any;
 
     useEffect(() => {
         if (!tokenLoading && token) {
@@ -42,24 +42,14 @@ export default function LoginPage() {
                 return setError(data.error || "Authentication failed.");
             }
 
-            const { token, user } = data;
-            if (!token) throw new Error("No token returned");
+            const { accessToken, refreshToken, user } = data;
+            if (!accessToken || !refreshToken) throw new Error("No tokens returned");
 
-            await setToken(token);
-            const storage = getStorage();
-            if (storage) {
-                storage.setItem("userName", user.name);
-                if (user && user.email) {
-                    storage.setItem("userEmail", user.email);
-                }
-                storage.removeItem("userId"); // Clean up old storage
-            }
+            await doLogin(accessToken, refreshToken, user);
             
-            // Check metrics via backend
+            // Check metrics via backend (authFetch handles token attachment)
             try {
-                const metricsReq = await fetchWithTimeout(`${apiUrl}/metrics`, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
+                const metricsReq = await authFetch(`${apiUrl}/metrics`);
                 const metrics = await metricsReq.json();
                 if (Array.isArray(metrics) && metrics.length === 0) {
                     router.replace("/onboarding");

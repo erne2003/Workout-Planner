@@ -246,7 +246,7 @@ function StrengthRow({ item }: any) {
 /* --- Log PR Card Component ----------------------------------- */
 function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
   const { colors, isLight } = useTheme();
-  const { token } = useData() as any;
+  const { token, authFetch } = useData() as any;
   const [exercise, setExercise] = useState("bench");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("1");
@@ -268,11 +268,10 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
       const parsedWeight = parseFloat(weight);
       const dbWeight = unit === "kg" ? Number((parsedWeight * 2.205).toFixed(2)) : parsedWeight;
       
-      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/prs`, {
+      const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/prs`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           exerciseName: exercise,
@@ -437,7 +436,7 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
 /* --- Log BW Card Component ----------------------------------- */
 function LogBWCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
   const { colors, isLight } = useTheme();
-  const { token } = useData() as any;
+  const { token, authFetch } = useData() as any;
   const [weight, setWeight] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -452,11 +451,10 @@ function LogBWCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
       const parsedWeight = parseFloat(weight);
       const dbWeight = unit === "kg" ? Number((parsedWeight * 2.205).toFixed(2)) : parsedWeight;
       
-      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/metrics`, {
+      const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/metrics`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           weight: dbWeight

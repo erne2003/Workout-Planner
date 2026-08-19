@@ -11,12 +11,10 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const router = useRouter();
   const { colors, isLight } = useTheme();
 
-  const { setToken } = useData() as any;
+  const { setToken, logout: doLogout } = useData() as any;
 
   const handleLogout = async () => {
-    getStorage()?.removeItem("userId");
-    await setToken(null);
-    getStorage()?.removeItem("userName");
+    await doLogout();
     router.replace("/login");
   };
 
