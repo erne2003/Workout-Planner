@@ -8,7 +8,7 @@ import { useData, fetchWithTimeout } from "@apex/core";
 
 export default function OnboardingPage() {
     const router = useRouter();
-    const { token } = useData() as any;
+    const { token, authFetch } = useData() as any;
     const [years, setYears] = useState("");
     const [weight, setWeight] = useState("");
     const [gender, setGender] = useState<"male" | "female">("male");
@@ -35,11 +35,10 @@ export default function OnboardingPage() {
  
         try {
             const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
-            await fetchWithTimeout(`${apiUrl}/metrics`, {
+            await authFetch(`${apiUrl}/metrics`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     trainingYears: parseFloat(years) || 0,

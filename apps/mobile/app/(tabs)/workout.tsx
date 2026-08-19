@@ -53,7 +53,7 @@ function ExerciseSearch({ onAdd }: any) {
   const [customName, setCustomName] = useState("");
   const [selectedMuscle, setSelectedMuscle] = useState("Chest");
   const { colors, isLight } = useTheme();
-  const { token } = useData() as any;
+  const { token, authFetch } = useData() as any;
 
   const MUSCLE_OPTIONS = [
     "Chest", "Back", "Shoulders", "Biceps", "Triceps", "Abs",
@@ -68,9 +68,7 @@ function ExerciseSearch({ onAdd }: any) {
     const t = setTimeout(async () => {
       setIsLoading(true);
       try {
-        const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises/search?name=${encodeURIComponent(query)}`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
+        const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises/search?name=${encodeURIComponent(query)}`);
         const data = res.ok ? await res.json() : [];
         setResults(data);
       } catch { setResults([]); }
@@ -82,11 +80,10 @@ function ExerciseSearch({ onAdd }: any) {
   const saveCustomExercise = async () => {
     if (!customName.trim()) return;
     try {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises`, {
+      const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ name: customName.trim(), muscle: selectedMuscle })
       });
@@ -323,7 +320,7 @@ function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet
 function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise }: any) {
   const [prevSets, setPrevSets] = useState([]);
   const { colors, isLight } = useTheme();
-  const { token } = useData() as any;
+  const { token, authFetch } = useData() as any;
 
   useEffect(() => {
     const exerciseId = exercise.exerciseId || exercise.id;
@@ -332,9 +329,7 @@ function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAdd
     const apiUrl = process.env.EXPO_PUBLIC_API_URL;
     if (!apiUrl) return;
 
-    fetch(`${apiUrl}/workouts/history/${exerciseId}`, {
-      headers: { "Authorization": `Bearer ${token}` }
-    })
+    authFetch(`${apiUrl}/workouts/history/${exerciseId}`)
       .then((r) => r.ok ? r.json() : [])
       .then((data) => setPrevSets(Array.isArray(data) ? data : [] as any))
       .catch(() => setPrevSets([]));
@@ -418,7 +413,7 @@ export default function WorkoutPage() {
   const [routineModified, setRoutineModified] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
 
-  const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token } = useData() as any;
+  const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token, authFetch } = useData() as any;
 
   const findLastSetsForExercise = (exId: number) => {
     if (!workouts || !Array.isArray(workouts)) return [];
@@ -600,11 +595,10 @@ export default function WorkoutPage() {
           rir: ex.sets[0]?.rir || 0
         }));
 
-        await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${activeRoutine.id}`, {
+        await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${activeRoutine.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
           },
           body: JSON.stringify({
             name: activeRoutine.name,
@@ -614,11 +608,10 @@ export default function WorkoutPage() {
         refresh("routines");
       }
 
-      const workoutRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts`, {
+      const workoutRes = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           name: activeRoutine?.name || "Workout Session",
@@ -634,11 +627,10 @@ export default function WorkoutPage() {
         for (let si = 0; si < exercise.sets.length; si++) {
           if (completed[`${ei}-${si}`]) {
             const set = exercise.sets[si];
-            await fetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts/${workoutId}/sets`, {
+            await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts/${workoutId}/sets`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
               },
               body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Number((Number(set.weight) * 2.205).toFixed(2)) : Number(set.weight), rir: set.rir || 0 }),
             });
@@ -709,9 +701,8 @@ export default function WorkoutPage() {
       {
         text: "Delete", style: "destructive", onPress: async () => {
           try {
-            await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, {
+            await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, {
               method: "DELETE",
-              headers: { "Authorization": `Bearer ${token}` }
             });
             refresh("workouts");
             refresh("routines");
@@ -726,11 +717,10 @@ export default function WorkoutPage() {
   const saveNewRoutine = async () => {
     if (!newRoutineName.trim() || newRoutineConfig.length === 0) return Alert.alert("Error", "Add a name and exercises!");
     try {
-      await fetch(`${process.env.EXPO_PUBLIC_API_URL}/routines`, {
+      await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ name: newRoutineName, exercises: newRoutineConfig }),
       });
