@@ -25,6 +25,52 @@ function formatDate() {
   });
 }
 
+function parseDuration(notes: string | null) {
+  if (typeof notes !== "string") return "N/A";
+  
+  // Matches "in 2 h : 20 minutes", "in 2:20 minutes", "in 89:49", "in 140 minutes"
+  const dMatch = notes.match(/in (?:(\d+)\s*(?:h|hr|hour)?\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/i);
+  if (!dMatch) return "N/A";
+
+  let hr = 0;
+  let mins = 0;
+  let secs = 0;
+
+  const hasMinutesLabel = notes.toLowerCase().includes("minute") || notes.toLowerCase().includes("min");
+
+  if (hasMinutesLabel) {
+    hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
+    mins = parseInt(dMatch[2], 10);
+    secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
+  } else {
+    // If it doesn't have "minutes" label, e.g. "89:49" (MM:SS)
+    if (dMatch[1] !== undefined) {
+      mins = parseInt(dMatch[1], 10);
+      secs = parseInt(dMatch[2], 10);
+    } else {
+      mins = parseInt(dMatch[2], 10);
+    }
+  }
+
+  // Convert large minutes to hours
+  if (hr === 0 && mins >= 60) {
+    hr = Math.floor(mins / 60);
+    mins = mins % 60;
+  }
+
+  if (hr > 0) {
+    const mm = String(mins).padStart(2, "0");
+    return `${hr} h : ${mm} minutes`;
+  } else {
+    if (secs > 0 || dMatch[3] !== undefined) {
+      const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
+      return mins === 0 ? `${timeStr} sec` : `${timeStr} min`;
+    } else {
+      return `${mins} minutes`;
+    }
+  }
+}
+
 const RECOVERY_MUSCLES = ["chest", "shoulders", "quads", "lats"];
 
 /* --- Stat Card --------------------------------------------- */
@@ -108,29 +154,7 @@ function PastWorkoutCard({ w, unit, colors, isLight }: any) {
 
   const dateStr = new Date(w.created_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 
-  const dMatch = typeof w.notes === "string" ? w.notes.match(/in (?:(\d+)\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/) : null;
-  let dStr = "N/A";
-  if (dMatch) {
-    let hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
-    let mins = parseInt(dMatch[2], 10);
-    const secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
-    
-    if (hr === 0 && mins >= 60) {
-      hr = Math.floor(mins / 60);
-      mins = mins % 60;
-    }
-    
-    if (hr > 0) {
-      dStr = `${hr} h : ${String(mins).padStart(2, "0")} minutes`;
-    } else {
-      if (dMatch[3]) {
-        const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
-        dStr = mins === 0 ? `${timeStr} sec` : `${timeStr} min`;
-      } else {
-        dStr = `${mins} minutes`;
-      }
-    }
-  }
+  const dStr = parseDuration(w.notes);
 
   return (
     <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border, marginBottom: 10 }]}>
@@ -283,29 +307,7 @@ export default function HomePage() {
             exMap[nm].sets.push(s);
           });
 
-          const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (?:(\d+)\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/) : null;
-          let dStr = "N/A";
-          if (dMatch) {
-            let hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
-            let mins = parseInt(dMatch[2], 10);
-            const secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
-            
-            if (hr === 0 && mins >= 60) {
-              hr = Math.floor(mins / 60);
-              mins = mins % 60;
-            }
-            
-            if (hr > 0) {
-              dStr = `${hr} h : ${String(mins).padStart(2, "0")} minutes`;
-            } else {
-              if (dMatch[3]) {
-                const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
-                dStr = mins === 0 ? `${timeStr} sec` : `${timeStr} min`;
-              } else {
-                dStr = `${mins} minutes`;
-              }
-            }
-          }
+          const dStr = parseDuration(lw.notes);
 
           setLastWorkout({
             name: lw.name || "Workout Session",
