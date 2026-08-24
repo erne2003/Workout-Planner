@@ -111,11 +111,17 @@ function PastWorkoutCard({ w, unit, colors, isLight }: any) {
   const dMatch = typeof w.notes === "string" ? w.notes.match(/in (?:(\d+)\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/) : null;
   let dStr = "N/A";
   if (dMatch) {
-    const hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
-    const mins = parseInt(dMatch[2], 10);
+    let hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
+    let mins = parseInt(dMatch[2], 10);
     const secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
+    
+    if (hr === 0 && mins >= 60) {
+      hr = Math.floor(mins / 60);
+      mins = mins % 60;
+    }
+    
     if (hr > 0) {
-      dStr = `${hr} : ${String(mins).padStart(2, "0")} minutes`;
+      dStr = `${hr} h : ${String(mins).padStart(2, "0")} minutes`;
     } else {
       if (dMatch[3]) {
         const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
@@ -280,11 +286,17 @@ export default function HomePage() {
           const dMatch = typeof lw.notes === "string" ? lw.notes.match(/in (?:(\d+)\s*:\s*)?(\d+)(?::(\d+))?\s*(?:minutes?|sec)?/) : null;
           let dStr = "N/A";
           if (dMatch) {
-            const hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
-            const mins = parseInt(dMatch[2], 10);
+            let hr = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
+            let mins = parseInt(dMatch[2], 10);
             const secs = dMatch[3] ? parseInt(dMatch[3], 10) : 0;
+            
+            if (hr === 0 && mins >= 60) {
+              hr = Math.floor(mins / 60);
+              mins = mins % 60;
+            }
+            
             if (hr > 0) {
-              dStr = `${hr} : ${String(mins).padStart(2, "0")} minutes`;
+              dStr = `${hr} h : ${String(mins).padStart(2, "0")} minutes`;
             } else {
               if (dMatch[3]) {
                 const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;

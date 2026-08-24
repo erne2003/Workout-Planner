@@ -21,7 +21,7 @@ function formatWorkoutTime(secs: number) {
     return `${mins} minutes`;
   } else {
     const mm = String(mins).padStart(2, "0");
-    return `${hours} : ${mm} minutes`;
+    return `${hours} h : ${mm} minutes`;
   }
 }
 
