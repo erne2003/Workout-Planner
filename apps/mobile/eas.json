@@ -7,21 +7,24 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development"
+      "channel": "development",
+      "node": "22.x"
     },
     "preview": {
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
       },
-      "channel": "preview"
+      "channel": "preview",
+      "node": "22.x"
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
       },
-      "channel": "production"
+      "channel": "production",
+      "node": "22.x"
     }
   },
   "submit": {

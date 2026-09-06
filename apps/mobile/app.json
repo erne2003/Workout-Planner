@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "29",
+      "buildNumber": "30",
       "infoPlist": {
         "NSHealthShareUsageDescription": "Virtus Fitness needs access to your sleep and heart rate data to calculate your daily readiness score.",
         "NSHealthUpdateUsageDescription": "Virtus Fitness needs access to your sleep and heart rate data to calculate your daily readiness score.",
