@@ -11,7 +11,7 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
       },
-      "node": "22.12.0"
+      "node": "22.13.0"
     },
     "preview": {
       "distribution": "internal",
@@ -19,7 +19,7 @@
         "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
       },
       "channel": "preview",
-      "node": "22.12.0"
+      "node": "22.13.0"
     },
     "production": {
       "autoIncrement": true,
@@ -27,7 +27,7 @@
         "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app"
       },
       "channel": "production",
-      "node": "22.12.0"
+      "node": "22.13.0"
     }
   },
   "submit": {

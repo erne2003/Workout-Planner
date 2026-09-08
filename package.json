@@ -20,8 +20,8 @@
     "turbo": "latest"
   },
   "overrides": {
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "lint-staged": {
     "backend/**/*.js": "npm run lint --prefix backend --"
