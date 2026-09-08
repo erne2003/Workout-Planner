@@ -63,11 +63,12 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
+      "typedRoutes": false,
       "reactCompiler": false
     },
     "extra": {
       "router": {},
+      "EXPO_PUBLIC_API_URL": "https://workout-planner-production-66ce.up.railway.app",
       "eas": {
         "projectId": "4870d17c-9278-4254-a777-c0b12ad108e1"
       }

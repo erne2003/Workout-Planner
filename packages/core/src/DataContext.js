@@ -44,7 +44,9 @@ export function DataProvider({ children }) {
   }, [accessToken]);
 
   const getApiUrl = useCallback(() => {
-    return process.env.NEXT_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL;
+    return process.env.NEXT_PUBLIC_API_URL 
+      || process.env.EXPO_PUBLIC_API_URL 
+      || "https://workout-planner-production-66ce.up.railway.app";
   }, []);
 
   // ── Token refresh ──────────────────────────────────────────────────────
