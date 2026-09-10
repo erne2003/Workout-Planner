@@ -1,3 +1,4 @@
+require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 const pool = require("../config/db");
 
 async function addGenderColumn() {

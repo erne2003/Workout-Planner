@@ -760,7 +760,7 @@ export function StrengthContent() {
 
       {loading.prs || loading.metrics ? (
         Array.from({ length: 3 }).map((_, i) => (
-          <View key={i} style={[styles.card, { height: 92, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
+          <View key={`skeleton-lift-${i}`} style={[styles.card, { height: 92, marginBottom: 12, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
         ))
       ) : (
         <View>
@@ -786,7 +786,7 @@ export function StrengthContent() {
       <View style={styles.muscleGroupContainer}>
         {loading.prs || loading.metrics ? (
           Array.from({ length: 6 }).map((_, i) => (
-            <View key={i} style={[styles.card, { height: 50, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
+            <View key={`skeleton-muscle-${i}`} style={[styles.card, { height: 50, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
           ))
         ) : (
           dynamicScores.map((item) => (

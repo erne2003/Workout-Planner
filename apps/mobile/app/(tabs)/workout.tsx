@@ -101,12 +101,15 @@ function ExerciseSearch({ onAdd }: any) {
     }
   };
 
+  const dropdownBg = colors.bgDropdown || (isLight ? "#ffffff" : "#1c1c1e");
+  const dropdownBorder = isLight ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.15)";
+
   if (isCreatingCustom) {
     return (
-      <View style={{ gap: 12, marginBottom: 10 }}>
+      <View style={{ gap: 12, marginBottom: 10, backgroundColor: dropdownBg, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: dropdownBorder }}>
         <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary }}>Creating Custom Exercise: &quot;{customName}&quot;</Text>
         <Text style={{ fontSize: 12, color: colors.textSecondary }}>Select Target Muscle Group:</Text>
-        <ScrollView style={{ maxHeight: 150, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)" }}>
+        <ScrollView style={{ maxHeight: 150, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: isLight ? "#f2f2f7" : "#141416" }}>
           {MUSCLE_OPTIONS.map((m) => (
             <TouchableOpacity
               key={m}
@@ -129,8 +132,8 @@ function ExerciseSearch({ onAdd }: any) {
         </ScrollView>
 
         <View style={{ flexDirection: "row", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-          <TouchableOpacity onPress={() => setIsCreatingCustom(false)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.textSecondary, fontWeight: "600" }}>Cancel</Text>
+          <TouchableOpacity onPress={() => setIsCreatingCustom(false)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: isLight ? "#e5e5ea" : "rgba(255,255,255,0.08)" }}>
+            <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={saveCustomExercise} style={{ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, backgroundColor: "#30D158" }}>
             <Text style={{ color: "#000", fontWeight: "700" }}>Save & Add</Text>
@@ -141,9 +144,9 @@ function ExerciseSearch({ onAdd }: any) {
   }
 
   return (
-    <View style={{ zIndex: 50, marginBottom: 10 }}>
+    <View style={{ zIndex: 100, marginBottom: 10 }}>
       <View style={{ flexDirection: "row", gap: 12 }}>
-        <View style={{ flex: 1, position: "relative" }}>
+        <View style={{ flex: 1, position: "relative", zIndex: 100 }}>
           <TextInput
             value={query}
             onChangeText={(t) => { setQuery(t); setSelectedEx(null); }}
@@ -154,8 +157,8 @@ function ExerciseSearch({ onAdd }: any) {
             style={[styles.searchInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]}
           />
           {query.trim() !== "" && !selectedEx && results.length > 0 && (
-            <View style={[styles.searchResults, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-              <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+            <View style={[styles.searchResults, { backgroundColor: dropdownBg, borderColor: dropdownBorder }]}>
+              <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 {results.map((ex: any) => (
                   <TouchableOpacity
                     key={ex.id}
@@ -163,7 +166,7 @@ function ExerciseSearch({ onAdd }: any) {
                       setSelectedEx(ex);
                       setQuery(ex.name);
                     }}
-                    style={[styles.searchResultItem, { borderBottomColor: colors.border }]}
+                    style={[styles.searchResultItem, { borderBottomColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)" }]}
                   >
                     <Text style={[styles.searchResultName, { color: colors.textPrimary }]}>{ex.name}</Text>
                     <Text style={[styles.searchResultMuscle, { color: colors.textSecondary }]}>{ex.muscle_group || ex.muscle}</Text>
@@ -174,7 +177,7 @@ function ExerciseSearch({ onAdd }: any) {
           )}
 
           {query.trim() !== "" && !selectedEx && !isLoading && results.length === 0 && (
-            <View style={[styles.searchResults, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <View style={[styles.searchResults, { backgroundColor: dropdownBg, borderColor: dropdownBorder }]}>
               <TouchableOpacity
                 onPress={() => {
                   setCustomName(query.trim());
@@ -832,7 +835,9 @@ export default function WorkoutPage() {
               style={[styles.routineNameInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.05)", borderColor: colors.border, color: colors.textPrimary }]}
             />
 
-            <ExerciseSearch onAdd={(ex: any) => setNewRoutineConfig([...newRoutineConfig, { ...ex, sets: 3, reps: 10, weight: 0, rir: 0 }])} />
+            <View style={{ zIndex: 100 }}>
+              <ExerciseSearch onAdd={(ex: any) => setNewRoutineConfig([...newRoutineConfig, { ...ex, sets: 3, reps: 10, weight: 0, rir: 0 }])} />
+            </View>
 
             <ScrollView style={{ flex: 1, marginTop: 10 }}>
               {newRoutineConfig.map((ex, idx) => (
@@ -1304,9 +1309,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: "100%", left: 0, right: 0,
     backgroundColor: "#1c1c1e",
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 10,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
+    borderRadius: 12,
     marginTop: 6,
+    zIndex: 9999,
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    overflow: "hidden",
   },
   searchResultItem: {
     padding: 12,

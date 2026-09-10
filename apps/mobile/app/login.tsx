@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import Constants from "expo-constants";
 import { useTheme } from "../hooks/useTheme";
 import { useData, getStorage, fetchWithTimeout } from "@apex/core";
 
@@ -16,10 +17,10 @@ export default function LoginPage() {
     const { token, tokenLoading, login: doLogin, authFetch } = useData() as any;
 
     useEffect(() => {
-        if (!tokenLoading && token) {
+        if (!tokenLoading && token && !loading) {
             router.replace("/");
         }
-    }, [token, tokenLoading, router]);
+    }, [token, tokenLoading, loading, router]);
 
     const handle = async () => {
         setError("");
@@ -27,9 +28,13 @@ export default function LoginPage() {
         if (isRegister && !name.trim()) return setError("Name is required.");
         setLoading(true);
 
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL 
+            || Constants?.expoConfig?.extra?.EXPO_PUBLIC_API_URL 
+            || "https://workout-planner-production-66ce.up.railway.app";
+
         try {
             const endpoint = isRegister ? "/auth/register" : "/auth/login";
-            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
+            console.log(`[Auth] Attempting ${endpoint} at ${apiUrl}`);
             const res = await fetchWithTimeout(`${apiUrl}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -43,14 +48,16 @@ export default function LoginPage() {
             }
 
             const { accessToken, refreshToken, user } = data;
-            if (!accessToken || !refreshToken) throw new Error("No tokens returned");
+            if (!accessToken || !refreshToken) throw new Error("No tokens returned from server");
 
             await doLogin(accessToken, refreshToken, user);
             
-            // Check metrics via backend (authFetch handles token attachment)
+            // Check metrics via backend with fresh token
             try {
-                const metricsReq = await authFetch(`${apiUrl}/metrics`);
-                const metrics = await metricsReq.json();
+                const metricsReq = await fetchWithTimeout(`${apiUrl}/metrics`, {
+                    headers: { "Authorization": `Bearer ${accessToken}` }
+                });
+                const metrics = metricsReq.ok ? await metricsReq.json() : [];
                 if (Array.isArray(metrics) && metrics.length === 0) {
                     router.replace("/onboarding");
                 } else {
@@ -59,9 +66,16 @@ export default function LoginPage() {
             } catch {
                 router.replace("/");
             }
-        } catch (err) {
-            console.error(err);
-            setError("Authentication failed. Please check your credentials.");
+        } catch (err: any) {
+            console.error("[Auth Error]", err);
+            const msg = err?.message || String(err);
+            if (msg.includes("Network request failed") || msg.includes("timeout") || msg.includes("AbortError")) {
+                setError(`Connection error: Could not reach backend at ${apiUrl}. Please check your connection.`);
+            } else if (msg.includes("No tokens returned")) {
+                setError("Server error: Authentication succeeded but tokens were missing.");
+            } else {
+                setError(msg || "Authentication failed. Please check your credentials.");
+            }
         } finally {
             setLoading(false);
         }

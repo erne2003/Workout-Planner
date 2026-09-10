@@ -37,6 +37,8 @@ async function migrate() {
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
 
+            ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS gender VARCHAR(10) DEFAULT 'male';
+
             CREATE TABLE IF NOT EXISTS refresh_tokens (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -49,6 +51,26 @@ async function migrate() {
 
             CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
             CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
+
+            -- Admin infrastructure
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS is_disabled BOOLEAN DEFAULT FALSE;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_reason TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+            CREATE TABLE IF NOT EXISTS admin_info (
+                id SERIAL PRIMARY KEY,
+                kind VARCHAR(20) NOT NULL DEFAULT 'log',
+                level VARCHAR(10) NOT NULL DEFAULT 'error',
+                message TEXT NOT NULL,
+                context JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_users_is_disabled ON users(is_disabled);
+            CREATE INDEX IF NOT EXISTS idx_admin_info_created_at ON admin_info(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_admin_info_level ON admin_info(level);
+            CREATE INDEX IF NOT EXISTS idx_admin_info_kind ON admin_info(kind);
         `);
         console.log("Migration successful!");
     } catch (e) {
