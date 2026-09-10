@@ -17,6 +17,8 @@ export function useTheme() {
       textPrimary: isLight ? "#000000" : "#ffffff",
       textSecondary: isLight ? "rgba(0, 0, 0, 0.6)" : "rgba(255, 255, 255, 0.5)",
       textTertiary: isLight ? "rgba(0, 0, 0, 0.4)" : "rgba(255, 255, 255, 0.28)",
+      bgElevated: isLight ? "#ffffff" : "#1c1c1e",
+      bgDropdown: isLight ? "#ffffff" : "#1c1c1e",
       accentRed: "#FF2D55",
       accentBlue: "#0A84FF",
       accentYellow: "#FFD60A",

@@ -17,10 +17,10 @@ export default function LoginPage() {
     const { token, tokenLoading, login: doLogin, authFetch } = useData() as any;
 
     useEffect(() => {
-        if (!tokenLoading && token) {
+        if (!tokenLoading && token && !loading) {
             router.replace("/");
         }
-    }, [token, tokenLoading, router]);
+    }, [token, tokenLoading, loading, router]);
 
     const handle = async () => {
         setError("");
@@ -52,10 +52,12 @@ export default function LoginPage() {
 
             await doLogin(accessToken, refreshToken, user);
             
-            // Check metrics via backend (authFetch handles token attachment)
+            // Check metrics via backend with fresh token
             try {
-                const metricsReq = await authFetch(`${apiUrl}/metrics`);
-                const metrics = await metricsReq.json();
+                const metricsReq = await fetchWithTimeout(`${apiUrl}/metrics`, {
+                    headers: { "Authorization": `Bearer ${accessToken}` }
+                });
+                const metrics = metricsReq.ok ? await metricsReq.json() : [];
                 if (Array.isArray(metrics) && metrics.length === 0) {
                     router.replace("/onboarding");
                 } else {

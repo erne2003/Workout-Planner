@@ -97,14 +97,14 @@ function LineChart({ data, dataKey, color, width = 340, height = 160 }: any) {
         <Path d={pathD} stroke={color} strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
 
         {values.map((v: number, i: number) => (
-          <G key={i}>
+          <G key={`dot-${i}`}>
             <Circle cx={toX(i)} cy={toY(v)} r="4" fill={color} stroke={themeColors.bgBase} strokeWidth="2" />
           </G>
         ))}
 
         {data.map((d: any, i: number) => (
           <SvgText
-            key={i}
+            key={`label-${i}`}
             x={toX(i)} y={height - 6}
             textAnchor="middle" fontSize="9"
             fill={themeColors.textTertiary}
@@ -503,7 +503,7 @@ function VolumeIntensityChart({ data, colors, width = 310, height = 160, onScrub
             <Path d={tonnagePathD} stroke="#30D158" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
             {data.map((d: any, i: number) => (
               <Circle
-                key={i}
+                key={`vol-dot-${i}`}
                 cx={toX(i)}
                 cy={toTonnageY(d.tonnage)}
                 r="3"
@@ -525,7 +525,7 @@ function VolumeIntensityChart({ data, colors, width = 310, height = 160, onScrub
 
         {data.map((d: any, idx: number) => (
           <SvgText
-            key={idx}
+            key={`vol-label-${idx}`}
             x={toX(idx)} y={height - 4}
             textAnchor="middle" fontSize="8"
             fill={colors.textTertiary}
@@ -618,7 +618,7 @@ function BodyCompositionChart({ data, colors, width = 310, height = 160, onScrub
 
         {data.map((d: any, i: number) => (
           <Circle
-            key={i}
+            key={`weight-dot-${i}`}
             cx={toX(i)}
             cy={toWeightY(d.weight)}
             r="3"
@@ -656,7 +656,7 @@ function BodyCompositionChart({ data, colors, width = 310, height = 160, onScrub
           const d = data[idx];
           return (
             <SvgText
-              key={idx}
+              key={`body-label-${idx}`}
               x={toX(idx)} y={height - 4}
               textAnchor="middle" fontSize="8"
               fill={colors.textTertiary}
@@ -726,7 +726,7 @@ function MuscleRadarChart({ data, colors }: any) {
             const outer = getCoordinates(i, 100);
             return (
               <Line
-                key={i}
+                key={`axis-${i}`}
                 x1={center} y1={centerY}
                 x2={outer.x} y2={outer.y}
                 stroke={colors.border || "rgba(255,255,255,0.08)"}
@@ -1271,7 +1271,7 @@ export function ProgressContent({ onScrubChange }: { onScrubChange?: (v: boolean
       <View style={styles.topCardsRow}>
         {dataLoading.workouts ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <View key={i} style={[styles.card, { position: 'relative', flex: 1, height: 135, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
+            <View key={`skeleton-lift-${i}`} style={[styles.card, { position: 'relative', flex: 1, height: 135, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
           ))
         ) : (
           LIFTS.map((l, i) => {

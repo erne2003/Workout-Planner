@@ -8,7 +8,7 @@ import { useData, fetchWithTimeout } from "@apex/core";
 
 export default function OnboardingPage() {
     const router = useRouter();
-    const { token, authFetch } = useData() as any;
+    const { token, authFetch, refresh, prefetchAll } = useData() as any;
     const [years, setYears] = useState("");
     const [weight, setWeight] = useState("");
     const [gender, setGender] = useState<"male" | "female">("male");
@@ -35,7 +35,7 @@ export default function OnboardingPage() {
  
         try {
             const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
-            await authFetch(`${apiUrl}/metrics`, {
+            const res = await authFetch(`${apiUrl}/metrics`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",
@@ -48,10 +48,23 @@ export default function OnboardingPage() {
                     gender: gender
                 })
             });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || errData.errors?.[0]?.msg || "Failed saving profile.");
+            }
+
+            if (refresh) {
+                refresh("metrics");
+            }
+            if (prefetchAll) {
+                await prefetchAll();
+            }
+
             router.replace("/");
-        } catch (err) {
-            console.error(err);
-            Alert.alert("Error", "Failed saving profile.");
+        } catch (err: any) {
+            console.error("[Onboarding Error]", err);
+            Alert.alert("Error", err?.message || "Failed saving profile.");
             setLoading(false);
         }
     };
