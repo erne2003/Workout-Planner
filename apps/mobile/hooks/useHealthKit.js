@@ -2,13 +2,28 @@ import { useState, useEffect, useCallback } from 'react';
 import { Platform, Alert } from 'react-native';
 import { getStorage } from '@apex/core';
 
-// Standard ES imports - safe on both iOS and Android (library returns mocks on Android)
-import {
-  requestAuthorization,
-  getRequestStatusForAuthorization,
-  queryQuantitySamples,
-  queryCategorySamples
-} from '@kingstinct/react-native-healthkit';
+// Safe dynamic require for @kingstinct/react-native-healthkit
+// In Expo Go or when native NitroModules has not been built/linked, this prevents
+// top-level evaluation crashes that break route loading in Expo Router.
+let HealthKit = null;
+let isHealthKitAvailable = false;
+
+if (Platform.OS === 'ios') {
+  try {
+    const hkModule = require('@kingstinct/react-native-healthkit');
+    HealthKit = hkModule?.default || hkModule;
+    if (HealthKit && typeof HealthKit.requestAuthorization === 'function') {
+      isHealthKitAvailable = true;
+    } else if (hkModule && typeof hkModule.requestAuthorization === 'function') {
+      HealthKit = hkModule;
+      isHealthKitAvailable = true;
+    }
+  } catch (e) {
+    console.warn('[HealthKit] Native NitroModules not found or failed to initialize:', e?.message || e);
+    HealthKit = null;
+    isHealthKitAvailable = false;
+  }
+}
 
 // Sleep analysis category values from Apple HealthKit
 const SLEEP_VALUE_MAP = {
@@ -29,14 +44,14 @@ export function useHealthKit() {
     return false;
   });
 
-  const [loading, setLoading] = useState(Platform.OS === 'ios');
+  const [loading, setLoading] = useState(Platform.OS === 'ios' && isHealthKitAvailable);
   const [healthData, setHealthData] = useState(null);
   const [error, setError] = useState(null);
 
   const fetchHealthData = useCallback(async () => {
     console.log("[HealthKit] fetchHealthData triggered");
-    if (Platform.OS !== 'ios') {
-      console.log("[HealthKit] fetchHealthData aborted (Not iOS)");
+    if (Platform.OS !== 'ios' || !isHealthKitAvailable || !HealthKit) {
+      console.log("[HealthKit] fetchHealthData aborted (Not iOS or HealthKit unavailable)");
       setLoading(false);
       return;
     }
@@ -51,7 +66,7 @@ export function useHealthKit() {
       let sleepData = { sleepStages: null, _sleepSamples: 0, _sleepValues: [] };
       let sleepSamples14d = [];
       try {
-        sleepSamples14d = await queryCategorySamples(
+        sleepSamples14d = await HealthKit.queryCategorySamples(
           'HKCategoryTypeIdentifierSleepAnalysis',
           {
             filter: {
@@ -112,7 +127,7 @@ export function useHealthKit() {
       // ── MINDFUL SESSIONS ────────────────────────────────────
       let mindfulIntervals = [];
       try {
-        const mindfulSamples = await queryCategorySamples(
+        const mindfulSamples = await HealthKit.queryCategorySamples(
           'HKCategoryTypeIdentifierMindfulSession',
           {
             filter: {
@@ -136,7 +151,7 @@ export function useHealthKit() {
       // ── RESTING HEART RATE ──────────────────────────────────
       let rhrData = { todayRHR: null, avg14DayRHR: null, meanRHR: null, stdDevRHR: null, _rhrSamples: 0 };
       try {
-        const rhrSamples = await queryQuantitySamples(
+        const rhrSamples = await HealthKit.queryQuantitySamples(
           'HKQuantityTypeIdentifierRestingHeartRate',
           {
             filter: {
@@ -177,7 +192,7 @@ export function useHealthKit() {
       // ── HEART RATE VARIABILITY ──────────────────────────────
       let hrvData = { todayHRV: null, avg14DayHRV: null, meanLnHRV: null, stdDevLnHRV: null, _hrvSamples: 0 };
       try {
-        const hrvSamples = await queryQuantitySamples(
+        const hrvSamples = await HealthKit.queryQuantitySamples(
           'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
           {
             filter: {
@@ -316,11 +331,19 @@ export function useHealthKit() {
   }, []);
 
   const requestPermissions = useCallback(async () => {
+    if (!isHealthKitAvailable || !HealthKit) {
+      Alert.alert(
+        "Development Build Required",
+        "Apple HealthKit requires a custom native build with NitroModules enabled. It is not supported in Expo Go.\n\nTo use Apple Health, build the app using EAS Build or 'npx expo run:ios'."
+      );
+      setLoading(false);
+      return;
+    }
     console.log("[HealthKit] requestPermissions triggered");
     setLoading(true);
     try {
       // Request read authorization for HRV, RHR, and Sleep
-      await requestAuthorization({
+      await HealthKit.requestAuthorization({
         toRead: [
           'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
           'HKQuantityTypeIdentifierRestingHeartRate',
@@ -351,7 +374,7 @@ export function useHealthKit() {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && isHealthKitAvailable && HealthKit) {
       const alreadyConnected = getStorage()?.getItem('has_connected_healthkit') === 'true';
       if (alreadyConnected) {
         console.log("[HealthKit] Auto-syncing since integration is enabled");
@@ -360,7 +383,7 @@ export function useHealthKit() {
         // Check if authorization is already granted
         (async () => {
           try {
-            const status = await getRequestStatusForAuthorization({
+            const status = await HealthKit.getRequestStatusForAuthorization({
               toRead: [
                 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
                 'HKQuantityTypeIdentifierRestingHeartRate',
@@ -379,7 +402,7 @@ export function useHealthKit() {
               setLoading(false);
             }
           } catch (e) {
-            console.log("[HealthKit] Auth status check failed:", e.message);
+            console.log("[HealthKit] Auth status check failed:", e?.message);
             setLoading(false);
           }
         })();
@@ -390,12 +413,13 @@ export function useHealthKit() {
   }, [requestPermissions, fetchHealthData]);
 
   return {
-    hasPermission,
+    hasPermission: isHealthKitAvailable && hasPermission,
     loading,
     healthData,
     error,
     requestPermissions,
     disconnect,
-    refresh: fetchHealthData
+    refresh: fetchHealthData,
+    isAvailable: isHealthKitAvailable
   };
 }
