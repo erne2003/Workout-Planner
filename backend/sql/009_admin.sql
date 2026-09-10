@@ -5,6 +5,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT DEFAULT 0;
 -- Account control
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_disabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_reason TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 -- General-purpose admin info table (error logs, audit events, future kinds)
 CREATE TABLE IF NOT EXISTS admin_info (

@@ -46,7 +46,8 @@ export default function UsersPage() {
             if (res.status === 401) { localStorage.removeItem("adminToken"); window.location.href = "/admin/login"; return; }
             const data = await res.json();
             if (!res.ok) { setError(data.error || "Failed to load users"); return; }
-            setUsers(data);
+            setError("");
+            setUsers(Array.isArray(data) ? data : []);
             setLastRefresh(new Date());
         } catch { setError("Cannot reach server"); }
     }, []);
@@ -57,9 +58,9 @@ export default function UsersPage() {
         return () => clearInterval(interval);
     }, [fetchUsers]);
 
-    const filtered = users.filter(u =>
-        u.name.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase())
+    const filtered = (Array.isArray(users) ? users : []).filter(u =>
+        (u.name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (u.email || "").toLowerCase().includes(search.toLowerCase())
     );
 
     async function executeAction() {

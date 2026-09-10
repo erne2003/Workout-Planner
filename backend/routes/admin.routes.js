@@ -89,16 +89,10 @@ router.get("/stats", requireAdmin, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT
-                COUNT(*)                                                  AS total_users,
-                COUNT(*) FILTER (WHERE is_disabled = true)               AS disabled_users,
-                COUNT(*) FILTER (
-                    WHERE created_at >= NOW() - INTERVAL '7 days'
-                )                                                         AS new_this_week,
-                COUNT(DISTINCT w.user_id) FILTER (
-                    WHERE w.created_at >= NOW() - INTERVAL '24 hours'
-                )                                                         AS active_today
-            FROM users u
-            LEFT JOIN workouts w ON w.user_id = u.id
+                (SELECT COUNT(*) FROM users)                                   AS total_users,
+                (SELECT COUNT(*) FROM users WHERE is_disabled = true)          AS disabled_users,
+                (SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days') AS new_this_week,
+                (SELECT COUNT(DISTINCT user_id) FROM workouts WHERE created_at >= NOW() - INTERVAL '24 hours') AS active_today
         `);
 
         const errorCount = await pool.query(
@@ -118,14 +112,15 @@ router.get("/stats", requireAdmin, async (req, res) => {
 // ── GET /admin/users ──────────────────────────────────────────────────────────
 router.get("/users", requireAdmin, async (req, res) => {
     try {
-        const { rows } = await pool.query(`
+        const { search } = req.query;
+        let query = `
             SELECT
                 u.id,
                 u.name,
                 u.email,
                 u.is_disabled,
                 u.disabled_reason,
-                u.created_at,
+                COALESCE(u.created_at, NOW()) AS created_at,
                 COALESCE(wc.workout_count, 0) AS workout_count,
                 wl.last_active
             FROM users u
@@ -139,8 +134,15 @@ router.get("/users", requireAdmin, async (req, res) => {
                 FROM workouts
                 GROUP BY user_id
             ) wl ON wl.user_id = u.id
-            ORDER BY u.created_at DESC
-        `);
+        `;
+        const params = [];
+        if (search && search.trim()) {
+            params.push(`%${search.trim().toLowerCase()}%`);
+            query += ` WHERE LOWER(u.name) LIKE $1 OR LOWER(u.email) LIKE $1 `;
+        }
+        query += ` ORDER BY u.created_at DESC NULLS LAST, u.id DESC `;
+
+        const { rows } = await pool.query(query, params);
         res.json(rows);
     } catch (err) {
         console.error("GET /admin/users error:", err.message);
@@ -155,7 +157,7 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
 
     try {
         const userRes = await pool.query(
-            `SELECT id, name, email, is_disabled, disabled_reason, created_at, token_version FROM users WHERE id = $1`,
+            `SELECT id, name, email, is_disabled, disabled_reason, COALESCE(created_at, NOW()) AS created_at, token_version FROM users WHERE id = $1`,
             [userId]
         );
         if (userRes.rows.length === 0) return res.status(404).json({ error: "User not found" });
