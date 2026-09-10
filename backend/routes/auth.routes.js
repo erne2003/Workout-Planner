@@ -27,12 +27,12 @@ function hashToken(token) {
     return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-/** Generate a short-lived JWT access token. */
-function generateAccessToken(userId, name) {
+/** Generate a short-lived JWT access token. Embeds tokenVersion for force-logout support. */
+function generateAccessToken(userId, name, tokenVersion = 0) {
     return jwt.sign(
-        { userId, name },
+        { userId, name, tokenVersion },
         process.env.JWT_SECRET,
-        { expiresIn: ACCESS_TOKEN_EXPIRY }
+        { expiresIn: ACCESS_TOKEN_EXPIRY, algorithm: "HS256" }
     );
 }
 
@@ -77,14 +77,14 @@ router.post("/register", [
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const result = await pool.query(
-            `INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email`,
+            `INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email, token_version`,
             [name, email, hashedPassword]
         );
 
         const user = result.rows[0];
 
-        // Generate tokens
-        const accessToken = generateAccessToken(user.id, user.name);
+        // Generate tokens — embed token_version for force-logout support
+        const accessToken = generateAccessToken(user.id, user.name, user.token_version ?? 0);
         const refreshToken = generateRefreshToken();
         await storeRefreshToken(user.id, refreshToken);
 
@@ -114,13 +114,18 @@ router.post("/login", [
         }
 
         const user = result.rows[0];
+
+        if (user.is_disabled) {
+            return res.status(403).json({ error: "Account is disabled.", code: "ACCOUNT_DISABLED" });
+        }
+
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({ error: "Invalid credentials." });
         }
 
-        // Generate tokens
-        const accessToken = generateAccessToken(user.id, user.name);
+        // Embed token_version for force-logout support
+        const accessToken = generateAccessToken(user.id, user.name, user.token_version ?? 0);
         const refreshToken = generateRefreshToken();
         await storeRefreshToken(user.id, refreshToken);
 
@@ -145,9 +150,9 @@ router.post("/refresh", async (req, res) => {
     const tokenHash = hashToken(refreshToken);
 
     try {
-        // Look up the token, joining with users to get the user's name
+        // Look up the token, joining with users to get name and token_version
         const result = await pool.query(
-            `SELECT rt.*, u.name AS user_name
+            `SELECT rt.*, u.name AS user_name, u.token_version AS user_token_version
              FROM refresh_tokens rt
              JOIN users u ON rt.user_id = u.id
              WHERE rt.token_hash = $1`,
@@ -188,8 +193,8 @@ router.post("/refresh", async (req, res) => {
             [storedToken.id]
         );
 
-        // 2. Generate new token pair
-        const newAccessToken = generateAccessToken(storedToken.user_id, storedToken.user_name);
+        // 2. Generate new token pair — embed current token_version
+        const newAccessToken = generateAccessToken(storedToken.user_id, storedToken.user_name, storedToken.user_token_version ?? 0);
         const newRefreshToken = generateRefreshToken();
 
         // 3. Store new refresh token in the SAME family (sliding 30-day window)
