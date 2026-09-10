@@ -31,8 +31,16 @@
   --radius-lg: 22px;
   --radius-xl: 28px;
 
-  --nav-height: 80px;
-  --header-height: 110px;
+  /* ─── Admin Dashboard Tokens ──────────────────────────── */
+  --admin-bg:        #0a0a14;
+  --admin-sidebar:   #0d0d1a;
+  --admin-surface:   #111120;
+  --admin-card:      rgba(255,255,255,0.04);
+  --admin-border:    rgba(255,255,255,0.08);
+  --admin-text:      #f0f0f8;
+  --admin-text-muted: rgba(255,255,255,0.42);
+  --admin-active:    rgba(10,132,255,0.12);
+  --admin-row-hover: rgba(255,255,255,0.03);
 }
 
 :root.light {
