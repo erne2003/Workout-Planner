@@ -29,7 +29,7 @@ export default function OnboardingPage() {
         }
 
         try {
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/metrics`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",
@@ -43,11 +43,17 @@ export default function OnboardingPage() {
                     gender: gender
                 })
             });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || errData.errors?.[0]?.msg || "Failed saving profile.");
+            }
+
             // Complete layout and forward to dashboard!
             router.replace("/");
         } catch (err) {
             console.error(err);
-            alert("Failed saving profile.");
+            alert("Failed saving profile: " + (err.message || "Unknown error"));
             setLoading(false);
         }
     };

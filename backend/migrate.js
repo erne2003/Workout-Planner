@@ -37,6 +37,8 @@ async function migrate() {
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
 
+            ALTER TABLE body_metrics ADD COLUMN IF NOT EXISTS gender VARCHAR(10) DEFAULT 'male';
+
             CREATE TABLE IF NOT EXISTS refresh_tokens (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

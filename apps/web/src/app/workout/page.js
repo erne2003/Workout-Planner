@@ -717,8 +717,8 @@ function ExerciseSearch({ onAdd }) {
           style={{
             padding: "16px",
             borderRadius: "12px",
-            background: "rgba(10,132,255,0.08)",
-            border: "1px solid rgba(10,132,255,0.25)",
+            background: "#1c1c1e",
+            border: "1px solid rgba(10,132,255,0.35)",
             display: "flex",
             flexDirection: "column",
             gap: "10px",
@@ -1169,7 +1169,7 @@ export default function WorkoutPage() {
               style={{ width: "100%", padding: "14px", borderRadius: "10px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", color: "var(--text-primary)", marginBottom: "20px", fontSize: "16px", fontFamily: "var(--font-display)", fontWeight: 700 }}
             />
 
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "20px", position: "relative", zIndex: 100 }}>
               <ExerciseSearch onAdd={(ex) => setNewRoutineConfig([...newRoutineConfig, { ...ex, sets: 3, reps: 10, weight: 0, rir: 0 }])} />
             </div>
 
