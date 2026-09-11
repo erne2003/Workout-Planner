@@ -35,6 +35,23 @@ const SLEEP_VALUE_MAP = {
   5: 'REM',
 };
 
+// Minimum distinct prior days of HealthKit history required before a computed
+// HRV/RHR baseline is trusted. Below this, recovery.js falls back to its own
+// generic population defaults instead of a baseline built from too little data.
+const MIN_BASELINE_DAYS = 7;
+
+// Counts distinct calendar days represented in a list of HealthKit samples.
+function countDistinctDays(samples) {
+  const days = new Set(
+    samples.map((s) => {
+      const d = new Date(s.startDate);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    })
+  );
+  return days.size;
+}
+
 export function useHealthKit() {
   const [hasPermission, setHasPermission] = useState(() => {
     const storage = getStorage();
@@ -149,7 +166,7 @@ export function useHealthKit() {
       }
 
       // ── RESTING HEART RATE ──────────────────────────────────
-      let rhrData = { todayRHR: null, avg14DayRHR: null, meanRHR: null, stdDevRHR: null, _rhrSamples: 0 };
+      let rhrData = { todayRHR: null, avg14DayRHR: null, meanRHR: null, stdDevRHR: null, rhrBaselineDays: 0, _rhrSamples: 0 };
       try {
         const rhrSamples = await HealthKit.queryQuantitySamples(
           'HKQuantityTypeIdentifierRestingHeartRate',
@@ -166,12 +183,18 @@ export function useHealthKit() {
         );
 
         if (rhrSamples && rhrSamples.length > 0) {
-          const sum = rhrSamples.reduce((acc, s) => acc + s.quantity, 0);
-          const rhrValues = rhrSamples.map(s => s.quantity);
-          const meanRHR = sum / rhrSamples.length;
-          
-          let stdDevRHR = 3.0; // typical athletic baseline fallback
-          if (rhrValues.length > 1) {
+          const startOfToday = new Date();
+          startOfToday.setHours(0, 0, 0, 0);
+          // Baseline must reflect prior days only — including today would make the
+          // baseline mathematically converge toward today's own reading.
+          const priorDayRhrSamples = rhrSamples.filter((s) => new Date(s.startDate) < startOfToday);
+          const rhrBaselineDays = countDistinctDays(priorDayRhrSamples);
+
+          let meanRHR = null;
+          let stdDevRHR = null;
+          if (rhrBaselineDays >= MIN_BASELINE_DAYS) {
+            const rhrValues = priorDayRhrSamples.map(s => s.quantity);
+            meanRHR = rhrValues.reduce((acc, v) => acc + v, 0) / rhrValues.length;
             const sumOfSquares = rhrValues.reduce((acc, val) => acc + Math.pow(val - meanRHR, 2), 0);
             stdDevRHR = Math.sqrt(sumOfSquares / (rhrValues.length - 1));
           }
@@ -181,6 +204,7 @@ export function useHealthKit() {
             avg14DayRHR: meanRHR,
             meanRHR,
             stdDevRHR,
+            rhrBaselineDays,
             _rhrSamples: rhrSamples.length,
           };
         }
@@ -190,7 +214,7 @@ export function useHealthKit() {
       }
 
       // ── HEART RATE VARIABILITY ──────────────────────────────
-      let hrvData = { todayHRV: null, avg14DayHRV: null, meanLnHRV: null, stdDevLnHRV: null, _hrvSamples: 0 };
+      let hrvData = { todayHRV: null, avg14DayHRV: null, meanLnHRV: null, stdDevLnHRV: null, hrvBaselineDays: 0, _hrvSamples: 0 };
       try {
         const hrvSamples = await HealthKit.queryQuantitySamples(
           'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
@@ -250,24 +274,31 @@ export function useHealthKit() {
             todayHRV = mostRecentDaySamples.reduce((acc, s) => acc + s.quantity, 0) / mostRecentDaySamples.length;
           }
 
-          const avg14DayHRV = filteredHRVSamples.reduce((acc, s) => acc + s.quantity, 0) / filteredHRVSamples.length;
+          // Baseline must reflect prior days only — including today would make the
+          // baseline mathematically converge toward today's own reading.
+          const priorDayHRVSamples = filteredHRVSamples.filter((s) => new Date(s.startDate) < startOfToday);
+          const hrvBaselineDays = countDistinctDays(priorDayHRVSamples);
 
-          // Calculate mean and std dev of log-transformed RMSSD/SDNN samples
-          const lnSamples = filteredHRVSamples.map(s => Math.log(s.quantity > 0 ? s.quantity : 1));
-          const meanLnHRV = lnSamples.reduce((acc, val) => acc + val, 0) / lnSamples.length;
-          
-          let stdDevLnHRV = 0.30; // typical athletic baseline fallback
-          if (lnSamples.length > 1) {
+          let avg14DayHRV = null;
+          let meanLnHRV = null;
+          let stdDevLnHRV = null;
+          if (hrvBaselineDays >= MIN_BASELINE_DAYS) {
+            avg14DayHRV = priorDayHRVSamples.reduce((acc, s) => acc + s.quantity, 0) / priorDayHRVSamples.length;
+
+            // Calculate mean and std dev of log-transformed RMSSD/SDNN samples
+            const lnSamples = priorDayHRVSamples.map(s => Math.log(s.quantity > 0 ? s.quantity : 1));
+            meanLnHRV = lnSamples.reduce((acc, val) => acc + val, 0) / lnSamples.length;
             const sumOfSquares = lnSamples.reduce((acc, val) => acc + Math.pow(val - meanLnHRV, 2), 0);
             stdDevLnHRV = Math.sqrt(sumOfSquares / (lnSamples.length - 1));
           }
 
-          hrvData = { 
-            todayHRV, 
-            avg14DayHRV, 
+          hrvData = {
+            todayHRV,
+            avg14DayHRV,
             meanLnHRV,
             stdDevLnHRV,
-            _hrvSamples: filteredHRVSamples.length 
+            hrvBaselineDays,
+            _hrvSamples: filteredHRVSamples.length
           };
         }
       } catch (e) {

@@ -165,7 +165,6 @@ function OverallScore({ muscleData, score }: any) {
   );
 }
 
-
 /* ─── HealthKit Readiness Score ─────────────────────────────── */
 function HealthKitReadiness({ healthData, hasPermission, loading, error, onRequestPermissions, hoursSinceLastWorkout, scoreData, unifiedScore }: any) {
   const { colors } = useTheme();
@@ -300,7 +299,11 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Heart Rate Variability (HRV)</Text>
               <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                {hasHRV ? `${Math.round(healthData.todayHRV)} ms (Baseline: ${Math.round(healthData.avg14DayHRV)} ms)` : "N/A"}
+                {hasHRV
+                  ? (healthData.hrvBaselineDays >= 7
+                      ? `${Math.round(healthData.todayHRV)} ms (Baseline: ${Math.round(healthData.avg14DayHRV)} ms)`
+                      : `${Math.round(healthData.todayHRV)} ms (Collecting baseline… ${healthData.hrvBaselineDays}/7 days)`)
+                  : "N/A"}
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
@@ -313,7 +316,11 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Resting Heart Rate (RHR)</Text>
               <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                {hasRHR ? `${Math.round(healthData.todayRHR)} bpm (Baseline: ${Math.round(healthData.avg14DayRHR)} bpm)` : "N/A"}
+                {hasRHR
+                  ? (healthData.rhrBaselineDays >= 7
+                      ? `${Math.round(healthData.todayRHR)} bpm (Baseline: ${Math.round(healthData.avg14DayRHR)} bpm)`
+                      : `${Math.round(healthData.todayRHR)} bpm (Collecting baseline… ${healthData.rhrBaselineDays}/7 days)`)
+                  : "N/A"}
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
@@ -402,7 +409,9 @@ export default function RecoveryPage() {
     updateHeatmap();
   };
 
-
+  const handleReset = () => {
+    router.push("/workout" as any);
+  };
 
   const sortedMuscles = [...ALL_MUSCLES].sort(
     (a, b) => (muscleData[a]?.pct ?? 0) - (muscleData[b]?.pct ?? 0)
@@ -531,7 +540,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.09)",
   },
-
+  lastWorkoutBanner: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  bannerText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.6)",
+  },
+  bannerBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
   heroHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
