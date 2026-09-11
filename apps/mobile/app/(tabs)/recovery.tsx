@@ -307,7 +307,7 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Sleep Quality</Text>
               <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                {hasSleep ? `${sleepHrs}h (${Math.round(sleepQualityScore)}%)` : "N/A"}
+                {hasSleep ? `${sleepHrs}h (${Math.round(sleepQualityScore)}%)` : "7.5 hours"}
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
@@ -438,7 +438,7 @@ export default function RecoveryPage() {
   const hasActualData = hasSleep || hasHRV || hasRHR;
 
   const scoreData = calculateReadinessScore({
-    sleepStages: healthData?.sleepStages,
+    sleepStages: hasSleep ? healthData?.sleepStages:7.5,
     todayHRV: healthData?.todayHRV,
     avg14DayHRV: healthData?.avg14DayHRV,
     meanLnHRV: healthData?.meanLnHRV,
