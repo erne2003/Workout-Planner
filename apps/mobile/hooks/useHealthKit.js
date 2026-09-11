@@ -354,6 +354,7 @@ export function useHealthKit() {
       });
 
       getStorage()?.setItem('has_connected_healthkit', 'true');
+      getStorage()?.removeItem('has_disconnected_healthkit');
       setHasPermission(true);
       await fetchHealthData();
     } catch (e) {
@@ -368,6 +369,7 @@ export function useHealthKit() {
   const disconnect = useCallback(() => {
     console.log("[HealthKit] Disconnecting and clearing state");
     getStorage()?.removeItem('has_connected_healthkit');
+    getStorage()?.setItem('has_disconnected_healthkit', 'true');
     setHasPermission(false);
     setHealthData(null);
     setError(null);
@@ -375,6 +377,12 @@ export function useHealthKit() {
 
   useEffect(() => {
     if (Platform.OS === 'ios' && isHealthKitAvailable && HealthKit) {
+      const hasDisconnected = getStorage()?.getItem('has_disconnected_healthkit') === 'true';
+      if (hasDisconnected) {
+        setLoading(false);
+        return;
+      }
+
       const alreadyConnected = getStorage()?.getItem('has_connected_healthkit') === 'true';
       if (alreadyConnected) {
         console.log("[HealthKit] Auto-syncing since integration is enabled");
@@ -392,14 +400,16 @@ export function useHealthKit() {
               ],
               toShare: []
             });
-            // status === 1 means "unnecessary" (already authorized)
-            if (status === 1) {
+            // status === 2 means "unnecessary" (already authorized)
+            if (status === 2) {
               console.log("[HealthKit] Already authorized — auto-syncing");
               getStorage()?.setItem('has_connected_healthkit', 'true');
               setHasPermission(true);
               await fetchHealthData();
             } else {
-              setLoading(false);
+              // status === 1 (shouldRequest) or 0 (unknown)
+              console.log(`[HealthKit] Needs authorization (status ${status}), prompting user...`);
+              requestPermissions();
             }
           } catch (e) {
             console.log("[HealthKit] Auth status check failed:", e?.message);

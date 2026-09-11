@@ -402,6 +402,8 @@ export default function RecoveryPage() {
     updateHeatmap();
   };
 
+
+
   const sortedMuscles = [...ALL_MUSCLES].sort(
     (a, b) => (muscleData[a]?.pct ?? 0) - (muscleData[b]?.pct ?? 0)
   );
@@ -433,6 +435,9 @@ export default function RecoveryPage() {
 
   return (
     <PageShell title="Recovery" subtitle="Muscle Readiness · Today" onSettingsClick={() => router.push("/settings" as any)}>
+      {loading.workouts && (
+        <View style={[styles.card, { height: 40, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
+      )}
 
       {Platform.OS === 'ios' && (
         <HealthKitReadiness
@@ -526,6 +531,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.09)",
   },
+
   heroHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
