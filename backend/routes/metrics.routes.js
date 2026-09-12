@@ -12,16 +12,27 @@ const validate = (req, res, next) => {
 };
 
 // POST /metrics
+// Accepts a full snapshot (onboarding) or a partial update (e.g. just weight) -
+// missing fields are carried forward from the user's most recent snapshot.
 router.post("/", [
-    body("trainingYears").isFloat(),
+    body("trainingYears").optional({ nullable: true }).isFloat(),
     body("weight").isFloat(),
-    body("height").isString().isLength({ max: 255 }),
+    body("height").optional().isString().isLength({ max: 255 }),
     body("bodyFat").optional({ nullable: true }).isFloat(),
     body("gender").optional().isString().isLength({ max: 10 }),
     validate
 ], async (req, res) => {
-  const { trainingYears, weight, height, bodyFat, gender } = req.body;
+  const { weight } = req.body;
+  let { trainingYears, height, bodyFat, gender } = req.body;
   try {
+    if (trainingYears === undefined || height === undefined || gender === undefined) {
+      const latest = await metricsQueries.getLatestMetric(req.userId);
+      if (trainingYears === undefined) trainingYears = latest?.training_years ?? 0;
+      if (height === undefined) height = latest?.height ?? "Not Selected";
+      if (gender === undefined) gender = latest?.gender ?? "male";
+      if (bodyFat === undefined) bodyFat = latest?.body_fat ?? null;
+    }
+
     const newMetric = await metricsQueries.logMetrics(req.userId, trainingYears, weight, height, bodyFat, gender);
     res.status(201).json(newMetric);
   } catch (err) {

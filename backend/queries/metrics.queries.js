@@ -13,7 +13,7 @@ const logMetrics = async (userId, trainingYears, weight, height, bodyFat, gender
 // Retrieve historical metrics for the user mapped chronologically
 const getHistoricalMetrics = async (userId) => {
   const result = await pool.query(
-    `SELECT * FROM body_metrics 
+    `SELECT * FROM body_metrics
      WHERE user_id = $1
      ORDER BY logged_at ASC`,
     [userId]
@@ -21,7 +21,20 @@ const getHistoricalMetrics = async (userId) => {
   return result.rows;
 };
 
+// Retrieve the most recent metrics snapshot for the user, if any
+const getLatestMetric = async (userId) => {
+  const result = await pool.query(
+    `SELECT * FROM body_metrics
+     WHERE user_id = $1
+     ORDER BY logged_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return result.rows[0] || null;
+};
+
 module.exports = {
   logMetrics,
   getHistoricalMetrics,
+  getLatestMetric,
 };
