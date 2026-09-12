@@ -1148,34 +1148,38 @@ function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: 
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 4, marginBottom: 4 }}>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
             {[
               { id: "all", label: "All" },
-              { id: "bench", label: "BP" },
-              { id: "squat", label: "SQ" },
-              { id: "deadlift", label: "DL" },
+              { id: "bench", label: "Bench" },
+              { id: "squat", label: "Squat" },
+              { id: "deadlift", label: "Deadlift" },
             ].map(opt => {
               const disabled = oneRMMode === "lbs" && opt.id === "all";
+              const active = selectedLift === opt.id;
               return (
                 <TouchableOpacity
                   key={opt.id}
                   disabled={disabled}
                   onPress={() => setSelectedLift(opt.id)}
                   style={{
-                    paddingHorizontal: 6,
-                    paddingVertical: 3,
-                    borderRadius: 6,
+                    flex: 1,
+                    paddingVertical: 7,
+                    borderRadius: 14,
+                    alignItems: "center",
                     opacity: disabled ? 0.3 : 1,
-                    backgroundColor: selectedLift === opt.id ? "#0A84FF" : "transparent"
+                    backgroundColor: active ? "#0A84FF" : (isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)"),
+                    borderWidth: 1,
+                    borderColor: active ? "#0A84FF" : colors.border,
                   }}
                 >
-                  <Text style={{ fontSize: 9, fontWeight: "700", color: selectedLift === opt.id ? "#fff" : colors.textSecondary }}>{opt.label}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: active ? "#fff" : colors.textSecondary }}>{opt.label}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          <Text style={{ fontSize: 9, color: colors.textTertiary, marginBottom: 8, textAlign: "right" }}>
+          <Text style={{ fontSize: 10, color: colors.textTertiary, marginBottom: 10 }}>
             {oneRMMode === "lbs"
               ? "Axis zoomed to this lift's range, not from zero."
               : "Indexed to each lift's first logged value."}
