@@ -807,7 +807,7 @@ export default function WorkoutPage() {
         <View style={styles.routinesHeaderRow}>
           <TouchableOpacity onPress={() => setIsManagingRoutines(!isManagingRoutines)} style={[styles.manageBtn, { borderColor: colors.border }]}>
             <Text style={[styles.manageBtnText, { color: isManagingRoutines ? "#FF2D55" : colors.textSecondary }]}>
-              {isManagingRoutines ? "Done Editing" : "Edit List"}
+              {isManagingRoutines ? "Done Editing" : "Remove Workouts"}
             </Text>
           </TouchableOpacity>
 
@@ -929,7 +929,7 @@ export default function WorkoutPage() {
                   <Text style={[styles.editExName, { color: colors.textPrimary }]}>{ex.name}</Text>
                   <Text style={[styles.editExMuscle, { color: colors.textSecondary }]}>{ex.muscle}</Text>
                 </View>
-                <TouchableOpacity onPress={() => removeExercise(ei)}>
+                <TouchableOpacity onPress={() => removeExercise(ei)} style={styles.removeExBtn}>
                   <Text style={styles.removeExText}>Remove</Text>
                 </TouchableOpacity>
               </View>
@@ -1357,10 +1357,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "rgba(255,255,255,0.4)",
   },
+  removeExBtn: {
+    backgroundColor: "rgba(255, 45, 85, 0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
   removeExText: {
     color: "#FF2D55",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   editSetRow: {
     flexDirection: "row",
@@ -1415,7 +1423,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: "600",
   },
   doneEditingFloatingBtn: {
-    position: "absolute", bottom: 40, left: 20, right: 20,
+    position: "absolute", bottom: 70, left: 20, right: 20,
     padding: 16, borderRadius: 16, backgroundColor: "#30D158",
     alignItems: "center",
   },
