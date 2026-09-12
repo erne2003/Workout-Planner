@@ -71,6 +71,16 @@ async function migrate() {
             CREATE INDEX IF NOT EXISTS idx_admin_info_created_at ON admin_info(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_admin_info_level ON admin_info(level);
             CREATE INDEX IF NOT EXISTS idx_admin_info_kind ON admin_info(kind);
+
+            -- Deleted account retention (name, account age, deletion time only)
+            CREATE TABLE IF NOT EXISTS deleted_accounts (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                account_created_at TIMESTAMP NOT NULL,
+                deleted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_deleted_accounts_deleted_at ON deleted_accounts(deleted_at DESC);
         `);
         console.log("Migration successful!");
     } catch (e) {

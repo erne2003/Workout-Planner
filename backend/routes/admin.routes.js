@@ -275,11 +275,16 @@ router.delete("/users/:id", requireAdmin, async (req, res) => {
 
     const client = await pool.connect();
     try {
-        const check = await client.query("SELECT id, name FROM users WHERE id = $1", [userId]);
+        const check = await client.query("SELECT id, name, created_at FROM users WHERE id = $1", [userId]);
         if (check.rows.length === 0) return res.status(404).json({ error: "User not found" });
-        const userName = check.rows[0].name;
+        const { name: userName, created_at } = check.rows[0];
 
         await client.query("BEGIN");
+        // Record the deletion for retention stats before the user row is gone
+        await client.query(
+            `INSERT INTO deleted_accounts (name, account_created_at) VALUES ($1, $2)`,
+            [userName, created_at]
+        );
         await client.query(`DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id = $1)`, [userId]);
         await client.query(`DELETE FROM workouts WHERE user_id = $1`, [userId]);
         await client.query(`DELETE FROM prs WHERE user_id = $1`, [userId]);
@@ -298,6 +303,26 @@ router.delete("/users/:id", requireAdmin, async (req, res) => {
         res.status(500).json({ error: "Failed to delete user" });
     } finally {
         client.release();
+    }
+});
+
+// ── GET /admin/deleted-accounts ────────────────────────────────────────────────
+// Retention stats only: name, how long the account was held, when it was deleted.
+router.get("/deleted-accounts", requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT
+                name,
+                account_created_at,
+                deleted_at,
+                EXTRACT(EPOCH FROM (deleted_at - account_created_at)) AS held_seconds
+             FROM deleted_accounts
+             ORDER BY deleted_at DESC`
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error("GET /admin/deleted-accounts error:", err.message);
+        res.status(500).json({ error: "Failed to fetch deleted accounts" });
     }
 });
 

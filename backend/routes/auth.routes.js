@@ -242,7 +242,7 @@ router.post("/delete-account", requireAuth, async (req, res) => {
     const client = await pool.connect();
     try {
         // Fetch user password hash
-        const userRes = await client.query("SELECT password FROM users WHERE id = $1", [req.userId]);
+        const userRes = await client.query("SELECT name, password, created_at FROM users WHERE id = $1", [req.userId]);
         if (userRes.rows.length === 0) {
             return res.status(404).json({ error: "User not found." });
         }
@@ -252,7 +252,14 @@ router.post("/delete-account", requireAuth, async (req, res) => {
             return res.status(401).json({ error: "Incorrect password. Account deletion aborted." });
         }
 
+        const { name, created_at } = userRes.rows[0];
+
         await client.query("BEGIN");
+        // Record the deletion for retention stats before the user row is gone
+        await client.query(
+            `INSERT INTO deleted_accounts (name, account_created_at) VALUES ($1, $2)`,
+            [name, created_at]
+        );
         // Delete all user records in proper dependency order
         await client.query(`DELETE FROM workout_sets WHERE workout_id IN (SELECT id FROM workouts WHERE user_id = $1)`, [req.userId]);
         await client.query(`DELETE FROM workouts WHERE user_id = $1`, [req.userId]);
