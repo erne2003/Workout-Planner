@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 const NAV_ITEMS = [
     { href: "/admin",        label: "Overview",   icon: "⬡" },
     { href: "/admin/users",  label: "Users",      icon: "◎" },
+    { href: "/admin/deleted-accounts", label: "Deleted Accounts", icon: "⌫" },
     { href: "/admin/errors", label: "Error Log",  icon: "⚠" },
 ];
 

@@ -27,6 +27,10 @@ function formatDate(d) {
 export default function UsersPage() {
     const [users, setUsers] = useState([]);
     const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("all"); // all | active | disabled
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
+    const [sortBy, setSortBy] = useState("joined-desc"); // joined-desc | joined-asc | name-asc | name-desc
     const [error, setError] = useState("");
     const [lastRefresh, setLastRefresh] = useState(null);
     const [actionUser, setActionUser] = useState(null); // { user, action }
@@ -58,10 +62,38 @@ export default function UsersPage() {
         return () => clearInterval(interval);
     }, [fetchUsers]);
 
-    const filtered = (Array.isArray(users) ? users : []).filter(u =>
-        (u.name || "").toLowerCase().includes(search.toLowerCase()) ||
-        (u.email || "").toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = (Array.isArray(users) ? users : [])
+        .filter(u =>
+            (u.name || "").toLowerCase().includes(search.toLowerCase()) ||
+            (u.email || "").toLowerCase().includes(search.toLowerCase())
+        )
+        .filter(u => {
+            if (statusFilter === "active") return !u.is_disabled;
+            if (statusFilter === "disabled") return !!u.is_disabled;
+            return true;
+        })
+        .filter(u => {
+            if (!u.created_at) return true;
+            const joined = new Date(u.created_at);
+            if (dateFrom && joined < new Date(dateFrom)) return false;
+            if (dateTo && joined > new Date(`${dateTo}T23:59:59.999`)) return false;
+            return true;
+        })
+        .sort((a, b) => {
+            if (sortBy === "name-asc") return (a.name || "").localeCompare(b.name || "");
+            if (sortBy === "name-desc") return (b.name || "").localeCompare(a.name || "");
+            const aDate = new Date(a.created_at || 0);
+            const bDate = new Date(b.created_at || 0);
+            return sortBy === "joined-asc" ? aDate - bDate : bDate - aDate;
+        });
+
+    const hasActiveFilters = statusFilter !== "all" || dateFrom || dateTo || sortBy !== "joined-desc";
+    function clearFilters() {
+        setStatusFilter("all");
+        setDateFrom("");
+        setDateTo("");
+        setSortBy("joined-desc");
+    }
 
     async function executeAction() {
         if (!actionUser) return;
@@ -160,6 +192,64 @@ export default function UsersPage() {
                         ↻
                     </button>
                 </div>
+            </div>
+
+            {/* Filters */}
+            <div style={{
+                display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10,
+                marginBottom: 20, padding: "12px 16px", borderRadius: 12,
+                background: "var(--admin-card)", border: "1px solid var(--admin-border)",
+            }}>
+                <FilterLabel>Status</FilterLabel>
+                <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={selectStyle}
+                >
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+
+                <FilterLabel>Joined</FilterLabel>
+                <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    style={selectStyle}
+                />
+                <span style={{ color: "var(--admin-text-muted)", fontSize: 12 }}>to</span>
+                <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    style={selectStyle}
+                />
+
+                <FilterLabel>Sort</FilterLabel>
+                <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    style={selectStyle}
+                >
+                    <option value="joined-desc">Joined (newest)</option>
+                    <option value="joined-asc">Joined (oldest)</option>
+                    <option value="name-asc">Name (A–Z)</option>
+                    <option value="name-desc">Name (Z–A)</option>
+                </select>
+
+                {hasActiveFilters && (
+                    <button
+                        onClick={clearFilters}
+                        style={{
+                            marginLeft: "auto", padding: "7px 14px", borderRadius: 8,
+                            border: "1px solid var(--admin-border)", background: "transparent",
+                            color: "var(--admin-text-muted)", cursor: "pointer", fontSize: 12,
+                        }}
+                    >
+                        Clear filters
+                    </button>
+                )}
             </div>
 
             {error && (
@@ -270,6 +360,21 @@ export default function UsersPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+const selectStyle = {
+    padding: "7px 10px", borderRadius: 8,
+    border: "1px solid var(--admin-border)",
+    background: "var(--admin-surface)", color: "var(--admin-text)",
+    fontSize: 12, outline: "none",
+};
+
+function FilterLabel({ children }) {
+    return (
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--admin-text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            {children}
+        </span>
     );
 }
 
