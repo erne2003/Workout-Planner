@@ -23,6 +23,14 @@ const ALL_MUSCLES = [
   ...new Set([...ANTERIOR_PATHS, ...POSTERIOR_PATHS].map((p: any) => p.id))
 ];
 
+// Assumed 7.5 hours (450 mins) breakdown: ~15% Deep (68m), ~20% REM (90m), ~65% Core (292m)
+const ASSUMED_SLEEP_STAGES = {
+  deepMinutes: 68,
+  remMinutes: 90,
+  coreMinutes: 292,
+  awakeMinutes: 0,
+};
+
 /* ─── Legend Dot ────────────────────────────────────────────── */
 function LegendDot({ color, label }: any) {
   const { colors } = useTheme();
@@ -157,36 +165,6 @@ function OverallScore({ muscleData, score }: any) {
   );
 }
 
-/* ─── Hours-since label ─────────────────────────────────────── */
-function LastWorkoutBanner({ lastTime, onReset }: any) {
-  const { colors } = useTheme();
-  if (!lastTime) {
-    return (
-      <View style={[styles.lastWorkoutBanner, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-        <Text style={[styles.bannerText, { color: colors.textSecondary }]}>No workout logged yet</Text>
-        <TouchableOpacity onPress={onReset}>
-          <Text style={[styles.bannerBtnText, { color: "#0A84FF" }]}>Log now</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-  const hours = (Date.now() - lastTime.getTime()) / 3_600_000;
-  const hLabel = hours >= 24
-    ? `${Math.round(hours / 24)}d ${Math.round(hours % 24)}h`
-    : `${Math.floor(hours)}h ${Math.round((hours % 1) * 60)}m`;
-
-  return (
-    <View style={[styles.lastWorkoutBanner, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-      <Text style={[styles.bannerText, { color: colors.textSecondary }]}>
-        Last workout <Text style={{ color: colors.textPrimary }}>{hLabel} ago</Text>
-      </Text>
-      <TouchableOpacity onPress={onReset}>
-        <Text style={[styles.bannerBtnText, { color: "#FF9F0A" }]}>Reset</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 /* ─── HealthKit Readiness Score ─────────────────────────────── */
 function HealthKitReadiness({ healthData, hasPermission, loading, error, onRequestPermissions, hoursSinceLastWorkout, scoreData, unifiedScore }: any) {
   const { colors } = useTheme();
@@ -255,7 +233,8 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
     workoutIntervalScore
   } = scoreData;
 
-  const hasSleep = healthData.sleepStages !== null;
+  const hasSleep = healthData.sleepStages !== null && healthData.sleepStages !== undefined;
+  const activeSleepStages = hasSleep ? healthData.sleepStages : ASSUMED_SLEEP_STAGES;
   const hasHRV = healthData.todayHRV !== null;
   const hasRHR = healthData.todayRHR !== null;
   const hasActualData = hasSleep || hasHRV || hasRHR;
@@ -267,9 +246,7 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
   const circumference = 2 * Math.PI * 34;
   const offset = hasActualData ? circumference * (1 - unifiedScore / 100) : circumference;
 
-  const totalSleepTime = hasSleep
-    ? (healthData.sleepStages.deepMinutes + healthData.sleepStages.coreMinutes + healthData.sleepStages.remMinutes)
-    : 0;
+  const totalSleepTime = activeSleepStages.deepMinutes + activeSleepStages.coreMinutes + activeSleepStages.remMinutes;
   const sleepHrs = (totalSleepTime / 60).toFixed(1);
 
   return (
@@ -307,11 +284,13 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Sleep Quality</Text>
               <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                {hasSleep ? `${sleepHrs}h (${Math.round(sleepQualityScore)}%)` : "N/A"}
+                {hasSleep
+                  ? `${sleepHrs}h (${Math.round(sleepQualityScore)}%)`
+                  : `${sleepHrs}h (${Math.round(sleepQualityScore)}% assumed)`}
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${hasSleep ? sleepQualityScore : 0}%`, backgroundColor: '#30D158' }} />
+              <View style={{ height: '100%', width: `${sleepQualityScore ?? 0}%`, backgroundColor: '#30D158' }} />
             </View>
           </View>
 
@@ -320,7 +299,11 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Heart Rate Variability (HRV)</Text>
               <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                {hasHRV ? `${Math.round(healthData.todayHRV)} ms (Baseline: ${Math.round(healthData.avg14DayHRV)} ms)` : "N/A"}
+                {hasHRV
+                  ? (healthData.hrvBaselineDays >= 7
+                      ? `${Math.round(healthData.todayHRV)} ms (Baseline: ${Math.round(healthData.avg14DayHRV)} ms)`
+                      : `${Math.round(healthData.todayHRV)} ms (Collecting baseline… ${healthData.hrvBaselineDays}/7 days)`)
+                  : "N/A"}
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
@@ -333,7 +316,11 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>Resting Heart Rate (RHR)</Text>
               <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                {hasRHR ? `${Math.round(healthData.todayRHR)} bpm (Baseline: ${Math.round(healthData.avg14DayRHR)} bpm)` : "N/A"}
+                {hasRHR
+                  ? (healthData.rhrBaselineDays >= 7
+                      ? `${Math.round(healthData.todayRHR)} bpm (Baseline: ${Math.round(healthData.avg14DayRHR)} bpm)`
+                      : `${Math.round(healthData.todayRHR)} bpm (Collecting baseline… ${healthData.rhrBaselineDays}/7 days)`)
+                  : "N/A"}
               </Text>
             </View>
             <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
@@ -383,7 +370,7 @@ export default function RecoveryPage() {
   const { colors, isLight } = useTheme();
 
   const { workouts: data, loading } = useData() as any;
-  const { hasPermission, loading: healthLoading, healthData, error: healthError, requestPermissions } = useHealthKit();
+  const { hasPermission, loading: healthLoading, healthData, error: healthError, requestPermissions } = useHealthKit() as any;
 
   const hoursSinceLastWorkout = lastTime
     ? (Date.now() - lastTime.getTime()) / 3_600_000
@@ -438,7 +425,7 @@ export default function RecoveryPage() {
   const hasActualData = hasSleep || hasHRV || hasRHR;
 
   const scoreData = calculateReadinessScore({
-    sleepStages: healthData?.sleepStages,
+    sleepStages: hasSleep ? healthData?.sleepStages : ASSUMED_SLEEP_STAGES,
     todayHRV: healthData?.todayHRV,
     avg14DayHRV: healthData?.avg14DayHRV,
     meanLnHRV: healthData?.meanLnHRV,
@@ -457,10 +444,8 @@ export default function RecoveryPage() {
 
   return (
     <PageShell title="Recovery" subtitle="Muscle Readiness · Today" onSettingsClick={() => router.push("/settings" as any)}>
-      {loading.workouts ? (
+      {loading.workouts && (
         <View style={[styles.card, { height: 40, marginBottom: 14, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
-      ) : (
-        <LastWorkoutBanner lastTime={lastTime} onReset={handleReset} />
       )}
 
       {Platform.OS === 'ios' && (

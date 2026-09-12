@@ -339,8 +339,13 @@ export function computeMuscleReadiness(muscleRecoveryData, activeWindowDays = 7)
  * 4. REM Component = Math.min(100, (remMinutes / (Total Sleep Time * 0.20)) * 100)
  * 5. Sleep Quality Score = (Duration Score * 0.5) + (((Deep Component + REM Component) / 2) * 0.5)
  * 
- * 6. HRV Score = Math.min(120, (todayHRV / avg14DayHRV) * 100)
- * 7. RHR Score = Math.min(120, (avg14DayRHR / todayRHR) * 100)
+ * 6. HRV Score = 75 + 15 * zHRV, where zHRV is today's log(HRV) vs. the personal
+ *    baseline mean/stddev (meanLnHRV/stdDevLnHRV). Without an established
+ *    personal baseline, HRV Score = 100 (assume the best rather than scoring
+ *    against a generic population baseline).
+ * 7. RHR Score = min(100, max(0, 75 - 15 * zRHR)), where zRHR is today's RHR vs.
+ *    the personal baseline mean/stddev (meanRHR/stdDevRHR). Without an
+ *    established personal baseline, RHR Score = 100.
  * 
  * 8. Workout Interval Score Calculation:
  *    - If hoursSinceLastWorkout < 12: Score = 25
@@ -364,11 +369,9 @@ export function calculateReadinessScore(data) {
   const {
     sleepStages = null,
     todayHRV = null,
-    avg14DayHRV = null,
     meanLnHRV = null,
     stdDevLnHRV = null,
     todayRHR = null,
-    avg14DayRHR = null,
     meanRHR = null,
     stdDevRHR = null,
     hoursSinceLastWorkout = 0,
@@ -419,32 +422,36 @@ export function calculateReadinessScore(data) {
     totalWeight += 0.50;
   }
 
-  // 3. HRV Score using sports science z-score (if todayHRV is present)
+  // 3. HRV Score using sports science z-score against the personal baseline
+  // (if todayHRV is present). Without an established personal baseline (e.g.
+  // fewer than the minimum days of HealthKit history), assume the best case
+  // rather than scoring against a generic population baseline — sleep is the
+  // only sub-score allowed to be assumed/imperfect.
   let hrvScore = null;
   let zHRV = null;
   if (todayHRV !== null && todayHRV !== undefined) {
-    const rmssdToday = todayHRV > 0 ? todayHRV : 1;
-    const lnRMSSD = Math.log(rmssdToday);
-    const mu_LnHRV = (meanLnHRV !== null && meanLnHRV !== undefined)
-      ? meanLnHRV
-      : ((avg14DayHRV && avg14DayHRV > 0) ? Math.log(avg14DayHRV) : Math.log(50));
-    const sigma_LnHRV = (stdDevLnHRV && stdDevLnHRV !== 0) ? stdDevLnHRV : 0.30;
-    
-    zHRV = (lnRMSSD - mu_LnHRV) / sigma_LnHRV;
-    hrvScore = 75 + 15 * zHRV;
+    if (meanLnHRV !== null && meanLnHRV !== undefined && stdDevLnHRV !== null && stdDevLnHRV !== undefined && stdDevLnHRV !== 0) {
+      const rmssdToday = todayHRV > 0 ? todayHRV : 1;
+      const lnRMSSD = Math.log(rmssdToday);
+      zHRV = (lnRMSSD - meanLnHRV) / stdDevLnHRV;
+      hrvScore = 75 + 15 * zHRV;
+    } else {
+      hrvScore = 100;
+    }
   }
 
-  // 4. RHR Score using inverted z-score (if todayRHR is present)
+  // 4. RHR Score using inverted z-score against the personal baseline (if
+  // todayRHR is present). Same "assume the best" treatment as HRV when there's
+  // no personal baseline yet.
   let rhrScore = null;
   let zRHR = null;
   if (todayRHR !== null && todayRHR !== undefined) {
-    const mu_RHR = (meanRHR !== null && meanRHR !== undefined)
-      ? meanRHR
-      : (avg14DayRHR || 60);
-    const sigma_RHR = (stdDevRHR && stdDevRHR !== 0) ? stdDevRHR : 3.0;
-
-    zRHR = (todayRHR - mu_RHR) / sigma_RHR;
-    rhrScore = Math.min(100, Math.max(0, 75 - 15 * zRHR));
+    if (meanRHR !== null && meanRHR !== undefined && stdDevRHR !== null && stdDevRHR !== undefined && stdDevRHR !== 0) {
+      zRHR = (todayRHR - meanRHR) / stdDevRHR;
+      rhrScore = Math.min(100, Math.max(0, 75 - 15 * zRHR));
+    } else {
+      rhrScore = 100;
+    }
   }
 
   // Parasympathetic Saturation Guard: If zHRV > +2.5 and zRHR < -1.5, cap S_HRV = 85
