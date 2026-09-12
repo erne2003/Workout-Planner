@@ -42,6 +42,31 @@ const matchLiftKey = (name: string, key: string) => {
   return false;
 };
 
+/* Best-effort lookup of the logged set (weight x reps) that produced a given PR, by
+   matching exercise name + same-day date + weight against the user's logged workouts. */
+const findTopSetForPR = (workouts: any[], exerciseName: string, achievedAt: string, rawWeight: number) => {
+  if (!workouts || workouts.length === 0) return null;
+  const targetDay = new Date(achievedAt).toDateString();
+  const targetName = exerciseName?.toLowerCase()?.trim() || "";
+  let best: { weight: number; reps: number } | null = null;
+
+  for (const w of workouts) {
+    const wDay = new Date(w.created_at || w.date).toDateString();
+    if (wDay !== targetDay) continue;
+    const sets = w.sets || [];
+    for (const s of sets) {
+      const sName = (s.exercise_name || s.name || "").toLowerCase().trim();
+      if (sName !== targetName) continue;
+      const sWeight = parseFloat(s.weight) || 0;
+      if (Math.abs(sWeight - rawWeight) < 0.6) {
+        const reps = parseFloat(s.reps) || 0;
+        if (!best || reps > best.reps) best = { weight: sWeight, reps };
+      }
+    }
+  }
+  return best;
+};
+
 /* --- SVG Line Chart ------------------------------------------ */
 function LineChart({ data, dataKey, color, width = 340, height = 160 }: any) {
   const { colors: themeColors } = useTheme();
@@ -276,9 +301,9 @@ function ActivityCard({ workoutStats = {} as any }: any) {
 }
 
 /* --- Strength Trajectory Chart Component ----------------------- */
-function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, height = 200, onScrubChange }: any) {
+function StrengthTrajectoryChart({ data, selectedLift, mode, colors, width = 310, height = 200, onScrubChange }: any) {
   const chartWidth = width;
-  const padL = 28, padR = 15, padT = 10, padB = 20;
+  const padL = 34, padR = 15, padT = 10, padB = 20;
   const innerW = chartWidth - padL - padR;
   const innerH = height - padT - padB;
 
@@ -290,30 +315,45 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
 
   const activeLifts = selectedLift === "all" ? lifts : lifts.filter(l => l.key === selectedLift);
 
-  const allValues = data.flatMap((d: any) =>
-    activeLifts.map(l => d[l.key]).filter(v => v > 0)
-  );
-  
+  // Build per-lift point lists, indexed to each lift's own first logged value when in "% Change" mode.
+  const liftSeries = activeLifts.map((l) => {
+    const rawPoints = data
+      .map((d: any, i: number) => ({ i, raw: d[l.key] || 0, setInfo: d[`${l.key}Set`] }))
+      .filter((p: any) => p.raw > 0);
+    const base = rawPoints.length > 0 ? rawPoints[0].raw : 0;
+    const points = rawPoints.map((p: any) => ({
+      ...p,
+      val: mode === "pct" && base > 0 ? ((p.raw / base) - 1) * 100 : p.raw,
+    }));
+    return { ...l, points };
+  });
+
+  const allPlotted = liftSeries.flatMap((s: any) => s.points.map((p: any) => p.val));
+
   let min = 0;
   let max = 100;
 
-  if (allValues.length > 0) {
-    const rawMax = Math.max(...allValues);
-    const rawMin = Math.min(...allValues);
-    
-    if (selectedLift === "all") {
-      min = 0;
-      max = rawMax + 15;
+  if (allPlotted.length > 0) {
+    const rawMax = Math.max(...allPlotted);
+    const rawMin = Math.min(...allPlotted);
+
+    if (mode === "pct") {
+      const hiMax = Math.max(0, rawMax);
+      const loMin = Math.min(0, rawMin);
+      const span = Math.max(hiMax - loMin, 10);
+      const padding = span * 0.2;
+      min = loMin - padding;
+      max = hiMax + padding;
     } else {
       const diff = rawMax - rawMin;
-      let padding = Math.max(5, diff * 0.2); 
-      
+      let padding = Math.max(5, diff * 0.2);
+
       let newMin = Math.max(0, rawMin - padding);
       let newMax = rawMax + padding;
-      
+
       let newRange = newMax - newMin;
-      newRange = Math.ceil(newRange / 4) * 4; 
-      
+      newRange = Math.ceil(newRange / 4) * 4;
+
       if (newRange < 4) newRange = 4;
       if (diff > 10) {
          newRange = Math.ceil(newRange / 20) * 20;
@@ -325,11 +365,15 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
       max = min + newRange;
     }
   }
-  
+
   const range = (max - min) || 1;
 
   const toX = (i: number) => padL + (data.length <= 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
   const toY = (v: number) => padT + innerH - ((v - min) / range) * innerH;
+
+  const formatTick = (v: number) => mode === "pct" ? `${v > 0 ? "+" : ""}${Math.round(v)}%` : `${Math.round(v)}`;
+  const formatEndLabel = (raw: number, val: number) =>
+    mode === "pct" ? `${val >= 0 ? "+" : ""}${val.toFixed(0)}%` : `${raw}`;
 
   const { panHandlers, displayIndex, isScrubbing } = useChartScrubber(data.length, chartWidth, padL, padR, onScrubChange);
   const activeData = data[displayIndex];
@@ -339,11 +383,16 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
       {data.length > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 10 }}>
           <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textPrimary }}>{activeData.date}</Text>
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ alignItems: "flex-end", gap: 3 }}>
             {activeLifts.map(l => activeData[l.key] > 0 ? (
               <View key={l.key} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: l.color }} />
                 <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textPrimary }}>{activeData[l.key]}</Text>
+                {activeData[`${l.key}Set`] ? (
+                  <Text style={{ fontSize: 9, color: colors.textTertiary }}>
+                    · top set {activeData[`${l.key}Set`].weight}×{activeData[`${l.key}Set`].reps}
+                  </Text>
+                ) : null}
               </View>
             ) : null)}
           </View>
@@ -353,7 +402,7 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
         <Svg width="100%" height="100%" viewBox={`0 0 ${chartWidth} ${height}`}>
         {[0, 0.25, 0.5, 0.75, 1].map((lvl) => {
           const y = padT + innerH * (1 - lvl);
-          const val = Math.round(min + range * lvl);
+          const val = min + range * lvl;
           return (
             <G key={lvl}>
               <Line
@@ -361,27 +410,53 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
                 stroke={colors.border} strokeWidth="1" strokeDasharray="3,3"
               />
               <SvgText x={padL - 4} y={y + 3} fontSize="8" fill={colors.textTertiary} textAnchor="end">
-                {val}
+                {formatTick(val)}
               </SvgText>
             </G>
           );
         })}
 
-        {activeLifts.map((l) => {
-          const points = data.map((d: any, i: number) => ({ x: toX(i), y: toY(d[l.key] || min), val: d[l.key] }));
-          const validPoints = points.filter((p: any) => p.val > 0);
-          if (validPoints.length === 0) return null;
+        {mode === "pct" && min < 0 && max > 0 && (
+          <Line x1={padL} y1={toY(0)} x2={padL + innerW} y2={toY(0)} stroke={colors.textTertiary} strokeWidth="1" />
+        )}
 
-          const pathD = validPoints
-            .map((p: any, i: number) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+        {liftSeries.map((l: any) => {
+          if (l.points.length === 0) return null;
+
+          const pathD = l.points
+            .map((p: any, i: number) => `${i === 0 ? "M" : "L"}${toX(p.i).toFixed(1)},${toY(p.val).toFixed(1)}`)
             .join(" ");
+
+          const lastPoint = l.points[l.points.length - 1];
+          const isPR = l.points.length === 1 || lastPoint.raw > l.points[l.points.length - 2].raw;
 
           return (
             <G key={l.key}>
               <Path d={pathD} stroke={l.color} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              {validPoints.map((p: any, idx: number) => (
-                <Circle key={idx} cx={p.x} cy={p.y} r="5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
-              ))}
+              {l.points.map((p: any, idx: number) => {
+                const isLast = idx === l.points.length - 1;
+                return (
+                  <G key={idx}>
+                    {isLast && isPR && (
+                      <Circle cx={toX(p.i)} cy={toY(p.val)} r="9" fill="transparent" stroke={l.color} strokeWidth="1.5" opacity="0.45" />
+                    )}
+                    <Circle
+                      cx={toX(p.i)} cy={toY(p.val)} r="5"
+                      fill={l.color}
+                      stroke={isLast && isPR ? "#fff" : (colors.bgCard || "#1c1c1e")}
+                      strokeWidth="2"
+                    />
+                  </G>
+                );
+              })}
+              {liftSeries.length === 1 && (
+                <SvgText
+                  x={toX(lastPoint.i) + 8} y={toY(lastPoint.val) + 3}
+                  fontSize="10" fontWeight="700" fill={l.color}
+                >
+                  {formatEndLabel(lastPoint.raw, lastPoint.val)}
+                </SvgText>
+              )}
             </G>
           );
         })}
@@ -389,13 +464,13 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
         {isScrubbing && activeData && (
           <G>
             <Line x1={toX(displayIndex)} y1={padT} x2={toX(displayIndex)} y2={padT + innerH} stroke={colors.border} strokeWidth="1" strokeDasharray="4,4" />
-            {activeLifts.map((l) => {
-              const val = activeData[l.key];
-              if (!val || val <= 0) return null;
+            {liftSeries.map((l: any) => {
+              const p = l.points.find((pt: any) => pt.i === displayIndex);
+              if (!p) return null;
               return (
                 <G key={`hl-${l.key}`}>
-                  <Circle cx={toX(displayIndex)} cy={toY(val)} r="9" fill="transparent" stroke={l.color} strokeWidth="2" opacity="0.3" />
-                  <Circle cx={toX(displayIndex)} cy={toY(val)} r="5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
+                  <Circle cx={toX(displayIndex)} cy={toY(p.val)} r="9" fill="transparent" stroke={l.color} strokeWidth="2" opacity="0.3" />
+                  <Circle cx={toX(displayIndex)} cy={toY(p.val)} r="5" fill={l.color} stroke={colors.bgCard || "#1c1c1e"} strokeWidth="2" />
                 </G>
               );
             })}
@@ -419,13 +494,16 @@ function StrengthTrajectoryChart({ data, selectedLift, colors, width = 310, heig
       </Svg>
       </View>
 
-      <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 8 }}>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
         {lifts.map(l => {
           const active = selectedLift === "all" || selectedLift === l.key;
+          const lastRaw = [...data].reverse().find((d: any) => d[l.key] > 0)?.[l.key];
           return (
             <View key={l.key} style={{ flexDirection: "row", alignItems: "center", gap: 3, opacity: active ? 1 : 0.3 }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: l.color }} />
-              <Text style={{ fontSize: 9, color: colors.textSecondary }}>{l.name}</Text>
+              <Text style={{ fontSize: 9, color: colors.textSecondary }}>
+                {l.name}{lastRaw ? ` · ${lastRaw}` : ""}
+              </Text>
             </View>
           );
         })}
@@ -812,14 +890,17 @@ function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: 
   const [activeTab, setActiveTab] = useState<"strength" | "volume" | "body" | "radar">("strength");
   const [selectedLift, setSelectedLift] = useState("all");
   const [selectedWorkout, setSelectedWorkout] = useState("all");
+  const [oneRMMode, setOneRMMode] = useState<"pct" | "lbs">("pct");
+  const [showStrengthTable, setShowStrengthTable] = useState(false);
 
   const strengthChartData = useMemo(() => {
     if (!prs || prs.length === 0) return [];
 
-    const dateMap = new Map<string, { date: string; bench: number; squat: number; deadlift: number }>();
+    const dateMap = new Map<string, any>();
     const sortedPrs = [...prs].sort((a: any, b: any) => new Date(a.achieved_at).getTime() - new Date(b.achieved_at).getTime());
 
     let runningMax = { bench: 0, squat: 0, deadlift: 0 };
+    let runningSet: any = { bench: null, squat: null, deadlift: null };
 
     sortedPrs.forEach((p: any) => {
       const dateStr = new Date(p.achieved_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -828,28 +909,33 @@ function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: 
       const wVal = unit === "kg" ? Number((rawW / 2.205).toFixed(2)) : rawW;
 
       let dayMax = { ...runningMax };
-      let updated = false;
+      let updatedKey: "bench" | "squat" | "deadlift" | null = null;
 
       if (name === "bench" || name === "bench press" || name === "chest press") {
-        if (wVal > dayMax.bench) { dayMax.bench = wVal; updated = true; }
+        if (wVal > dayMax.bench) { dayMax.bench = wVal; updatedKey = "bench"; }
       } else if (name === "squat" || name === "back squat" || name === "barbell squat") {
-        if (wVal > dayMax.squat) { dayMax.squat = wVal; updated = true; }
+        if (wVal > dayMax.squat) { dayMax.squat = wVal; updatedKey = "squat"; }
       } else if (name === "deadlift" || name === "barbell deadlift") {
-        if (wVal > dayMax.deadlift) { dayMax.deadlift = wVal; updated = true; }
+        if (wVal > dayMax.deadlift) { dayMax.deadlift = wVal; updatedKey = "deadlift"; }
       }
 
-      if (updated) {
+      if (updatedKey) {
         runningMax = { ...dayMax };
+        const matchedSet = findTopSetForPR(workouts, p.exercise_name, p.achieved_at, rawW);
+        runningSet = { ...runningSet, [updatedKey]: matchedSet };
       }
 
       dateMap.set(dateStr, {
         date: dateStr,
-        ...runningMax
+        ...runningMax,
+        benchSet: runningSet.bench,
+        squatSet: runningSet.squat,
+        deadliftSet: runningSet.deadlift,
       });
     });
 
     return Array.from(dateMap.values());
-  }, [prs, unit]);
+  }, [prs, unit, workouts]);
 
   const workoutTemplates = useMemo(() => {
     if (!workouts || workouts.length === 0) return [];
@@ -1032,38 +1118,108 @@ function ExerciseTrajectoryChart({ workouts, unit, onScrubChange }: { workouts: 
         <View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <Text style={{ fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, color: colors.textSecondary }}>
-              1RM Progression ({unit})
+              1RM Progression
             </Text>
 
-            <View style={{ flexDirection: "row", gap: 4 }}>
+            <View style={{ flexDirection: "row", backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)", borderRadius: 8, padding: 2 }}>
               {[
-                { id: "all", label: "All" },
-                { id: "bench", label: "BP" },
-                { id: "squat", label: "SQ" },
-                { id: "deadlift", label: "DL" },
-              ].map(opt => (
+                { id: "pct", label: "% Change" },
+                { id: "lbs", label: unit === "kg" ? "Kg" : "Lbs" },
+              ].map(opt => {
+                const active = oneRMMode === opt.id;
+                return (
+                  <TouchableOpacity
+                    key={opt.id}
+                    onPress={() => {
+                      setOneRMMode(opt.id as "pct" | "lbs");
+                      if (opt.id === "lbs" && selectedLift === "all") setSelectedLift("bench");
+                    }}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      backgroundColor: active ? "#0A84FF" : "transparent",
+                    }}
+                  >
+                    <Text style={{ fontSize: 9, fontWeight: "700", color: active ? "#fff" : colors.textSecondary }}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 4, marginBottom: 4 }}>
+            {[
+              { id: "all", label: "All" },
+              { id: "bench", label: "BP" },
+              { id: "squat", label: "SQ" },
+              { id: "deadlift", label: "DL" },
+            ].map(opt => {
+              const disabled = oneRMMode === "lbs" && opt.id === "all";
+              return (
                 <TouchableOpacity
                   key={opt.id}
+                  disabled={disabled}
                   onPress={() => setSelectedLift(opt.id)}
                   style={{
                     paddingHorizontal: 6,
                     paddingVertical: 3,
                     borderRadius: 6,
+                    opacity: disabled ? 0.3 : 1,
                     backgroundColor: selectedLift === opt.id ? "#0A84FF" : "transparent"
                   }}
                 >
                   <Text style={{ fontSize: 9, fontWeight: "700", color: selectedLift === opt.id ? "#fff" : colors.textSecondary }}>{opt.label}</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              );
+            })}
           </View>
+
+          <Text style={{ fontSize: 9, color: colors.textTertiary, marginBottom: 8, textAlign: "right" }}>
+            {oneRMMode === "lbs"
+              ? "Axis zoomed to this lift's range, not from zero."
+              : "Indexed to each lift's first logged value."}
+          </Text>
 
           {strengthChartData.length === 0 ? (
             <View style={{ height: 200, justifyContent: "center", alignItems: "center" }}>
               <Text style={{ color: colors.textTertiary, fontSize: 12 }}>No logs yet. Complete workouts to see graph.</Text>
             </View>
           ) : (
-            <StrengthTrajectoryChart data={strengthChartData} selectedLift={selectedLift} colors={colors} width={310} height={200} onScrubChange={onScrubChange} />
+            <>
+              <StrengthTrajectoryChart data={strengthChartData} selectedLift={selectedLift} mode={oneRMMode} colors={colors} width={310} height={200} onScrubChange={onScrubChange} />
+
+              <TouchableOpacity onPress={() => setShowStrengthTable(v => !v)} style={{ alignSelf: "center", marginTop: 12 }}>
+                <Text style={{ fontSize: 10, fontWeight: "600", color: colors.accentBlue, textDecorationLine: "underline" }}>
+                  {showStrengthTable ? "Hide table" : "View as table"}
+                </Text>
+              </TouchableOpacity>
+
+              {showStrengthTable && (
+                <View style={{ marginTop: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: "hidden" }}>
+                  <View style={{ flexDirection: "row", backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.05)", paddingVertical: 6, paddingHorizontal: 8 }}>
+                    <Text style={{ flex: 1.2, fontSize: 9, fontWeight: "700", color: colors.textTertiary, textTransform: "uppercase" }}>Date</Text>
+                    {LIFTS.filter(l => selectedLift === "all" || selectedLift === l.key).map(l => (
+                      <Text key={l.key} style={{ flex: 1, fontSize: 9, fontWeight: "700", color: l.color, textTransform: "uppercase", textAlign: "right" }}>
+                        {l.label.split(" ")[0]}
+                      </Text>
+                    ))}
+                  </View>
+                  {strengthChartData
+                    .filter((row: any) => LIFTS.some(l => (selectedLift === "all" || selectedLift === l.key) && row[l.key] > 0))
+                    .map((row: any, i: number) => (
+                      <View key={i} style={{ flexDirection: "row", paddingVertical: 6, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <Text style={{ flex: 1.2, fontSize: 10, color: colors.textSecondary }}>{row.date}</Text>
+                        {LIFTS.filter(l => selectedLift === "all" || selectedLift === l.key).map(l => (
+                          <Text key={l.key} style={{ flex: 1, fontSize: 10, color: colors.textPrimary, textAlign: "right" }}>
+                            {row[l.key] > 0 ? `${row[l.key]} ${unit}` : "—"}
+                          </Text>
+                        ))}
+                      </View>
+                    ))}
+                </View>
+              )}
+            </>
           )}
         </View>
       )}
