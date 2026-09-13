@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { PanResponder } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -12,6 +12,17 @@ export function useChartScrubber(
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const innerW = chartWidth - padL - padR;
+
+  // Callers often pass an inline onScrubChange (a new function every render).
+  // Reading it through a ref -- instead of putting it in the useMemo deps
+  // below -- keeps the PanResponder (and its startX/lastIndex closure state)
+  // stable across a caller re-render triggered by onScrubChange(true) itself,
+  // which would otherwise tear down and recreate the responder mid-gesture
+  // and reset the drag's tracked start position back to 0.
+  const onScrubChangeRef = useRef(onScrubChange);
+  useEffect(() => {
+    onScrubChangeRef.current = onScrubChange;
+  }, [onScrubChange]);
 
   const panResponder = useMemo(() => {
     let lastIndex = -1;
@@ -49,7 +60,7 @@ export function useChartScrubber(
       onPanResponderGrant: (evt) => {
         startX = evt.nativeEvent.locationX;
         handlePan(startX);
-        onScrubChange?.(true);
+        onScrubChangeRef.current?.(true);
       },
       onPanResponderMove: (evt, gestureState) => {
         const currentX = startX + gestureState.dx;
@@ -58,15 +69,15 @@ export function useChartScrubber(
       onPanResponderRelease: () => {
         setActiveIndex(null);
         lastIndex = -1;
-        onScrubChange?.(false);
+        onScrubChangeRef.current?.(false);
       },
       onPanResponderTerminate: () => {
         setActiveIndex(null);
         lastIndex = -1;
-        onScrubChange?.(false);
+        onScrubChangeRef.current?.(false);
       }
     });
-  }, [dataLength, padL, innerW, onScrubChange]);
+  }, [dataLength, padL, innerW]);
 
   const displayIndex = activeIndex !== null ? activeIndex : (dataLength > 0 ? dataLength - 1 : 0);
   const isScrubbing = activeIndex !== null;
