@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
+import CelebrationOverlay from "@/components/CelebrationOverlay";
 import { useSettings, useData, getStorage } from "@apex/core";
 import { useTheme } from "../../hooks/useTheme";
 import { setLastWorkoutTime } from "@apex/core/src/recovery";
@@ -402,6 +403,7 @@ export default function WorkoutPage() {
   const [restTimer, setRestTimer] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showWorkoutCelebration, setShowWorkoutCelebration] = useState(false);
 
   const [routines, setRoutines] = useState<any[]>([]);
   const [activeRoutine, setActiveRoutine] = useState<any>(null);
@@ -642,18 +644,23 @@ export default function WorkoutPage() {
       }
       setLastWorkoutTime(new Date());
       refresh("workouts");
-      setActiveRoutine(null);
-      setStarted(false);
-      setElapsed(0);
-      setCompleted({});
-      setRoutineModified(false);
-      setStartTime(null);
+      setShowWorkoutCelebration(true);
     } catch (err) {
       console.error("Error saving workout:", err);
       Alert.alert("Error", "Failed to save workout session.");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const dismissWorkoutCelebration = () => {
+    setShowWorkoutCelebration(false);
+    setActiveRoutine(null);
+    setStarted(false);
+    setElapsed(0);
+    setCompleted({});
+    setRoutineModified(false);
+    setStartTime(null);
   };
 
   const finishWorkout = async () => {
@@ -1151,6 +1158,14 @@ export default function WorkoutPage() {
           />
         </View>
       </Modal>
+
+      <CelebrationOverlay
+        visible={showWorkoutCelebration}
+        type="workout"
+        title="Workout Complete!"
+        subtitle={`${formatWorkoutTime(elapsed)} · ${volume.toLocaleString()} ${unit} lifted`}
+        onDismiss={dismissWorkoutCelebration}
+      />
     </PageShell>
   );
 }
