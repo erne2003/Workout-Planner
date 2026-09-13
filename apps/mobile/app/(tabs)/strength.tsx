@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
+import CelebrationOverlay from "@/components/CelebrationOverlay";
 import { useSettings, useData } from "@apex/core";
 import { computeDynamicRecovery, getMuscleSoreness } from "@apex/core/src/recovery";
 import Svg, { Circle, Line, Path } from "react-native-svg";
@@ -252,6 +253,8 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
   const [reps, setReps] = useState("1");
   const [rir, setRir] = useState("0");
   const [isSaving, setIsSaving] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationSubtitle, setCelebrationSubtitle] = useState("");
 
   const handleSubmit = async () => {
     if (!weight || isNaN(parseFloat(weight))) {
@@ -267,10 +270,10 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
     try {
       const parsedWeight = parseFloat(weight);
       const dbWeight = unit === "kg" ? Number((parsedWeight * 2.205).toFixed(2)) : parsedWeight;
-      
+
       const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/prs`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -283,10 +286,8 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
         throw new Error("Failed to save PR");
       }
 
-      Alert.alert(
-        "Success", 
-        `Logged PR: ${LIFTS.find(l => l.key === exercise)?.label || exercise} - ${weight} ${unit}!`
-      );
+      setCelebrationSubtitle(`${LIFTS.find(l => l.key === exercise)?.label || exercise} · ${weight} ${unit}`);
+      setShowCelebration(true);
       setWeight("");
       setReps("1");
       setRir("0");
@@ -429,6 +430,14 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
           </Text>
         </TouchableOpacity>
       </View>
+
+      <CelebrationOverlay
+        visible={showCelebration}
+        type="pr"
+        title="New Personal Record!"
+        subtitle={celebrationSubtitle}
+        onDismiss={() => setShowCelebration(false)}
+      />
     </View>
   );
 }
