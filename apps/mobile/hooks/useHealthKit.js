@@ -306,45 +306,6 @@ export function useHealthKit() {
         hrvData._hrvError = e.message;
       }
 
-      // ── DIAGNOSTIC ALERT ────────────────────────────────────
-      const fmtMin = (m) => `${Math.floor(m / 60)}h ${Math.round(m % 60)}m`;
-      const totalSleepMin = sleepData.sleepStages
-        ? sleepData.sleepStages.deepMinutes + sleepData.sleepStages.coreMinutes + sleepData.sleepStages.remMinutes
-        : 0;
-
-      const lines = [];
-      lines.push(`Fetched: ${new Date().toLocaleTimeString()}`);
-      lines.push('');
-      lines.push(`📊 RHR (${rhrData._rhrSamples} samples)`);
-      lines.push(`  Today: ${rhrData.todayRHR !== null ? Math.round(rhrData.todayRHR) + ' bpm' : 'No data'}`);
-      lines.push(`  14d Avg: ${rhrData.avg14DayRHR !== null ? Math.round(rhrData.avg14DayRHR * 10) / 10 + ' bpm' : 'No data'}`);
-      if (rhrData._rhrError) lines.push(`  ⚠️ Error: ${rhrData._rhrError}`);
-      lines.push('');
-      lines.push(`💓 HRV (${hrvData._hrvSamples} samples)`);
-      lines.push(`  Today: ${hrvData.todayHRV !== null ? Math.round(hrvData.todayHRV) + ' ms' : 'No data'}`);
-      lines.push(`  14d Avg: ${hrvData.avg14DayHRV !== null ? Math.round(hrvData.avg14DayHRV * 10) / 10 + ' ms' : 'No data'}`);
-      if (hrvData._hrvError) lines.push(`  ⚠️ Error: ${hrvData._hrvError}`);
-      lines.push('');
-      lines.push(`🌙 Sleep (${sleepData._sleepSamples} samples from today)`);
-      if (sleepData.sleepStages) {
-        lines.push(`  Total: ${fmtMin(totalSleepMin)}`);
-        lines.push(`  Deep: ${fmtMin(sleepData.sleepStages.deepMinutes)}`);
-        lines.push(`  Core: ${fmtMin(sleepData.sleepStages.coreMinutes)}`);
-        lines.push(`  REM: ${fmtMin(sleepData.sleepStages.remMinutes)}`);
-        lines.push(`  Awake: ${fmtMin(sleepData.sleepStages.awakeMinutes)}`);
-      } else {
-        lines.push('  No sleep data');
-      }
-      if (sleepData._sleepError) lines.push(`  ⚠️ Error: ${sleepData._sleepError}`);
-      if (sleepData._sleepValues && sleepData._sleepValues.length > 0) lines.push(`  Raw types: ${sleepData._sleepValues.join(', ')}`);
-
-      Alert.alert('🩺 HealthKit Data', lines.join('\n'));
-
-      // Strip debug metadata before setting state
-      const { _rhrError, _rhrSamples, ...cleanRhr } = rhrData;
-      const { _hrvError, _hrvSamples, ...cleanHrv } = hrvData;
-      const { _sleepError, _sleepSamples, _sleepValues, ...cleanSleep } = sleepData;
-
       setHealthData({
         ...cleanRhr,
         ...cleanHrv,
