@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard } from "react-native";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard, type GestureResponderEvent } from "react-native";
 import { useRouter } from "expo-router";
+import * as Haptics from "expo-haptics";
+import ReanimatedSwipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import PageShell from "@/components/PageShell";
 import CelebrationOverlay from "@/components/CelebrationOverlay";
+import ExerciseActionSheet from "@/components/ExerciseActionSheet";
 import { useSettings, useData, getStorage } from "@apex/core";
 import { useTheme } from "../../hooks/useTheme";
 import { setLastWorkoutTime } from "@apex/core/src/recovery";
@@ -26,22 +30,65 @@ function formatWorkoutTime(secs: number) {
   }
 }
 
-function totalVolume(exercises: any[], completed: any) {
+/** Live clock for the stat tile: MM:SS, or H:MM:SS once past an hour */
+function clockWorkoutTime(secs: number) {
+  const hours = Math.floor(secs / 3600);
+  const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, "0");
+  const ss = String(secs % 60).padStart(2, "0");
+  return hours === 0 ? `${mm}:${ss}` : `${hours}:${mm}:${ss}`;
+}
+
+function totalVolume(exercises: any[]) {
   let vol = 0;
-  exercises.forEach((ex, ei) =>
-    ex.sets.forEach((set: any, si: number) => {
-      if (completed[`${ei}-${si}`]) vol += set.reps * set.weight;
+  exercises.forEach((ex) =>
+    ex.sets.forEach((set: any) => {
+      if (set.done) vol += (Number(set.reps) || 0) * (Number(set.weight) || 0);
     })
   );
   return vol;
 }
 
-function completedCount(exercises: any[], completed: any) {
+function completedCount(exercises: any[]) {
   let done = 0, total = 0;
-  exercises.forEach((ex, ei) =>
-    ex.sets.forEach((_: any, si: number) => { total++; if (completed[`${ei}-${si}`]) done++; })
+  exercises.forEach((ex) =>
+    ex.sets.forEach((set: any) => { total++; if (set.done) done++; })
   );
   return { done, total };
+}
+
+/* ─── Set / exercise identity ───────────────────────────────── */
+// Sets carry a stable uid and their own `done` flag, so removing or reordering
+// them mid-workout can never shift completion onto the wrong row.
+let uidSeq = 0;
+function newUid() {
+  return `${Date.now().toString(36)}${(uidSeq++).toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// The only way to create a set. Never spread an existing set into a new one:
+// that would copy its uid and done flag.
+function makeSet(p: { reps?: any; weight?: any; rir?: any } = {}) {
+  return { uid: newUid(), reps: p.reps ?? 10, weight: p.weight ?? 0, rir: p.rir ?? 0, done: false };
+}
+
+function makeExercise(base: any, sets: any[]) {
+  return { ...base, uid: newUid(), sets };
+}
+
+// v1 sessions stored completion in a separate map keyed by `${exIdx}-${setIdx}`.
+// Positions were stable then (sets couldn't be removed mid-workout), so they map cleanly onto `done`.
+const ACTIVE_WORKOUT_VERSION = 2;
+function hydrateWorkoutPlan(data: any): any[] {
+  const plan = Array.isArray(data?.workoutPlan) ? data.workoutPlan : [];
+  const legacyCompleted = (data?.v ?? 1) < 2 ? (data?.completed || {}) : null;
+  return plan.map((ex: any, ei: number) => ({
+    ...ex,
+    uid: ex.uid || newUid(),
+    sets: (Array.isArray(ex.sets) ? ex.sets : []).map((s: any, si: number) => ({
+      ...s,
+      uid: s.uid || newUid(),
+      done: legacyCompleted ? !!legacyCompleted[`${ei}-${si}`] : !!s.done,
+    })),
+  }));
 }
 
 /* ─── ExerciseSearch ────────────────────────────────────────── */
@@ -245,146 +292,227 @@ function ClearOnFocusInput({ numericValue, onChangeText, placeholder, ...rest }:
   );
 }
 
+/* ─── SetDeleteAction ───────────────────────────────────────── */
+const DELETE_ACTION_WIDTH = 84;
+
+function SetDeleteAction({ progress, onPress }: { progress: SharedValue<number>; onPress: () => void }) {
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.5, 1], [0, 0.7, 1], Extrapolation.CLAMP),
+    transform: [{ scale: interpolate(progress.value, [0, 1], [0.85, 1], Extrapolation.CLAMP) }],
+  }));
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={styles.setDeleteAction}
+      accessibilityRole="button"
+      accessibilityLabel="Delete set"
+    >
+      <Animated.Text style={[styles.setDeleteActionText, labelStyle]}>Delete</Animated.Text>
+    </TouchableOpacity>
+  );
+}
+
 /* ─── SetRow ────────────────────────────────────────────────── */
-function SetRow({ exIdx, setIdx, set, isDone, onToggle, onUpdateSet, onRemoveSet, prevSet }: any) {
+function SetRow({ exUid, setIdx, set, onToggle, onUpdateSet, onRemoveSet, onSwipeOpen, onSwipeClose, prevSet, disabled }: any) {
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
   const { colors, isLight } = useTheme();
+  const swipeRef = useRef<SwipeableMethods>(null);
+  const rowRef = useRef<View>(null);
+  const isDone = !!set.done;
+
+  const closeRow = () => swipeRef.current?.close();
+
+  const deleteNow = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    onRemoveSet(exUid, set.uid);
+  };
+
+  const handleDeletePress = () => {
+    if (disabled) { closeRow(); return; }
+    if (!isDone) { deleteNow(); return; }
+    Alert.alert(
+      "Delete completed set?",
+      `Set ${setIdx + 1} is marked as done. Deleting it removes it from this workout and it won't be saved.`,
+      [
+        { text: "Cancel", style: "cancel", onPress: closeRow },
+        { text: "Delete", style: "destructive", onPress: deleteNow },
+      ],
+      { cancelable: true, onDismiss: closeRow }
+    );
+  };
+
+  // Swipeable rebuilds its pan gesture when this identity changes, and the page re-renders every second
+  const handleWillOpen = useCallback(() => {
+    if (swipeRef.current) onSwipeOpen?.(swipeRef.current, rowRef.current);
+  }, [onSwipeOpen]);
+
+  const handleClose = useCallback(() => {
+    if (swipeRef.current) onSwipeClose?.(swipeRef.current);
+  }, [onSwipeClose]);
 
   return (
-    <View style={styles.setRowContainer}>
-      <View
-        style={[
-          styles.setRowInner,
-          {
-            backgroundColor: isDone ? "rgba(48,209,88,0.12)" : (isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)"),
-            borderColor: isDone ? "rgba(48,209,88,0.3)" : colors.border,
-          }
-        ]}
+    <View ref={rowRef} collapsable={false}>
+      <ReanimatedSwipeable
+        ref={swipeRef}
+        enabled={!disabled}
+        containerStyle={styles.setRowContainer}
+        childrenContainerStyle={{ backgroundColor: colors.bgCardSolid, borderRadius: 12 }}
+        renderRightActions={(progress) => <SetDeleteAction progress={progress} onPress={handleDeletePress} />}
+        onSwipeableWillOpen={handleWillOpen}
+        onSwipeableClose={handleClose}
+        overshootRight={false}
+        rightThreshold={DELETE_ACTION_WIDTH / 2}
+        dragOffsetFromRightEdge={20}
+        dragOffsetFromLeftEdge={20}
       >
-        <Text style={[styles.setRowIndex, { color: colors.textSecondary }]}>S{setIdx + 1}</Text>
-
-        <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
-          {prevSet ? (
-            <>
-              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>
-                {unit === "kg" ? Number((prevSet.weight / 2.205).toFixed(2)) : prevSet.weight}
-                <Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}
-              </Text>
-              {prevSet.rir != null && prevSet.rir !== undefined && prevSet.rir > 0 && <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.rir}rir</Text>}
-            </>
-          ) : (
-            <Text style={{ fontSize: 10, color: colors.textTertiary }}>—</Text>
-          )}
-        </View>
-
-        <View style={styles.setInputsRow}>
-          <View style={styles.inputGroup}>
-            <ClearOnFocusInput
-              numericValue={set.weight}
-              onChangeText={(t: string) => onUpdateSet(exIdx, setIdx, "weight", t)}
-              placeholder="0"
-              placeholderTextColor={colors.textTertiary}
-              editable={!isDone}
-              style={[styles.setNumInput, { color: isDone ? "#30D158" : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
-            />
-            <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>{unit}</Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <ClearOnFocusInput
-              numericValue={set.reps}
-              onChangeText={(t: string) => onUpdateSet(exIdx, setIdx, "reps", t)}
-              placeholder="0"
-              placeholderTextColor={colors.textTertiary}
-              editable={!isDone}
-              style={[styles.setNumInput, { color: isDone ? colors.textSecondary : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
-            />
-            <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>reps</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => onToggle(exIdx, setIdx)}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}
+        <View
+          style={[
+            styles.setRowInner,
+            {
+              backgroundColor: isDone ? "rgba(48,209,88,0.12)" : (isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)"),
+              borderColor: isDone ? "rgba(48,209,88,0.3)" : colors.border,
+            }
+          ]}
         >
-          {isDone && (
-            <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <Path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
-          )}
-        </TouchableOpacity>
-      </View>
+          <Text style={[styles.setRowIndex, { color: colors.textSecondary }]}>S{setIdx + 1}</Text>
+
+          <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
+            {prevSet ? (
+              <>
+                <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>
+                  {unit === "kg" ? Number((prevSet.weight / 2.205).toFixed(2)) : prevSet.weight}
+                  <Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}
+                </Text>
+                {prevSet.rir != null && prevSet.rir !== undefined && prevSet.rir > 0 && <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.rir}rir</Text>}
+              </>
+            ) : (
+              <Text style={{ fontSize: 10, color: colors.textTertiary }}>—</Text>
+            )}
+          </View>
+
+          <View style={styles.setInputsRow}>
+            <View style={styles.inputGroup}>
+              <ClearOnFocusInput
+                numericValue={set.weight}
+                onChangeText={(t: string) => onUpdateSet(exUid, set.uid, "weight", t)}
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
+                editable={!isDone}
+                style={[styles.setNumInput, { color: isDone ? "#30D158" : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
+              />
+              <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>{unit}</Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <ClearOnFocusInput
+                numericValue={set.reps}
+                onChangeText={(t: string) => onUpdateSet(exUid, set.uid, "reps", t)}
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
+                editable={!isDone}
+                style={[styles.setNumInput, { color: isDone ? colors.textSecondary : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
+              />
+              <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>reps</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => onToggle(exUid, set.uid)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}
+          >
+            {isDone && (
+              <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <Path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ReanimatedSwipeable>
     </View>
   );
 }
 
 /* ─── ExerciseCard ──────────────────────────────────────────── */
-function ExerciseCard({ exercise, exIdx, completed, onToggle, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise }: any) {
-  const [prevSets, setPrevSets] = useState([]);
+function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, onOpenMenu, onSwipeOpen, onSwipeClose, disabled }: any) {
+  // History is tagged with the exercise it was fetched for: a swap keeps this card mounted
+  // (keyed by uid), and the old exercise's "previous" hints must not show against the new one.
+  const [history, setHistory] = useState<{ exerciseId: any; sets: any[] }>({ exerciseId: null, sets: [] });
   const { colors, isLight } = useTheme();
   const { token, authFetch } = useData() as any;
 
+  const exerciseId = exercise.exerciseId || exercise.id;
+  const prevSets = history.exerciseId === exerciseId ? history.sets : [];
+
   useEffect(() => {
-    const exerciseId = exercise.exerciseId || exercise.id;
     if (!exerciseId || String(exerciseId).startsWith("e")) return;
 
     const apiUrl = process.env.EXPO_PUBLIC_API_URL;
     if (!apiUrl) return;
 
+    let cancelled = false;
     authFetch(`${apiUrl}/workouts/history/${exerciseId}`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((data) => setPrevSets(Array.isArray(data) ? data : [] as any))
-      .catch(() => setPrevSets([]));
-  }, [exercise.exerciseId, exercise.id]);
+      .then((r: any) => r.ok ? r.json() : [])
+      .then((data: any) => { if (!cancelled) setHistory({ exerciseId, sets: Array.isArray(data) ? data : [] }); })
+      .catch(() => { if (!cancelled) setHistory({ exerciseId, sets: [] }); });
+    return () => { cancelled = true; };
+  }, [exerciseId]);
 
-  const done = exercise.sets.filter((_: any, si: number) => completed[`${exIdx}-${si}`]).length;
-  const pct = (done / exercise.sets.length) * 100;
+  const total = exercise.sets.length;
+  const done = exercise.sets.filter((s: any) => s.done).length;
+  const pct = total ? (done / total) * 100 : 0;
+  const allDone = total > 0 && done === total;
 
   return (
-    <View style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+    // Long press anywhere on the card opens the menu. Inputs, the check circle and "Add set"
+    // take their own touches, and scrolling or swiping a set cancels the press.
+    <Pressable
+      onLongPress={() => !disabled && onOpenMenu && onOpenMenu(exercise.uid)}
+      delayLongPress={800}
+      style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
+    >
       <View style={styles.exCardHeader}>
         <View>
-          <TouchableOpacity
-            onLongPress={() => onSwapExercise && onSwapExercise(exIdx)}
-            delayLongPress={800}
-            style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-          >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
             <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-          </TouchableOpacity>
+          </View>
           <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
         </View>
-        <Text style={[styles.exCardDoneCount, { color: done === exercise.sets.length ? "#30D158" : colors.textSecondary }]}>
-          {done}/{exercise.sets.length}
+        <Text style={[styles.exCardDoneCount, { color: allDone ? "#30D158" : colors.textSecondary }]}>
+          {done}/{total}
         </Text>
       </View>
 
       <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
-        <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: pct === 100 ? "#30D158" : (exercise.accentColor || "#30D158") }]} />
+        <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: allDone ? "#30D158" : (exercise.accentColor || "#30D158") }]} />
       </View>
 
       <View style={{ gap: 8 }}>
         {exercise.sets.map((set: any, si: number) => (
           <SetRow
-            key={si}
-            exIdx={exIdx}
+            key={set.uid}
+            exUid={exercise.uid}
             setIdx={si}
             set={set}
-            isDone={!!completed[`${exIdx}-${si}`]}
             onToggle={onToggle}
             onUpdateSet={onUpdateSet}
             onRemoveSet={onRemoveSet}
+            onSwipeOpen={onSwipeOpen}
+            onSwipeClose={onSwipeClose}
             prevSet={prevSets[si] ?? null}
+            disabled={disabled}
           />
         ))}
       </View>
 
-      <TouchableOpacity onPress={() => onAddSet && onAddSet(exIdx)} style={[styles.addSetBtn, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.06)", borderColor: colors.border }]}>
+      <TouchableOpacity disabled={disabled} onPress={() => onAddSet && onAddSet(exercise.uid)} style={[styles.addSetBtn, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.06)", borderColor: colors.border }]}>
         <Text style={[styles.addSetBtnText, { color: colors.textPrimary }]}>Add set</Text>
       </TouchableOpacity>
-    </View>
+    </Pressable>
   );
 }
 
@@ -398,7 +526,6 @@ export default function WorkoutPage() {
   const [started, setStarted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [workoutPlan, setWorkoutPlan] = useState<any[]>([]);
-  const [completed, setCompleted] = useState<any>({});
   const [elapsed, setElapsed] = useState(0);
   const [restTimer, setRestTimer] = useState(0);
   const [isResting, setIsResting] = useState(false);
@@ -414,7 +541,8 @@ export default function WorkoutPage() {
   const [newRoutineConfig, setNewRoutineConfig] = useState<any[]>([]);
   const [expandedOverviewEx, setExpandedOverviewEx] = useState<number | null>(null);
 
-  const [swappingExIdx, setSwappingExIdx] = useState<number | null>(null);
+  const [swappingExUid, setSwappingExUid] = useState<string | null>(null);
+  const [menuExUid, setMenuExUid] = useState<string | null>(null);
   const [routineModified, setRoutineModified] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
 
@@ -446,8 +574,7 @@ export default function WorkoutPage() {
         try {
           const data = JSON.parse(saved);
           setActiveRoutine(data.activeRoutine);
-          setWorkoutPlan(data.workoutPlan);
-          setCompleted(data.completed || {});
+          setWorkoutPlan(hydrateWorkoutPlan(data));
           setStartTime(data.startTime);
           setRoutineModified(data.routineModified || false);
           setStarted(true);
@@ -464,16 +591,16 @@ export default function WorkoutPage() {
 
     if (started && activeRoutine) {
       storage.setItem("activeWorkout", JSON.stringify({
+        v: ACTIVE_WORKOUT_VERSION,
         activeRoutine,
         workoutPlan,
-        completed,
         startTime,
         routineModified
       }));
     } else if (!started) {
       storage.removeItem("activeWorkout");
     }
-  }, [started, activeRoutine, workoutPlan, completed, startTime, routineModified]);
+  }, [started, activeRoutine, workoutPlan, startTime, routineModified]);
 
   useEffect(() => {
     if (!started || !startTime) return;
@@ -490,127 +617,185 @@ export default function WorkoutPage() {
     return () => clearTimeout(t);
   }, [isResting, restTimer]);
 
-  const toggle = (ei: number, si: number) => {
+  const { done, total } = completedCount(workoutPlan);
+  const overallPct = total ? (done / total) * 100 : 0;
+  const volume = totalVolume(workoutPlan);
+
+  // Any structural change is offered back to the routine template at finish (see finishWorkout)
+  const markRoutineModified = () => setRoutineModified(true);
+
+  const mapExercise = (exUid: string, fn: (ex: any) => any) =>
+    setWorkoutPlan((prev) => prev.map((ex) => (ex.uid === exUid ? fn(ex) : ex)));
+
+  const toggle = (exUid: string, setUid: string) => {
     if (isSaving) return;
-    const key = `${ei}-${si}`;
-    const nowDone = !completed[key];
-    setCompleted((prev: any) => ({ ...prev, [key]: nowDone }));
+    const set = workoutPlan.find((ex) => ex.uid === exUid)?.sets.find((s: any) => s.uid === setUid);
+    if (!set) return;
+    const nowDone = !set.done;
+    mapExercise(exUid, (ex) => ({
+      ...ex,
+      sets: ex.sets.map((s: any) => (s.uid === setUid ? { ...s, done: nowDone } : s)),
+    }));
     if (nowDone) { setRestTimer(90); setIsResting(true); }
   };
 
-  const { done, total } = completedCount(workoutPlan, completed);
-  const overallPct = total ? (done / total) * 100 : 0;
-  const volume = totalVolume(workoutPlan, completed);
-
-  const addSet = (exIdx: number) => {
-    const newPlan = [...workoutPlan];
-    const sets = newPlan[exIdx].sets;
-    const lastSet = sets[sets.length - 1] || { reps: 10, weight: 0, rir: 0 };
-    sets.push({ ...lastSet });
-    setWorkoutPlan(newPlan);
+  const addSet = (exUid: string) => {
+    if (isSaving) return;
+    mapExercise(exUid, (ex) => {
+      const last = ex.sets[ex.sets.length - 1];
+      const newSet = makeSet(last ? { reps: last.reps, weight: last.weight, rir: last.rir } : undefined);
+      return { ...ex, sets: [...ex.sets, newSet] };
+    });
+    markRoutineModified();
   };
-  const removeSet = (exIdx: number, setIdx: number) => {
-    const newPlan = [...workoutPlan];
-    newPlan[exIdx].sets.splice(setIdx, 1);
-    setWorkoutPlan(newPlan);
+  const removeSet = (exUid: string, setUid: string) => {
+    if (isSaving) return;
+    mapExercise(exUid, (ex) => ({ ...ex, sets: ex.sets.filter((s: any) => s.uid !== setUid) }));
+    markRoutineModified();
   };
-  const updateSet = (exIdx: number, setIdx: number, field: string, val: string) => {
-    const newPlan = [...workoutPlan];
-    newPlan[exIdx].sets[setIdx][field] = Number(val);
-    setWorkoutPlan(newPlan);
+  const updateSet = (exUid: string, setUid: string, field: string, val: string) => {
+    const n = Number(val);
+    mapExercise(exUid, (ex) => ({
+      ...ex,
+      sets: ex.sets.map((s: any) => (s.uid === setUid ? { ...s, [field]: Number.isFinite(n) ? n : 0 } : s)),
+    }));
   };
-  const removeExercise = (exIdx: number) => {
-    const newPlan = [...workoutPlan];
-    newPlan.splice(exIdx, 1);
-    setWorkoutPlan(newPlan);
+  const removeExercise = (exUid: string) => {
+    if (isSaving) return;
+    setWorkoutPlan((prev) => prev.filter((ex) => ex.uid !== exUid));
+    markRoutineModified();
   };
   const addExercise = (exercise: any) => {
     if (!exercise) return;
     const exId = exercise.id;
     const lastExSets = findLastSetsForExercise(exId);
-    
+
     let setsObj = [];
     if (lastExSets.length > 0) {
-      setsObj = lastExSets.map((s: any) => ({
+      setsObj = lastExSets.map((s: any) => makeSet({
         reps: s.reps,
         weight: unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight),
         rir: s.rir !== null ? s.rir : 0
       }));
     } else {
-      setsObj = [{ reps: 10, weight: 0, rir: 0 }];
+      setsObj = [makeSet()];
     }
 
-    const newPlan = [...workoutPlan];
-    newPlan.push({
-      ...exercise,
-      muscle: exercise.muscle_group || exercise.muscle,
-      accentColor: "#30D158",
-      exerciseId: exId,
-      id: Date.now(),
-      sets: setsObj,
-    });
-    setWorkoutPlan(newPlan);
+    setWorkoutPlan((prev) => [
+      ...prev,
+      makeExercise({
+        ...exercise,
+        muscle: exercise.muscle_group || exercise.muscle,
+        accentColor: "#30D158",
+        exerciseId: exId,
+        id: Date.now(),
+      }, setsObj),
+    ]);
+    markRoutineModified();
   };
 
-  const swapExercise = (exIdx: number, newExercise: any) => {
-    if (!newExercise) return;
-    const newPlan = [...workoutPlan];
-    const originalEx = newPlan[exIdx];
+  const swapExercise = (exUid: string, newExercise: any) => {
+    if (!newExercise || isSaving) return;
     const lastExSets = findLastSetsForExercise(newExercise.id);
 
-    const updatedSets = originalEx.sets.map((set: any, si: number) => {
-      const isSetDone = !!completed[`${exIdx}-${si}`];
-      if (isSetDone) {
-        return set;
-      }
-      const prevSet = lastExSets[si] || lastExSets[lastExSets.length - 1];
+    mapExercise(exUid, (originalEx) => {
+      // Completed sets keep their logged values; the rest are re-seeded from the new exercise's history.
+      // Spreading `set` here is deliberate: it's the same slot, so uid and done carry over.
+      const updatedSets = originalEx.sets.map((set: any, si: number) => {
+        if (set.done) {
+          return set;
+        }
+        const prevSet = lastExSets[si] || lastExSets[lastExSets.length - 1];
+        return {
+          ...set,
+          reps: prevSet ? prevSet.reps : 10,
+          weight: prevSet
+            ? (unit === "kg" ? Number((Number(prevSet.weight) / 2.205).toFixed(2)) : Number(prevSet.weight))
+            : 0,
+          rir: prevSet?.rir !== null && prevSet?.rir !== undefined ? prevSet.rir : 0
+        };
+      });
+
       return {
-        ...set,
-        reps: prevSet ? prevSet.reps : 10,
-        weight: prevSet 
-          ? (unit === "kg" ? Number((Number(prevSet.weight) / 2.205).toFixed(2)) : Number(prevSet.weight))
-          : 0,
-        rir: prevSet?.rir !== null && prevSet?.rir !== undefined ? prevSet.rir : 0
+        ...originalEx,
+        ...newExercise,
+        muscle: newExercise.muscle_group || newExercise.muscle,
+        accentColor: originalEx.accentColor || "#30D158",
+        exerciseId: newExercise.id,
+        name: newExercise.name,
+        sets: updatedSets,
+        uid: originalEx.uid,
       };
     });
-
-    newPlan[exIdx] = {
-      ...originalEx,
-      ...newExercise,
-      muscle: newExercise.muscle_group || newExercise.muscle,
-      accentColor: originalEx.accentColor || "#30D158",
-      exerciseId: newExercise.id,
-      name: newExercise.name,
-      sets: updatedSets
-    };
-
-    setWorkoutPlan(newPlan);
-    setRoutineModified(true);
+    markRoutineModified();
   };
+
+  // Only one set row may be swiped open at a time. Stable identity: every SetRow's
+  // Swipeable rebuilds its gesture when this changes.
+  const openSwipeRef = useRef<{ methods: SwipeableMethods; rect: { x: number; y: number; w: number; h: number } | null } | null>(null);
+  const handleSwipeOpen = useCallback((methods: SwipeableMethods, rowView: View | null) => {
+    const prev = openSwipeRef.current;
+    if (prev && prev.methods !== methods) prev.methods.close();
+    const entry: NonNullable<typeof openSwipeRef.current> = { methods, rect: null };
+    openSwipeRef.current = entry;
+    // The row's container stays put while its content slides, so one measurement covers the open state
+    rowView?.measure((_x, _y, w, h, pageX, pageY) => { entry.rect = { x: pageX, y: pageY, w, h }; });
+  }, []);
+  const handleSwipeClose = useCallback((methods: SwipeableMethods) => {
+    if (openSwipeRef.current?.methods === methods) openSwipeRef.current = null;
+  }, []);
+  const closeOpenSwipe = () => openSwipeRef.current?.methods.close();
+
+  // A touch anywhere outside the open row (a tap, a scroll, another row) closes it. Runs in the
+  // capture phase and never claims the touch, so whatever was tapped still gets it.
+  const handleTouchCapture = (e: GestureResponderEvent) => {
+    const open = openSwipeRef.current;
+    if (!open) return false;
+    const { pageX, pageY } = e.nativeEvent;
+    const r = open.rect;
+    const insideOpenRow = !!r && pageX >= r.x && pageX <= r.x + r.w && pageY >= r.y && pageY <= r.y + r.h;
+    if (!insideOpenRow) open.methods.close();
+    return false;
+  };
+
+  const openExerciseMenu = (exUid: string) => {
+    if (isSaving) return;
+    closeOpenSwipe();
+    setMenuExUid(exUid);
+  };
+
+  const menuEx = menuExUid ? workoutPlan.find((ex) => ex.uid === menuExUid) : null;
+  const swappingEx = swappingExUid ? workoutPlan.find((ex) => ex.uid === swappingExUid) : null;
 
   const saveWorkoutAndFinish = async (shouldUpdateRoutine: boolean) => {
     setIsSaving(true);
     try {
       if (shouldUpdateRoutine && activeRoutine && !activeRoutine.isPastWorkout) {
-        const payloadExercises = workoutPlan.map((ex: any) => ({
-          exercise_id: ex.exerciseId || ex.id,
-          sets: ex.sets.length,
-          reps: ex.sets[0]?.reps || 10,
-          weight: ex.sets[0]?.weight || 0,
-          rir: ex.sets[0]?.rir || 0
-        }));
+        // 0-set exercises are skipped: the backend stores `sets || 3`, so 0 would come back as 3
+        const payloadExercises = workoutPlan
+          .filter((ex: any) => ex.sets.length > 0)
+          .map((ex: any) => ({
+            exercise_id: ex.exerciseId || ex.id,
+            sets: ex.sets.length,
+            reps: ex.sets[0]?.reps || 10,
+            weight: ex.sets[0]?.weight || 0,
+            rir: ex.sets[0]?.rir || 0
+          }));
 
-        await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${activeRoutine.id}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: activeRoutine.name,
-            exercises: payloadExercises
-          }),
-        });
-        refresh("routines");
+        if (payloadExercises.length > 0) {
+          const routineRes = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${activeRoutine.id}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: activeRoutine.name,
+              exercises: payloadExercises
+            }),
+          });
+          if (routineRes.ok) refresh("routines");
+          else console.warn("Failed to update routine template:", routineRes.status);
+        }
       }
 
       const workoutRes = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts`, {
@@ -630,8 +815,8 @@ export default function WorkoutPage() {
         const exercise = workoutPlan[ei];
         const exId = exercise.exerciseId || exercise.id || 1;
         for (let si = 0; si < exercise.sets.length; si++) {
-          if (completed[`${ei}-${si}`]) {
-            const set = exercise.sets[si];
+          const set = exercise.sets[si];
+          if (set.done) {
             await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts/${workoutId}/sets`, {
               method: "POST",
               headers: {
@@ -658,17 +843,19 @@ export default function WorkoutPage() {
     setActiveRoutine(null);
     setStarted(false);
     setElapsed(0);
-    setCompleted({});
     setRoutineModified(false);
     setStartTime(null);
   };
 
   const finishWorkout = async () => {
     if (isSaving) return;
-    if (routineModified && activeRoutine && !activeRoutine.isPastWorkout) {
+    closeOpenSwipe();
+    const canUpdateRoutine = routineModified && activeRoutine && !activeRoutine.isPastWorkout
+      && workoutPlan.some((ex: any) => ex.sets.length > 0);
+    if (canUpdateRoutine) {
       Alert.alert(
         "Update Routine?",
-        "You swapped exercises in this workout. Would you like to update the routine template for future sessions?",
+        "You changed the exercises or sets in this workout. Save these changes to the routine for future sessions? If not, they'll only apply to today's session.",
         [
           { text: "Cancel", style: "cancel" },
           { text: "No, Only Save Session", onPress: () => saveWorkoutAndFinish(false) },
@@ -693,7 +880,6 @@ export default function WorkoutPage() {
             setStarted(false);
             setActiveRoutine(null);
             setWorkoutPlan([]);
-            setCompleted({});
             setElapsed(0);
             setStartTime(null);
             setRoutineModified(false);
@@ -754,48 +940,46 @@ export default function WorkoutPage() {
       const exercisesMap: any = {};
       item.sets.forEach((set: any) => {
         if (!exercisesMap[set.exercise_id]) {
-          exercisesMap[set.exercise_id] = {
+          exercisesMap[set.exercise_id] = makeExercise({
             id: set.exercise_id,
             name: set.name || set.exercise_name,
             muscle: set.muscle_group,
             accentColor: "#0A84FF",
-            sets: []
-          };
+          }, []);
         }
-        exercisesMap[set.exercise_id].sets.push({
+        exercisesMap[set.exercise_id].sets.push(makeSet({
           reps: set.reps, weight: unit === "kg" ? Number((Number(set.weight) / 2.205).toFixed(2)) : Number(set.weight), rir: set.rir !== null ? set.rir : 0
-        });
+        }));
       });
       plan = Object.values(exercisesMap);
     } else {
-      // It's a template routine. Base the plan on template's exercises.
-      // If a lastSession exists, pre-populate individual exercise sets from it.
+      // It's a template routine. The template decides how many sets each exercise gets,
+      // so session-only changes (sets added or removed without updating the routine) don't carry over.
+      // Values are pre-filled from the last session where available.
       plan = item.exercises.map((ex: any) => {
         const exId = ex.exercise_id || ex.id;
         const lastExSets = findLastSetsForExercise(exId);
+        const templateValues = {
+          reps: ex.reps || 10,
+          weight: unit === "kg" ? Number((Number(ex.weight || 0) / 2.205).toFixed(2)) : Number(ex.weight || 0),
+          rir: ex.rir || 0
+        };
 
-        let setsObj = [];
-        if (lastExSets.length > 0) {
-          setsObj = lastExSets.map((s: any) => ({
+        const setsObj = Array.from({ length: ex.sets || 3 }, (_, i) => {
+          const s = lastExSets[i] ?? lastExSets[lastExSets.length - 1];
+          return makeSet(s ? {
             reps: s.reps,
             weight: unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight),
             rir: s.rir !== null ? s.rir : 0
-          }));
-        } else {
-          setsObj = Array(ex.sets || 3).fill(0).map(() => ({
-            reps: ex.reps || 10,
-            weight: unit === "kg" ? Number((Number(ex.weight || 0) / 2.205).toFixed(2)) : Number(ex.weight || 0),
-            rir: ex.rir || 0
-          }));
-        }
+          } : templateValues);
+        });
 
-        return {
+        return makeExercise({
           ...ex,
           id: exId,
           exerciseId: exId,
-          sets: setsObj,
           accentColor: "#0A84FF",
-        };
+        }, setsObj);
       });
     }
 
@@ -805,6 +989,7 @@ export default function WorkoutPage() {
     setIsEditing(false);
     setElapsed(0);
     setStartTime(null);
+    setRoutineModified(false);
   };
 
   /* ── Routines List View ──────────────────────────────────────── */
@@ -929,44 +1114,44 @@ export default function WorkoutPage() {
     return (
       <PageShell title="Edit Workout" subtitle="Customize exercises & sets" onSettingsClick={() => router.push("/settings" as any)}>
         <View style={{ paddingBottom: 100 }}>
-          {workoutPlan.map((ex, ei) => (
-            <View key={ex.id || ei} style={[styles.card, { padding: 20, marginBottom: 16, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+          {workoutPlan.map((ex) => (
+            <View key={ex.uid} style={[styles.card, { padding: 20, marginBottom: 16, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
               <View style={styles.editExHeader}>
                 <View>
                   <Text style={[styles.editExName, { color: colors.textPrimary }]}>{ex.name}</Text>
                   <Text style={[styles.editExMuscle, { color: colors.textSecondary }]}>{ex.muscle}</Text>
                 </View>
-                <TouchableOpacity onPress={() => removeExercise(ei)} style={styles.removeExBtn}>
+                <TouchableOpacity onPress={() => removeExercise(ex.uid)} style={styles.removeExBtn}>
                   <Text style={styles.removeExText}>Remove</Text>
                 </TouchableOpacity>
               </View>
 
               {ex.sets.map((set: any, si: number) => (
-                <View key={si} style={styles.editSetRow}>
+                <View key={set.uid} style={styles.editSetRow}>
                   <Text style={[styles.editSetNum, { color: colors.textSecondary }]}>S{si + 1}</Text>
 
                   <View style={styles.editSetInputGroup}>
-                    <ClearOnFocusInput numericValue={set.weight} onChangeText={(t: string) => updateSet(ei, si, "weight", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <ClearOnFocusInput numericValue={set.weight} onChangeText={(t: string) => updateSet(ex.uid, set.uid, "weight", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>{unit}</Text>
                   </View>
 
                   <View style={styles.editSetInputGroup}>
-                    <ClearOnFocusInput numericValue={set.reps} onChangeText={(t: string) => updateSet(ei, si, "reps", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
+                    <ClearOnFocusInput numericValue={set.reps} onChangeText={(t: string) => updateSet(ex.uid, set.uid, "reps", t)} placeholder="0" style={[styles.editSetInput, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.textPrimary }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>reps</Text>
                   </View>
 
                   <View style={styles.editSetInputGroup}>
-                    <ClearOnFocusInput numericValue={set.rir !== undefined ? set.rir : 0} onChangeText={(t: string) => updateSet(ei, si, "rir", t)} placeholder="0" style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
+                    <ClearOnFocusInput numericValue={set.rir !== undefined ? set.rir : 0} onChangeText={(t: string) => updateSet(ex.uid, set.uid, "rir", t)} placeholder="0" style={[styles.editSetInputRir, { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.03)", borderColor: colors.border, color: colors.accentBlue }]} />
                     <Text style={[styles.editSetInputUnit, { color: colors.textSecondary }]}>RIR</Text>
                   </View>
 
-                  <TouchableOpacity onPress={() => removeSet(ei, si)} style={styles.removeSetBtn}>
+                  <TouchableOpacity onPress={() => removeSet(ex.uid, set.uid)} style={styles.removeSetBtn}>
                     <Text style={styles.removeSetBtnText}>✕</Text>
                   </TouchableOpacity>
                 </View>
               ))}
 
-              <TouchableOpacity onPress={() => addSet(ei)} style={[styles.addSetInlineBtn, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.05)", borderColor: colors.border }]}>
+              <TouchableOpacity onPress={() => addSet(ex.uid)} style={[styles.addSetInlineBtn, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.05)", borderColor: colors.border }]}>
                 <Text style={[styles.addSetInlineBtnText, { color: colors.textSecondary }]}>+ Add Set</Text>
               </TouchableOpacity>
             </View>
@@ -1070,94 +1255,135 @@ export default function WorkoutPage() {
   /* ── Active workout screen ───────────────────────────────────── */
   return (
     <PageShell title={activeRoutine.name} subtitle="Tracker Active" badge="LIVE" badgeColor="badge-red" onSettingsClick={() => router.push("/settings" as any)}>
-      <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Duration</Text>
-          <Text style={[styles.activeStatValue, { color: colors.textPrimary }]}>{formatWorkoutTime(elapsed)}</Text>
-        </View>
-        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Volume</Text>
-          <Text style={[styles.activeStatValue, { color: "#FFD60A" }]}>{volume.toLocaleString()}</Text>
-        </View>
-        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Sets</Text>
-          <Text style={[styles.activeStatValue, { color: "#30D158" }]}>{done}<Text style={{ fontSize: 16, color: colors.textTertiary }}>/{total}</Text></Text>
-        </View>
-      </View>
-
-      <View style={[styles.card, { padding: 14, marginBottom: 20, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: "500" }}>Workout Progress</Text>
-          <Text style={{ fontSize: 12, fontWeight: "700", color: overallPct === 100 ? "#30D158" : colors.accentBlue }}>{Math.round(overallPct)}%</Text>
-        </View>
-        <View style={[styles.barTrack, { height: 8, backgroundColor: colors.border }]}>
-          <View style={[styles.barFill, { width: `${overallPct}%`, backgroundColor: overallPct === 100 ? "#30D158" : colors.accentBlue }]} />
-        </View>
-      </View>
-
-      {isResting && (
-        <View style={styles.restTimerCard}>
-          <View>
-            <Text style={styles.restTimerLabel}>Rest Timer</Text>
-            <Text style={styles.restTimerValue}>{fmt(restTimer)}</Text>
+      <View onStartShouldSetResponderCapture={handleTouchCapture}>
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+          <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Duration</Text>
+            <Text style={[styles.activeStatValue, { color: colors.textPrimary, fontVariant: ["tabular-nums"] }]} numberOfLines={1} adjustsFontSizeToFit>
+              {clockWorkoutTime(elapsed)}
+            </Text>
           </View>
-          <TouchableOpacity onPress={() => { setIsResting(false); setRestTimer(0); }} style={styles.skipRestBtn}>
-            <Text style={styles.skipRestBtnText}>Skip</Text>
-          </TouchableOpacity>
+          <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Volume</Text>
+            <Text style={[styles.activeStatValue, { color: "#FFD60A" }]} numberOfLines={1} adjustsFontSizeToFit>
+              {volume.toLocaleString()}
+              <Text style={[styles.activeStatUnit, { color: colors.textTertiary }]}> {unit}</Text>
+            </Text>
+          </View>
+          <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Sets</Text>
+            <Text style={[styles.activeStatValue, { color: "#30D158" }]} numberOfLines={1} adjustsFontSizeToFit>
+              {done}
+              <Text style={[styles.activeStatUnit, { color: colors.textTertiary }]}>/{total}</Text>
+            </Text>
+          </View>
         </View>
-      )}
 
-      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Exercises</Text>
+        <View style={[styles.card, { padding: 14, marginBottom: 20, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: "500" }}>Workout Progress</Text>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: overallPct === 100 ? "#30D158" : colors.accentBlue }}>{Math.round(overallPct)}%</Text>
+          </View>
+          <View style={[styles.barTrack, { height: 8, backgroundColor: colors.border }]}>
+            <View style={[styles.barFill, { width: `${overallPct}%`, backgroundColor: overallPct === 100 ? "#30D158" : colors.accentBlue }]} />
+          </View>
+        </View>
 
-      <View style={{ gap: 12 }}>
-        {workoutPlan.map((ex, ei) => (
-          <ExerciseCard key={ex.id} exercise={ex} exIdx={ei} completed={completed} onToggle={toggle} onUpdateSet={updateSet} onAddSet={addSet} onRemoveSet={removeSet} onSwapExercise={setSwappingExIdx} />
-        ))}
+        {isResting && (
+          <View style={styles.restTimerCard}>
+            <View>
+              <Text style={styles.restTimerLabel}>Rest Timer</Text>
+              <Text style={styles.restTimerValue}>{fmt(restTimer)}</Text>
+            </View>
+            <TouchableOpacity onPress={() => { setIsResting(false); setRestTimer(0); }} style={styles.skipRestBtn}>
+              <Text style={styles.skipRestBtnText}>Skip</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Exercises</Text>
+
+        {workoutPlan.length === 0 ? (
+          <View style={[styles.card, styles.emptyPlanCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.emptyPlanTitle, { color: colors.textPrimary }]}>No exercises left</Text>
+            <Text style={[styles.emptyPlanText, { color: colors.textSecondary }]}>Finish or cancel this workout.</Text>
+          </View>
+        ) : (
+          <View style={{ gap: 12 }}>
+            {workoutPlan.map((ex) => (
+              <ExerciseCard
+                key={ex.uid}
+                exercise={ex}
+                onToggle={toggle}
+                onUpdateSet={updateSet}
+                onAddSet={addSet}
+                onRemoveSet={removeSet}
+                onOpenMenu={openExerciseMenu}
+                onSwipeOpen={handleSwipeOpen}
+                onSwipeClose={handleSwipeClose}
+                disabled={isSaving}
+              />
+            ))}
+          </View>
+        )}
+
+        <TouchableOpacity
+          onPress={finishWorkout}
+          disabled={isSaving}
+          style={[styles.finishWorkoutBtn, { backgroundColor: overallPct === 100 ? "#30D158" : (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)"), borderColor: overallPct === 100 ? "transparent" : colors.border, opacity: isSaving ? 0.7 : 1 }]}
+        >
+          <Text style={[styles.finishWorkoutBtnText, { color: overallPct === 100 ? "#000" : colors.textPrimary }]}>
+            {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={cancelWorkout}
+          disabled={isSaving}
+          style={{ paddingVertical: 14, alignItems: "center", marginTop: 4, marginBottom: 16 }}
+        >
+          <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600" }}>Cancel Workout</Text>
+        </TouchableOpacity>
       </View>
 
-      <TouchableOpacity
-        onPress={finishWorkout}
-        disabled={isSaving}
-        style={[styles.finishWorkoutBtn, { backgroundColor: overallPct === 100 ? "#30D158" : (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)"), borderColor: overallPct === 100 ? "transparent" : colors.border, opacity: isSaving ? 0.7 : 1 }]}
-      >
-        <Text style={[styles.finishWorkoutBtnText, { color: overallPct === 100 ? "#000" : colors.textPrimary }]}>
-          {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={cancelWorkout}
-        disabled={isSaving}
-        style={{ paddingVertical: 14, alignItems: "center", marginTop: 4, marginBottom: 16 }}
-      >
-        <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600" }}>Cancel Workout</Text>
-      </TouchableOpacity>
-
-      <Modal visible={swappingExIdx !== null} animationType="slide" transparent>
+      <Modal visible={!!swappingEx} animationType="slide" transparent onRequestClose={() => setSwappingExUid(null)}>
         <View style={[styles.modalOverlay, { backgroundColor: isLight ? "rgba(255,255,255,0.98)" : "rgba(0,0,0,0.95)" }]}>
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Swap Exercise</Text>
-            <TouchableOpacity onPress={() => setSwappingExIdx(null)}>
+            <TouchableOpacity onPress={() => setSwappingExUid(null)}>
               <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {swappingExIdx !== null && (
+          {swappingEx && (
             <Text style={{ fontSize: 16, color: colors.textSecondary, marginBottom: 20 }}>
-              Replace <Text style={{ fontWeight: "700", color: colors.textPrimary }}>&quot;{workoutPlan[swappingExIdx]?.name}&quot;</Text> with:
+              Replace <Text style={{ fontWeight: "700", color: colors.textPrimary }}>&quot;{swappingEx.name}&quot;</Text> with:
             </Text>
           )}
 
           <ExerciseSearch
             onAdd={(newEx: any) => {
-              if (swappingExIdx !== null) {
-                swapExercise(swappingExIdx, newEx);
-                setSwappingExIdx(null);
+              if (swappingExUid) {
+                swapExercise(swappingExUid, newEx);
+                setSwappingExUid(null);
               }
             }}
           />
         </View>
       </Modal>
+
+      <ExerciseActionSheet
+        visible={!!menuEx}
+        exercise={menuEx}
+        completedSets={menuEx ? menuEx.sets.filter((s: any) => s.done).length : 0}
+        onReplace={() => menuEx && setSwappingExUid(menuEx.uid)}
+        onRemove={() => {
+          if (!menuEx) return;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+          removeExercise(menuEx.uid);
+        }}
+        onClose={() => setMenuExUid(null)}
+      />
 
       <CelebrationOverlay
         visible={showWorkoutCelebration}
@@ -1498,13 +1724,16 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: "700",
   },
   activeStatCard: {
-    flex: 1, padding: 14,
+    flex: 1, paddingVertical: 12, paddingHorizontal: 12,
   },
   activeStatLabel: {
     fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4,
   },
   activeStatValue: {
-    fontSize: 28, fontWeight: "800", letterSpacing: -1.5, color: "#fff",
+    fontSize: 22, fontWeight: "800", letterSpacing: -0.8, color: "#fff",
+  },
+  activeStatUnit: {
+    fontSize: 12, fontWeight: "600", letterSpacing: 0,
   },
   restTimerCard: {
     padding: 14, marginBottom: 16, borderRadius: 20, borderWidth: 1,
@@ -1563,6 +1792,22 @@ const styles = StyleSheet.create({
   },
   setRowContainer: {
     width: "100%", borderRadius: 12, overflow: "hidden",
+  },
+  setDeleteAction: {
+    width: DELETE_ACTION_WIDTH, backgroundColor: "#FF2D55",
+    alignItems: "center", justifyContent: "center",
+  },
+  setDeleteActionText: {
+    color: "#fff", fontSize: 13, fontWeight: "800",
+  },
+  emptyPlanCard: {
+    padding: 24, alignItems: "center", marginBottom: 12,
+  },
+  emptyPlanTitle: {
+    fontSize: 16, fontWeight: "700", marginBottom: 4,
+  },
+  emptyPlanText: {
+    fontSize: 13, fontWeight: "500",
   },
   setRowInner: {
     flexDirection: "row", alignItems: "center", gap: 10,

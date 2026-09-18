@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppState } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
 
@@ -155,13 +156,15 @@ export default function RootLayout() {
   }
 
   return (
-    <SettingsProvider>
-      <DataProvider>
-        <ForegroundRefresh />
-        <AuthGuard>
-          <AppNavigator />
-        </AuthGuard>
-      </DataProvider>
-    </SettingsProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SettingsProvider>
+        <DataProvider>
+          <ForegroundRefresh />
+          <AuthGuard>
+            <AppNavigator />
+          </AuthGuard>
+        </DataProvider>
+      </SettingsProvider>
+    </GestureHandlerRootView>
   );
 }
