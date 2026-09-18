@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard } from "react-native";
+import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard, type GestureResponderEvent } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import ReanimatedSwipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -28,6 +28,14 @@ function formatWorkoutTime(secs: number) {
     const mm = String(mins).padStart(2, "0");
     return `${hours} h : ${mm} minutes`;
   }
+}
+
+/** Live clock for the stat tile: MM:SS, or H:MM:SS once past an hour */
+function clockWorkoutTime(secs: number) {
+  const hours = Math.floor(secs / 3600);
+  const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, "0");
+  const ss = String(secs % 60).padStart(2, "0");
+  return hours === 0 ? `${mm}:${ss}` : `${hours}:${mm}:${ss}`;
 }
 
 function totalVolume(exercises: any[]) {
@@ -307,11 +315,12 @@ function SetDeleteAction({ progress, onPress }: { progress: SharedValue<number>;
 }
 
 /* ─── SetRow ────────────────────────────────────────────────── */
-function SetRow({ exUid, setIdx, set, onToggle, onUpdateSet, onRemoveSet, onSwipeOpen, prevSet, disabled }: any) {
+function SetRow({ exUid, setIdx, set, onToggle, onUpdateSet, onRemoveSet, onSwipeOpen, onSwipeClose, prevSet, disabled }: any) {
   const ctx = useSettings() as any;
   const unit = ctx?.weightUnit || "lbs";
   const { colors, isLight } = useTheme();
   const swipeRef = useRef<SwipeableMethods>(null);
+  const rowRef = useRef<View>(null);
   const isDone = !!set.done;
 
   const closeRow = () => swipeRef.current?.close();
@@ -337,91 +346,98 @@ function SetRow({ exUid, setIdx, set, onToggle, onUpdateSet, onRemoveSet, onSwip
 
   // Swipeable rebuilds its pan gesture when this identity changes, and the page re-renders every second
   const handleWillOpen = useCallback(() => {
-    if (swipeRef.current) onSwipeOpen?.(swipeRef.current);
+    if (swipeRef.current) onSwipeOpen?.(swipeRef.current, rowRef.current);
   }, [onSwipeOpen]);
 
+  const handleClose = useCallback(() => {
+    if (swipeRef.current) onSwipeClose?.(swipeRef.current);
+  }, [onSwipeClose]);
+
   return (
-    <ReanimatedSwipeable
-      ref={swipeRef}
-      enabled={!disabled}
-      containerStyle={styles.setRowContainer}
-      childrenContainerStyle={{ backgroundColor: colors.bgCardSolid, borderRadius: 12 }}
-      renderRightActions={(progress) => <SetDeleteAction progress={progress} onPress={handleDeletePress} />}
-      onSwipeableWillOpen={handleWillOpen}
-      overshootRight={false}
-      rightThreshold={DELETE_ACTION_WIDTH / 2}
-      dragOffsetFromRightEdge={20}
-      dragOffsetFromLeftEdge={20}
-    >
-      <View
-        style={[
-          styles.setRowInner,
-          {
-            backgroundColor: isDone ? "rgba(48,209,88,0.12)" : (isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)"),
-            borderColor: isDone ? "rgba(48,209,88,0.3)" : colors.border,
-          }
-        ]}
+    <View ref={rowRef} collapsable={false}>
+      <ReanimatedSwipeable
+        ref={swipeRef}
+        enabled={!disabled}
+        containerStyle={styles.setRowContainer}
+        childrenContainerStyle={{ backgroundColor: colors.bgCardSolid, borderRadius: 12 }}
+        renderRightActions={(progress) => <SetDeleteAction progress={progress} onPress={handleDeletePress} />}
+        onSwipeableWillOpen={handleWillOpen}
+        onSwipeableClose={handleClose}
+        overshootRight={false}
+        rightThreshold={DELETE_ACTION_WIDTH / 2}
+        dragOffsetFromRightEdge={20}
+        dragOffsetFromLeftEdge={20}
       >
-        <Text style={[styles.setRowIndex, { color: colors.textSecondary }]}>S{setIdx + 1}</Text>
-
-        <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
-          {prevSet ? (
-            <>
-              <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>
-                {unit === "kg" ? Number((prevSet.weight / 2.205).toFixed(2)) : prevSet.weight}
-                <Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}
-              </Text>
-              {prevSet.rir != null && prevSet.rir !== undefined && prevSet.rir > 0 && <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.rir}rir</Text>}
-            </>
-          ) : (
-            <Text style={{ fontSize: 10, color: colors.textTertiary }}>—</Text>
-          )}
-        </View>
-
-        <View style={styles.setInputsRow}>
-          <View style={styles.inputGroup}>
-            <ClearOnFocusInput
-              numericValue={set.weight}
-              onChangeText={(t: string) => onUpdateSet(exUid, set.uid, "weight", t)}
-              placeholder="0"
-              placeholderTextColor={colors.textTertiary}
-              editable={!isDone}
-              style={[styles.setNumInput, { color: isDone ? "#30D158" : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
-            />
-            <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>{unit}</Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <ClearOnFocusInput
-              numericValue={set.reps}
-              onChangeText={(t: string) => onUpdateSet(exUid, set.uid, "reps", t)}
-              placeholder="0"
-              placeholderTextColor={colors.textTertiary}
-              editable={!isDone}
-              style={[styles.setNumInput, { color: isDone ? colors.textSecondary : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
-            />
-            <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>reps</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => onToggle(exUid, set.uid)}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}
+        <View
+          style={[
+            styles.setRowInner,
+            {
+              backgroundColor: isDone ? "rgba(48,209,88,0.12)" : (isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)"),
+              borderColor: isDone ? "rgba(48,209,88,0.3)" : colors.border,
+            }
+          ]}
         >
-          {isDone && (
-            <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <Path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
-          )}
-        </TouchableOpacity>
-      </View>
-    </ReanimatedSwipeable>
+          <Text style={[styles.setRowIndex, { color: colors.textSecondary }]}>S{setIdx + 1}</Text>
+
+          <View style={[styles.prevSetCol, { borderRightColor: colors.border }]}>
+            {prevSet ? (
+              <>
+                <Text style={[styles.prevSetWeight, { color: colors.textTertiary }]}>
+                  {unit === "kg" ? Number((prevSet.weight / 2.205).toFixed(2)) : prevSet.weight}
+                  <Text style={{ fontSize: 9, fontWeight: "500" }}>{unit}</Text> x {prevSet.reps}
+                </Text>
+                {prevSet.rir != null && prevSet.rir !== undefined && prevSet.rir > 0 && <Text style={[styles.prevSetReps, { color: colors.textTertiary }]}>{prevSet.rir}rir</Text>}
+              </>
+            ) : (
+              <Text style={{ fontSize: 10, color: colors.textTertiary }}>—</Text>
+            )}
+          </View>
+
+          <View style={styles.setInputsRow}>
+            <View style={styles.inputGroup}>
+              <ClearOnFocusInput
+                numericValue={set.weight}
+                onChangeText={(t: string) => onUpdateSet(exUid, set.uid, "weight", t)}
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
+                editable={!isDone}
+                style={[styles.setNumInput, { color: isDone ? "#30D158" : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
+              />
+              <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>{unit}</Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <ClearOnFocusInput
+                numericValue={set.reps}
+                onChangeText={(t: string) => onUpdateSet(exUid, set.uid, "reps", t)}
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
+                editable={!isDone}
+                style={[styles.setNumInput, { color: isDone ? colors.textSecondary : colors.textPrimary, backgroundColor: isDone ? "transparent" : (isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.06)"), borderColor: isDone ? "transparent" : colors.border }]}
+              />
+              <Text style={[styles.inputUnit, { color: colors.textSecondary }]}>reps</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => onToggle(exUid, set.uid)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={[styles.checkCircle, { backgroundColor: isDone ? "#30D158" : "transparent", borderColor: isDone ? "#30D158" : colors.border }]}
+          >
+            {isDone && (
+              <Svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <Path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ReanimatedSwipeable>
+    </View>
   );
 }
 
 /* ─── ExerciseCard ──────────────────────────────────────────── */
-function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, onOpenMenu, onSwipeOpen, disabled }: any) {
+function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, onOpenMenu, onSwipeOpen, onSwipeClose, disabled }: any) {
   // History is tagged with the exercise it was fetched for: a swap keeps this card mounted
   // (keyed by uid), and the old exercise's "previous" hints must not show against the new one.
   const [history, setHistory] = useState<{ exerciseId: any; sets: any[] }>({ exerciseId: null, sets: [] });
@@ -451,17 +467,19 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
   const allDone = total > 0 && done === total;
 
   return (
-    <View style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+    // Long press anywhere on the card opens the menu. Inputs, the check circle and "Add set"
+    // take their own touches, and scrolling or swiping a set cancels the press.
+    <Pressable
+      onLongPress={() => !disabled && onOpenMenu && onOpenMenu(exercise.uid)}
+      delayLongPress={800}
+      style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
+    >
       <View style={styles.exCardHeader}>
         <View>
-          <TouchableOpacity
-            onLongPress={() => !disabled && onOpenMenu && onOpenMenu(exercise.uid)}
-            delayLongPress={800}
-            style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-          >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
             <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-          </TouchableOpacity>
+          </View>
           <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
         </View>
         <Text style={[styles.exCardDoneCount, { color: allDone ? "#30D158" : colors.textSecondary }]}>
@@ -484,6 +502,7 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
             onUpdateSet={onUpdateSet}
             onRemoveSet={onRemoveSet}
             onSwipeOpen={onSwipeOpen}
+            onSwipeClose={onSwipeClose}
             prevSet={prevSets[si] ?? null}
             disabled={disabled}
           />
@@ -493,7 +512,7 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
       <TouchableOpacity disabled={disabled} onPress={() => onAddSet && onAddSet(exercise.uid)} style={[styles.addSetBtn, { backgroundColor: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.06)", borderColor: colors.border }]}>
         <Text style={[styles.addSetBtnText, { color: colors.textPrimary }]}>Add set</Text>
       </TouchableOpacity>
-    </View>
+    </Pressable>
   );
 }
 
@@ -713,15 +732,35 @@ export default function WorkoutPage() {
 
   // Only one set row may be swiped open at a time. Stable identity: every SetRow's
   // Swipeable rebuilds its gesture when this changes.
-  const openSwipeRef = useRef<SwipeableMethods | null>(null);
-  const handleSwipeOpen = useCallback((methods: SwipeableMethods) => {
-    if (openSwipeRef.current && openSwipeRef.current !== methods) openSwipeRef.current.close();
-    openSwipeRef.current = methods;
+  const openSwipeRef = useRef<{ methods: SwipeableMethods; rect: { x: number; y: number; w: number; h: number } | null } | null>(null);
+  const handleSwipeOpen = useCallback((methods: SwipeableMethods, rowView: View | null) => {
+    const prev = openSwipeRef.current;
+    if (prev && prev.methods !== methods) prev.methods.close();
+    const entry: NonNullable<typeof openSwipeRef.current> = { methods, rect: null };
+    openSwipeRef.current = entry;
+    // The row's container stays put while its content slides, so one measurement covers the open state
+    rowView?.measure((_x, _y, w, h, pageX, pageY) => { entry.rect = { x: pageX, y: pageY, w, h }; });
   }, []);
+  const handleSwipeClose = useCallback((methods: SwipeableMethods) => {
+    if (openSwipeRef.current?.methods === methods) openSwipeRef.current = null;
+  }, []);
+  const closeOpenSwipe = () => openSwipeRef.current?.methods.close();
+
+  // A touch anywhere outside the open row (a tap, a scroll, another row) closes it. Runs in the
+  // capture phase and never claims the touch, so whatever was tapped still gets it.
+  const handleTouchCapture = (e: GestureResponderEvent) => {
+    const open = openSwipeRef.current;
+    if (!open) return false;
+    const { pageX, pageY } = e.nativeEvent;
+    const r = open.rect;
+    const insideOpenRow = !!r && pageX >= r.x && pageX <= r.x + r.w && pageY >= r.y && pageY <= r.y + r.h;
+    if (!insideOpenRow) open.methods.close();
+    return false;
+  };
 
   const openExerciseMenu = (exUid: string) => {
     if (isSaving) return;
-    openSwipeRef.current?.close();
+    closeOpenSwipe();
     setMenuExUid(exUid);
   };
 
@@ -810,7 +849,7 @@ export default function WorkoutPage() {
 
   const finishWorkout = async () => {
     if (isSaving) return;
-    openSwipeRef.current?.close();
+    closeOpenSwipe();
     const canUpdateRoutine = routineModified && activeRoutine && !activeRoutine.isPastWorkout
       && workoutPlan.some((ex: any) => ex.sets.length > 0);
     if (canUpdateRoutine) {
@@ -1216,85 +1255,96 @@ export default function WorkoutPage() {
   /* ── Active workout screen ───────────────────────────────────── */
   return (
     <PageShell title={activeRoutine.name} subtitle="Tracker Active" badge="LIVE" badgeColor="badge-red" onSettingsClick={() => router.push("/settings" as any)}>
-      <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Duration</Text>
-          <Text style={[styles.activeStatValue, { color: colors.textPrimary }]}>{formatWorkoutTime(elapsed)}</Text>
-        </View>
-        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Volume</Text>
-          <Text style={[styles.activeStatValue, { color: "#FFD60A" }]}>{volume.toLocaleString()}</Text>
-        </View>
-        <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Sets</Text>
-          <Text style={[styles.activeStatValue, { color: "#30D158" }]}>{done}<Text style={{ fontSize: 16, color: colors.textTertiary }}>/{total}</Text></Text>
-        </View>
-      </View>
-
-      <View style={[styles.card, { padding: 14, marginBottom: 20, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: "500" }}>Workout Progress</Text>
-          <Text style={{ fontSize: 12, fontWeight: "700", color: overallPct === 100 ? "#30D158" : colors.accentBlue }}>{Math.round(overallPct)}%</Text>
-        </View>
-        <View style={[styles.barTrack, { height: 8, backgroundColor: colors.border }]}>
-          <View style={[styles.barFill, { width: `${overallPct}%`, backgroundColor: overallPct === 100 ? "#30D158" : colors.accentBlue }]} />
-        </View>
-      </View>
-
-      {isResting && (
-        <View style={styles.restTimerCard}>
-          <View>
-            <Text style={styles.restTimerLabel}>Rest Timer</Text>
-            <Text style={styles.restTimerValue}>{fmt(restTimer)}</Text>
+      <View onStartShouldSetResponderCapture={handleTouchCapture}>
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+          <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Duration</Text>
+            <Text style={[styles.activeStatValue, { color: colors.textPrimary, fontVariant: ["tabular-nums"] }]} numberOfLines={1} adjustsFontSizeToFit>
+              {clockWorkoutTime(elapsed)}
+            </Text>
           </View>
-          <TouchableOpacity onPress={() => { setIsResting(false); setRestTimer(0); }} style={styles.skipRestBtn}>
-            <Text style={styles.skipRestBtnText}>Skip</Text>
-          </TouchableOpacity>
+          <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Volume</Text>
+            <Text style={[styles.activeStatValue, { color: "#FFD60A" }]} numberOfLines={1} adjustsFontSizeToFit>
+              {volume.toLocaleString()}
+              <Text style={[styles.activeStatUnit, { color: colors.textTertiary }]}> {unit}</Text>
+            </Text>
+          </View>
+          <View style={[styles.card, styles.activeStatCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.activeStatLabel, { color: colors.textSecondary }]}>Sets</Text>
+            <Text style={[styles.activeStatValue, { color: "#30D158" }]} numberOfLines={1} adjustsFontSizeToFit>
+              {done}
+              <Text style={[styles.activeStatUnit, { color: colors.textTertiary }]}>/{total}</Text>
+            </Text>
+          </View>
         </View>
-      )}
 
-      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Exercises</Text>
-
-      {workoutPlan.length === 0 ? (
-        <View style={[styles.card, styles.emptyPlanCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-          <Text style={[styles.emptyPlanTitle, { color: colors.textPrimary }]}>No exercises left</Text>
-          <Text style={[styles.emptyPlanText, { color: colors.textSecondary }]}>Finish or cancel this workout.</Text>
+        <View style={[styles.card, { padding: 14, marginBottom: 20, backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: "500" }}>Workout Progress</Text>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: overallPct === 100 ? "#30D158" : colors.accentBlue }}>{Math.round(overallPct)}%</Text>
+          </View>
+          <View style={[styles.barTrack, { height: 8, backgroundColor: colors.border }]}>
+            <View style={[styles.barFill, { width: `${overallPct}%`, backgroundColor: overallPct === 100 ? "#30D158" : colors.accentBlue }]} />
+          </View>
         </View>
-      ) : (
-        <View style={{ gap: 12 }}>
-          {workoutPlan.map((ex) => (
-            <ExerciseCard
-              key={ex.uid}
-              exercise={ex}
-              onToggle={toggle}
-              onUpdateSet={updateSet}
-              onAddSet={addSet}
-              onRemoveSet={removeSet}
-              onOpenMenu={openExerciseMenu}
-              onSwipeOpen={handleSwipeOpen}
-              disabled={isSaving}
-            />
-          ))}
-        </View>
-      )}
 
-      <TouchableOpacity
-        onPress={finishWorkout}
-        disabled={isSaving}
-        style={[styles.finishWorkoutBtn, { backgroundColor: overallPct === 100 ? "#30D158" : (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)"), borderColor: overallPct === 100 ? "transparent" : colors.border, opacity: isSaving ? 0.7 : 1 }]}
-      >
-        <Text style={[styles.finishWorkoutBtnText, { color: overallPct === 100 ? "#000" : colors.textPrimary }]}>
-          {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
-        </Text>
-      </TouchableOpacity>
+        {isResting && (
+          <View style={styles.restTimerCard}>
+            <View>
+              <Text style={styles.restTimerLabel}>Rest Timer</Text>
+              <Text style={styles.restTimerValue}>{fmt(restTimer)}</Text>
+            </View>
+            <TouchableOpacity onPress={() => { setIsResting(false); setRestTimer(0); }} style={styles.skipRestBtn}>
+              <Text style={styles.skipRestBtnText}>Skip</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      <TouchableOpacity
-        onPress={cancelWorkout}
-        disabled={isSaving}
-        style={{ paddingVertical: 14, alignItems: "center", marginTop: 4, marginBottom: 16 }}
-      >
-        <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600" }}>Cancel Workout</Text>
-      </TouchableOpacity>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Exercises</Text>
+
+        {workoutPlan.length === 0 ? (
+          <View style={[styles.card, styles.emptyPlanCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <Text style={[styles.emptyPlanTitle, { color: colors.textPrimary }]}>No exercises left</Text>
+            <Text style={[styles.emptyPlanText, { color: colors.textSecondary }]}>Finish or cancel this workout.</Text>
+          </View>
+        ) : (
+          <View style={{ gap: 12 }}>
+            {workoutPlan.map((ex) => (
+              <ExerciseCard
+                key={ex.uid}
+                exercise={ex}
+                onToggle={toggle}
+                onUpdateSet={updateSet}
+                onAddSet={addSet}
+                onRemoveSet={removeSet}
+                onOpenMenu={openExerciseMenu}
+                onSwipeOpen={handleSwipeOpen}
+                onSwipeClose={handleSwipeClose}
+                disabled={isSaving}
+              />
+            ))}
+          </View>
+        )}
+
+        <TouchableOpacity
+          onPress={finishWorkout}
+          disabled={isSaving}
+          style={[styles.finishWorkoutBtn, { backgroundColor: overallPct === 100 ? "#30D158" : (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)"), borderColor: overallPct === 100 ? "transparent" : colors.border, opacity: isSaving ? 0.7 : 1 }]}
+        >
+          <Text style={[styles.finishWorkoutBtnText, { color: overallPct === 100 ? "#000" : colors.textPrimary }]}>
+            {isSaving ? "Saving..." : overallPct === 100 ? "🎉 Complete Workout" : `Finish Early (${Math.round(overallPct)}%)`}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={cancelWorkout}
+          disabled={isSaving}
+          style={{ paddingVertical: 14, alignItems: "center", marginTop: 4, marginBottom: 16 }}
+        >
+          <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: "600" }}>Cancel Workout</Text>
+        </TouchableOpacity>
+      </View>
 
       <Modal visible={!!swappingEx} animationType="slide" transparent onRequestClose={() => setSwappingExUid(null)}>
         <View style={[styles.modalOverlay, { backgroundColor: isLight ? "rgba(255,255,255,0.98)" : "rgba(0,0,0,0.95)" }]}>
@@ -1674,13 +1724,16 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)", fontSize: 14, fontWeight: "700",
   },
   activeStatCard: {
-    flex: 1, padding: 14,
+    flex: 1, paddingVertical: 12, paddingHorizontal: 12,
   },
   activeStatLabel: {
     fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4,
   },
   activeStatValue: {
-    fontSize: 28, fontWeight: "800", letterSpacing: -1.5, color: "#fff",
+    fontSize: 22, fontWeight: "800", letterSpacing: -0.8, color: "#fff",
+  },
+  activeStatUnit: {
+    fontSize: 12, fontWeight: "600", letterSpacing: 0,
   },
   restTimerCard: {
     padding: 14, marginBottom: 16, borderRadius: 20, borderWidth: 1,

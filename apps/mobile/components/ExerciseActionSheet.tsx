@@ -17,7 +17,7 @@ interface ExerciseActionSheetProps {
 }
 
 const SHEET_OFFSCREEN = 480;
-// Extra sheet below the screen edge so the spring's overshoot never reveals a gap
+// Extra sheet below the screen edge so the spring's small overshoot never reveals a gap
 const SHEET_BLEED = 40;
 
 function SwapIcon({ color }: { color: string }) {
@@ -98,7 +98,9 @@ export default function ExerciseActionSheet({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
     backdrop.set(withTiming(1, { duration: 220 }));
-    sheetY.set(withSpring(0, { damping: 18, stiffness: 180 }));
+    // Damping ratio ~0.8: one small settle (~1% of the travel) instead of a visible bounce.
+    // mass must be explicit: Reanimated 4 defaults it to 4, which quietly halves the damping ratio.
+    sheetY.set(withSpring(0, { damping: 26, stiffness: 260, mass: 1 }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
