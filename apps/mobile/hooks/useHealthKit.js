@@ -137,7 +137,7 @@ export function useHealthKit() {
           }
         }
       } catch (e) {
-        Alert.alert('⚠️ Sleep Error', `queryCategorySamples(sleepAnalysis) failed:\n${e.message}`);
+        console.warn('[HealthKit] queryCategorySamples(sleepAnalysis) failed:', e.message);
         sleepData._sleepError = e.message;
       }
 
@@ -209,7 +209,7 @@ export function useHealthKit() {
           };
         }
       } catch (e) {
-        Alert.alert('⚠️ RHR Error', `queryQuantitySamples(restingHeartRate) failed:\n${e.message}`);
+        console.warn('[HealthKit] queryQuantitySamples(restingHeartRate) failed:', e.message);
         rhrData._rhrError = e.message;
       }
 
@@ -302,9 +302,15 @@ export function useHealthKit() {
           };
         }
       } catch (e) {
-        Alert.alert('⚠️ HRV Error', `queryQuantitySamples(heartRateVariabilitySDNN) failed:\n${e.message}`);
+        console.warn('[HealthKit] queryQuantitySamples(heartRateVariabilitySDNN) failed:', e.message);
         hrvData._hrvError = e.message;
       }
+
+      // Strip the underscore-prefixed diagnostic fields so only real metrics
+      // reach the recovery state.
+      const { _rhrError, _rhrSamples, ...cleanRhr } = rhrData;
+      const { _hrvError, _hrvSamples, ...cleanHrv } = hrvData;
+      const { _sleepError, _sleepSamples, _sleepValues, ...cleanSleep } = sleepData;
 
       setHealthData({
         ...cleanRhr,
