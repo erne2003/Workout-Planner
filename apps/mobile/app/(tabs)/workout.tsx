@@ -5,7 +5,7 @@ import * as Haptics from "expo-haptics";
 import ReanimatedSwipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import Animated, { Extrapolation, interpolate, useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import PageShell from "@/components/PageShell";
-import CelebrationOverlay from "@/components/CelebrationOverlay";
+import WorkoutCompleteOverlay from "@/components/WorkoutCompleteOverlay";
 import ExerciseActionSheet from "@/components/ExerciseActionSheet";
 import WorkoutRecap from "@/components/WorkoutRecap";
 import { useSettings, useData, getStorage, summarizeWorkout } from "@apex/core";
@@ -535,8 +535,8 @@ export default function WorkoutPage() {
   const [restTimer, setRestTimer] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showWorkoutCelebration, setShowWorkoutCelebration] = useState(false);
-  const [recap, setRecap] = useState<{ summary: any; routineName: string; durationSecs: number; workoutId: any } | null>(null);
+  const [celebrationKicker, setCelebrationKicker] = useState<string | null>(null);
+  const [recap, setRecap] = useState<{ summary: any; routineName: string; sessionNumber: number; durationSecs: number; workoutId: any } | null>(null);
 
   const [routines, setRoutines] = useState<any[]>([]);
   const [activeRoutine, setActiveRoutine] = useState<any>(null);
@@ -820,8 +820,9 @@ export default function WorkoutPage() {
   const saveWorkoutAndFinish = async (shouldUpdateRoutine: boolean) => {
     setIsSaving(true);
     const summary = buildWorkoutSummary();
-    const routineName = activeRoutine?.name || "Workout";
+    const routineName = activeRoutine?.name || "Workout Session";
     const durationSecs = elapsed;
+    const sessionNumber = (Array.isArray(workouts) ? workouts.filter((w: any) => w.name === routineName).length : 0) + 1;
     try {
       if (shouldUpdateRoutine && activeRoutine && !activeRoutine.isPastWorkout) {
         // 0-set exercises are skipped: the backend stores `sets || 3`, so 0 would come back as 3
@@ -857,7 +858,7 @@ export default function WorkoutPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: activeRoutine?.name || "Workout Session",
+          name: routineName,
           notes: `Finished with ${Math.round(overallPct)}% completion in ${formatWorkoutTime(elapsed)}`,
         }),
       });
@@ -885,9 +886,9 @@ export default function WorkoutPage() {
       if (summary.exercises.length > 0) {
         // The session is saved, so clear it now; the recap works from its own snapshot
         resetWorkout();
-        setRecap({ summary, routineName, durationSecs, workoutId });
+        setRecap({ summary, routineName, sessionNumber, durationSecs, workoutId });
       } else {
-        setShowWorkoutCelebration(true);
+        setCelebrationKicker(`${routineName} · Session ${sessionNumber}`);
       }
     } catch (err) {
       console.error("Error saving workout:", err);
@@ -906,7 +907,7 @@ export default function WorkoutPage() {
   };
 
   const dismissWorkoutCelebration = () => {
-    setShowWorkoutCelebration(false);
+    setCelebrationKicker(null);
     resetWorkout();
   };
 
@@ -1199,6 +1200,7 @@ export default function WorkoutPage() {
             visible
             summary={recap.summary}
             routineName={recap.routineName}
+            sessionNumber={recap.sessionNumber}
             durationSecs={recap.durationSecs}
             unit={unit}
             onDone={() => setRecap(null)}
@@ -1485,11 +1487,13 @@ export default function WorkoutPage() {
         onClose={() => setMenuExUid(null)}
       />
 
-      <CelebrationOverlay
-        visible={showWorkoutCelebration}
-        type="workout"
-        title="Workout Complete!"
-        subtitle={`${formatWorkoutTime(elapsed)} · ${volume.toLocaleString()} ${unit} lifted`}
+      <WorkoutCompleteOverlay
+        visible={celebrationKicker !== null}
+        kicker={celebrationKicker ?? ""}
+        durationSecs={elapsed}
+        volume={volume}
+        sets={done}
+        unit={unit}
         onDismiss={dismissWorkoutCelebration}
       />
     </PageShell>

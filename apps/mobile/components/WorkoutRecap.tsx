@@ -3,7 +3,7 @@ import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { Easing, FadeIn, FadeInDown, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import Svg, { Path } from "react-native-svg";
-import CelebrationOverlay from "@/components/CelebrationOverlay";
+import WorkoutCompleteOverlay from "@/components/WorkoutCompleteOverlay";
 import { useTheme } from "@/hooks/useTheme";
 
 type Summary = any;
@@ -14,6 +14,7 @@ interface WorkoutRecapProps {
   visible: boolean;
   summary: Summary | null;
   routineName: string;
+  sessionNumber: number;
   durationSecs: number;
   unit: string;
   onDone: () => void;
@@ -653,7 +654,7 @@ function PlanPage({ summary, routineName, unit, onBack, onApply, onKeep }: {
 
 /* ─── Modal shell ───────────────────────────────────────────── */
 
-export default function WorkoutRecap({ visible, summary, routineName, durationSecs, unit, onDone, onApplyPlan }: WorkoutRecapProps) {
+export default function WorkoutRecap({ visible, summary, routineName, sessionNumber, durationSecs, unit, onDone, onApplyPlan }: WorkoutRecapProps) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   // Mounted fresh for each finished workout, so stage always starts at the intro
@@ -683,11 +684,14 @@ export default function WorkoutRecap({ visible, summary, routineName, durationSe
             )}
           </ScrollView>
         )}
-        <CelebrationOverlay
+        <WorkoutCompleteOverlay
           visible={celebrating}
-          type="workout"
-          title="Workout Complete!"
-          subtitle={`${durationText(durationSecs)} · ${whole(summary.totalVolume)} ${unit} lifted`}
+          kicker={`${routineName} · Session ${sessionNumber}`}
+          durationSecs={durationSecs}
+          volume={summary.totalVolume}
+          sets={summary.sets}
+          unit={unit}
+          actionLabel="View recap"
           onDismiss={() => { setCelebrating(false); setStage("recap"); }}
         />
       </View>
