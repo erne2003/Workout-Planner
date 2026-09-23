@@ -7,7 +7,8 @@ import Animated, { Extrapolation, interpolate, useAnimatedStyle, type SharedValu
 import PageShell from "@/components/PageShell";
 import CelebrationOverlay from "@/components/CelebrationOverlay";
 import ExerciseActionSheet from "@/components/ExerciseActionSheet";
-import { useSettings, useData, getStorage } from "@apex/core";
+import WorkoutRecap from "@/components/WorkoutRecap";
+import { useSettings, useData, getStorage, summarizeWorkout } from "@apex/core";
 import { useTheme } from "../../hooks/useTheme";
 import { setLastWorkoutTime } from "@apex/core/src/recovery";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
@@ -77,6 +78,10 @@ function makeExercise(base: any, sets: any[]) {
 // v1 sessions stored completion in a separate map keyed by `${exIdx}-${setIdx}`.
 // Positions were stable then (sets couldn't be removed mid-workout), so they map cleanly onto `done`.
 const ACTIVE_WORKOUT_VERSION = 2;
+
+// Recommended weight/reps per exercise id, applied from the post-workout plan.
+// Only honoured while the session they were based on is still that exercise's latest.
+const NEXT_TARGETS_KEY = "nextSessionTargets";
 function hydrateWorkoutPlan(data: any): any[] {
   const plan = Array.isArray(data?.workoutPlan) ? data.workoutPlan : [];
   const legacyCompleted = (data?.v ?? 1) < 2 ? (data?.completed || {}) : null;
@@ -531,6 +536,7 @@ export default function WorkoutPage() {
   const [isResting, setIsResting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showWorkoutCelebration, setShowWorkoutCelebration] = useState(false);
+  const [recap, setRecap] = useState<{ summary: any; routineName: string; durationSecs: number; workoutId: any } | null>(null);
 
   const [routines, setRoutines] = useState<any[]>([]);
   const [activeRoutine, setActiveRoutine] = useState<any>(null);
@@ -548,16 +554,53 @@ export default function WorkoutPage() {
 
   const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token, authFetch } = useData() as any;
 
-  const findLastSetsForExercise = (exId: number) => {
-    if (!workouts || !Array.isArray(workouts)) return [];
+  const toDisplayWeight = (lbs: any) => (unit === "kg" ? Number((Number(lbs) / 2.205).toFixed(2)) : Number(lbs));
+
+  // Newest first: each entry is one workout's sets of this exercise, in set order
+  const findRecentSessionsForExercise = (exId: any, count: number) => {
+    const sessions: any[][] = [];
+    if (!Array.isArray(workouts)) return sessions;
     for (const w of workouts) {
       const matchingSets = w.sets?.filter((s: any) => (s.exercise_id || s.id) === exId);
-      if (matchingSets && matchingSets.length > 0) {
-        return matchingSets;
-      }
+      if (matchingSets?.length) sessions.push(matchingSets);
+      if (sessions.length === count) break;
     }
-    return [];
+    return sessions;
   };
+
+  const findLastSetsForExercise = (exId: number) => findRecentSessionsForExercise(exId, 1)[0] || [];
+
+  const getAppliedTargets = (exId: any) => {
+    const raw = getStorage()?.getItem(NEXT_TARGETS_KEY);
+    if (!raw || !Array.isArray(workouts)) return null;
+    try {
+      const target = JSON.parse(raw)[String(exId)];
+      const latest = workouts.find((w: any) => w.sets?.some((s: any) => (s.exercise_id || s.id) === exId));
+      return target && latest && String(latest.id) === String(target.basedOnWorkoutId) ? target : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Must run before the new workout is saved and `workouts` refreshes, so "previous" is the prior session
+  const buildWorkoutSummary = () => summarizeWorkout({
+    increment: unit === "kg" ? 2.5 : 5,
+    exercises: workoutPlan.map((ex: any) => {
+      const exId = ex.exerciseId || ex.id;
+      const [prev = [], prevPrev = []] = findRecentSessionsForExercise(exId, 2);
+      const fromHistory = (s: any) => ({ weight: toDisplayWeight(s.weight || 0), reps: Number(s.reps) || 0 });
+      return {
+        id: exId,
+        name: ex.name,
+        muscleGroup: ex.muscle || ex.muscle_group || prev[0]?.muscle_group,
+        cur: ex.sets
+          .filter((s: any) => s.done && Number(s.reps) > 0)
+          .map((s: any) => ({ weight: Number(s.weight) || 0, reps: Number(s.reps) })),
+        prev: prev.map(fromHistory),
+        prevPrev: prevPrev.map(fromHistory),
+      };
+    }),
+  });
 
   useEffect(() => {
     if (templateRoutines) {
@@ -669,9 +712,16 @@ export default function WorkoutPage() {
     if (!exercise) return;
     const exId = exercise.id;
     const lastExSets = findLastSetsForExercise(exId);
+    const target = getAppliedTargets(exId);
 
     let setsObj = [];
-    if (lastExSets.length > 0) {
+    if (target) {
+      setsObj = target.reps.map((reps: number, i: number) => makeSet({
+        reps,
+        weight: toDisplayWeight(target.weightLbs),
+        rir: lastExSets[i]?.rir ?? 0
+      }));
+    } else if (lastExSets.length > 0) {
       setsObj = lastExSets.map((s: any) => makeSet({
         reps: s.reps,
         weight: unit === "kg" ? Number((Number(s.weight) / 2.205).toFixed(2)) : Number(s.weight),
@@ -769,6 +819,9 @@ export default function WorkoutPage() {
 
   const saveWorkoutAndFinish = async (shouldUpdateRoutine: boolean) => {
     setIsSaving(true);
+    const summary = buildWorkoutSummary();
+    const routineName = activeRoutine?.name || "Workout";
+    const durationSecs = elapsed;
     try {
       if (shouldUpdateRoutine && activeRoutine && !activeRoutine.isPastWorkout) {
         // 0-set exercises are skipped: the backend stores `sets || 3`, so 0 would come back as 3
@@ -829,7 +882,13 @@ export default function WorkoutPage() {
       }
       setLastWorkoutTime(new Date());
       refresh("workouts");
-      setShowWorkoutCelebration(true);
+      if (summary.exercises.length > 0) {
+        // The session is saved, so clear it now; the recap works from its own snapshot
+        resetWorkout();
+        setRecap({ summary, routineName, durationSecs, workoutId });
+      } else {
+        setShowWorkoutCelebration(true);
+      }
     } catch (err) {
       console.error("Error saving workout:", err);
       Alert.alert("Error", "Failed to save workout session.");
@@ -838,13 +897,37 @@ export default function WorkoutPage() {
     }
   };
 
-  const dismissWorkoutCelebration = () => {
-    setShowWorkoutCelebration(false);
+  const resetWorkout = () => {
     setActiveRoutine(null);
     setStarted(false);
     setElapsed(0);
     setRoutineModified(false);
     setStartTime(null);
+  };
+
+  const dismissWorkoutCelebration = () => {
+    setShowWorkoutCelebration(false);
+    resetWorkout();
+  };
+
+  const applyNextSessionPlan = () => {
+    const storage = getStorage();
+    if (storage && recap) {
+      let all: Record<string, any> = {};
+      try {
+        all = JSON.parse(storage.getItem(NEXT_TARGETS_KEY) || "{}");
+      } catch {}
+      recap.summary.exercises.forEach((a: any) => {
+        const { weight, reps } = a.recommendation;
+        all[String(a.id)] = {
+          weightLbs: unit === "kg" ? Number((weight * 2.205).toFixed(2)) : weight,
+          reps,
+          basedOnWorkoutId: recap.workoutId,
+        };
+      });
+      storage.setItem(NEXT_TARGETS_KEY, JSON.stringify(all));
+    }
+    setRecap(null);
   };
 
   const finishWorkout = async () => {
@@ -955,17 +1038,22 @@ export default function WorkoutPage() {
     } else {
       // It's a template routine. The template decides how many sets each exercise gets,
       // so session-only changes (sets added or removed without updating the routine) don't carry over.
-      // Values are pre-filled from the last session where available.
+      // An applied next-session plan wins (including its set count); otherwise values come from the last session.
       plan = item.exercises.map((ex: any) => {
         const exId = ex.exercise_id || ex.id;
         const lastExSets = findLastSetsForExercise(exId);
+        const target = getAppliedTargets(exId);
         const templateValues = {
           reps: ex.reps || 10,
           weight: unit === "kg" ? Number((Number(ex.weight || 0) / 2.205).toFixed(2)) : Number(ex.weight || 0),
           rir: ex.rir || 0
         };
 
-        const setsObj = Array.from({ length: ex.sets || 3 }, (_, i) => {
+        const setsObj = target ? target.reps.map((reps: number, i: number) => makeSet({
+          reps,
+          weight: toDisplayWeight(target.weightLbs),
+          rir: lastExSets[i]?.rir ?? 0
+        })) : Array.from({ length: ex.sets || 3 }, (_, i) => {
           const s = lastExSets[i] ?? lastExSets[lastExSets.length - 1];
           return makeSet(s ? {
             reps: s.reps,
@@ -1105,6 +1193,18 @@ export default function WorkoutPage() {
             })
           )}
         </View>
+
+        {recap && (
+          <WorkoutRecap
+            visible
+            summary={recap.summary}
+            routineName={recap.routineName}
+            durationSecs={recap.durationSecs}
+            unit={unit}
+            onDone={() => setRecap(null)}
+            onApplyPlan={applyNextSessionPlan}
+          />
+        )}
       </PageShell>
     );
   }
