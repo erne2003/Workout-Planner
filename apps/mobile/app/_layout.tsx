@@ -8,6 +8,7 @@ import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
+import { HealthKitProvider } from '../hooks/useHealthKit';
 
 import { useTheme } from '../hooks/useTheme';
 
@@ -31,6 +32,12 @@ function AppNavigator() {
       <StatusBar style={isLight ? "dark" : "light"} />
     </>
   );
+}
+
+/* One HealthKit connection for the whole app; it only syncs once signed in */
+function AppHealthKitProvider({ children }: { children: React.ReactNode }) {
+  const { token } = useData() as any;
+  return <HealthKitProvider enabled={!!token}>{children}</HealthKitProvider>;
 }
 
 /* Re-fetch all data whenever the app returns to the foreground */
@@ -161,7 +168,9 @@ export default function RootLayout() {
         <DataProvider>
           <ForegroundRefresh />
           <AuthGuard>
-            <AppNavigator />
+            <AppHealthKitProvider>
+              <AppNavigator />
+            </AppHealthKitProvider>
           </AuthGuard>
         </DataProvider>
       </SettingsProvider>

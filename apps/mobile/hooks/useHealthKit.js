@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Platform, Alert } from 'react-native';
 import { getStorage } from '@apex/core';
 
@@ -52,7 +52,9 @@ function countDistinctDays(samples) {
   return days.size;
 }
 
-export function useHealthKit() {
+// `enabled` gates the automatic connect/sync on mount, so nothing is
+// requested from HealthKit before the user has signed in.
+function useHealthKitState(enabled) {
   const [hasPermission, setHasPermission] = useState(() => {
     const storage = getStorage();
     if (storage) {
@@ -374,6 +376,7 @@ export function useHealthKit() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     if (Platform.OS === 'ios' && isHealthKitAvailable && HealthKit) {
       const hasDisconnected = getStorage()?.getItem('has_disconnected_healthkit') === 'true';
       if (hasDisconnected) {
@@ -418,9 +421,9 @@ export function useHealthKit() {
     } else {
       setLoading(false);
     }
-  }, [requestPermissions, fetchHealthData]);
+  }, [enabled, requestPermissions, fetchHealthData]);
 
-  return {
+  return useMemo(() => ({
     hasPermission: isHealthKitAvailable && hasPermission,
     loading,
     healthData,
@@ -429,5 +432,23 @@ export function useHealthKit() {
     disconnect,
     refresh: fetchHealthData,
     isAvailable: isHealthKitAvailable
-  };
+  }), [hasPermission, loading, healthData, error, requestPermissions, disconnect, fetchHealthData]);
+}
+
+const HealthKitContext = createContext(null);
+
+/**
+ * Owns the one HealthKit connection for the app, so every screen reads the
+ * same health data (and the same readiness score) from a single fetch.
+ */
+export function HealthKitProvider({ enabled = true, children }) {
+  const value = useHealthKitState(enabled);
+  return React.createElement(HealthKitContext.Provider, { value }, children);
+}
+
+/** @returns {ReturnType<typeof useHealthKitState>} */
+export function useHealthKit() {
+  const ctx = useContext(HealthKitContext);
+  if (!ctx) throw new Error('useHealthKit must be used inside <HealthKitProvider>');
+  return ctx;
 }
