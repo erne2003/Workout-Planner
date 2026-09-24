@@ -284,3 +284,61 @@ test("sync state and clearLocalData", async () => {
   assert.equal(await exerciseCache.count(), 1, "the shared catalogue survives");
   assert.deepEqual(events, ["reset"]);
 });
+
+test("bodyMetrics.log carries missing fields forward from the latest snapshot", async () => {
+  // First snapshot with nothing to carry: server-compatible defaults
+  await bodyMetrics.log({ weight: 180 });
+  let latest = await bodyMetrics.latest();
+  assert.deepEqual(
+    { weight: latest.weight, height: latest.height, training_years: latest.training_years, gender: latest.gender, body_fat: latest.body_fat },
+    { weight: 180, height: "Not Selected", training_years: null, gender: "male", body_fat: null }
+  );
+
+  await bodyMetrics.log({ weight: 175, height: "5'10\"", trainingYears: 3, bodyFat: 15, gender: "female" });
+  await bodyMetrics.log({ weight: 176 });
+  latest = await bodyMetrics.latest();
+  assert.deepEqual(
+    { weight: latest.weight, height: latest.height, training_years: latest.training_years, gender: latest.gender, body_fat: latest.body_fat },
+    { weight: 176, height: "5'10\"", training_years: 3, gender: "female", body_fat: 15 }
+  );
+  assert.equal((await bodyMetrics.list()).length, 3);
+  assert.equal(await outbox.count(), 3);
+});
+
+test("routines.find accepts a uuid or a legacy server id", async () => {
+  const uuid = await routines.create({ name: "R" });
+  const db = await getDatabase();
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE routines SET server_id = 42 WHERE uuid = ?`, [uuid]);
+  });
+  assert.equal((await routines.find(uuid))?.uuid, uuid);
+  assert.equal((await routines.find(42))?.uuid, uuid);
+  assert.equal((await routines.find("42"))?.uuid, uuid);
+  assert.equal(await routines.find(7), null);
+  assert.equal(await routines.find(undefined), null);
+});
+
+test("reading a large history from SQLite stays well under the 300 ms cold-start budget", async () => {
+  // ~3 years of training: 500 workouts × 20 sets, plus PRs and metrics
+  const db = await getDatabase();
+  await db.transaction(async (tx) => {
+    for (let w = 0; w < 500; w++) {
+      const uuid = `00000000-0000-4000-8000-${String(w).padStart(12, "0")}`;
+      await tx.run(`INSERT INTO workouts (uuid, name, created_at) VALUES (?, ?, ?)`, [uuid, `W${w}`, new Date(Date.UTC(2024, 0, 1) + w * 86400000).toISOString()]);
+      for (let s = 0; s < 20; s++) {
+        await tx.run(
+          `INSERT INTO workout_sets (uuid, workout_uuid, exercise_id, exercise_name, set_order, reps, weight) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [`${uuid}-${s}`, uuid, s % 8, `Exercise ${s % 8}`, s, 8, 100 + s]
+        );
+      }
+    }
+  });
+
+  const started = performance.now();
+  const [list] = await Promise.all([workouts.list(), routines.list(), prs.list(), bodyMetrics.list()]);
+  const elapsed = performance.now() - started;
+  assert.equal(list.length, 500);
+  assert.equal(list[0].sets.length, 20);
+  console.log(`# cold-start read of 500 workouts / 10,000 sets: ${elapsed.toFixed(0)} ms`);
+  assert.ok(elapsed < 300, `took ${elapsed.toFixed(0)} ms`);
+});

@@ -6,6 +6,7 @@ import { useSettings, useData, getStorage, fetchWithTimeout } from "@apex/core";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
 import { useTheme } from "../hooks/useTheme";
 import { useHealthKit } from "../hooks/useHealthKit";
+import SyncStatusCard from "@/components/SyncStatusCard";
 
 function Toggle({ active, onClick, color }: any) {
   const { colors } = useTheme();
@@ -108,7 +109,7 @@ export default function SettingsPage() {
     }
   };
 
-  const { token, setToken, logout: doLogout, authFetch } = useData() as any;
+  const { logout: doLogout, authFetch, syncStatus } = useData() as any;
   const ctx = useSettings() as any;
 
   useEffect(() => {
@@ -268,6 +269,14 @@ export default function SettingsPage() {
                 />
               </View>
             </View>
+          </View>
+        )}
+
+        {/* Sync (mobile only: changes are saved on the device first) */}
+        {syncStatus && (
+          <View>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Sync</Text>
+            <SyncStatusCard />
           </View>
         )}
 

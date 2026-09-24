@@ -14,7 +14,7 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const { colors, isLight } = useTheme();
-    const { isAuthenticated, tokenLoading, login: doLogin, authFetch } = useData() as any;
+    const { isAuthenticated, tokenLoading, login: doLogin, needsOnboarding } = useData() as any;
 
     useEffect(() => {
         if (!tokenLoading && isAuthenticated && !loading) {
@@ -51,21 +51,10 @@ export default function LoginPage() {
             if (!accessToken || !refreshToken) throw new Error("No tokens returned from server");
 
             await doLogin(accessToken, refreshToken, user);
-            
-            // Check metrics via backend with fresh token
-            try {
-                const metricsReq = await fetchWithTimeout(`${apiUrl}/metrics`, {
-                    headers: { "Authorization": `Bearer ${accessToken}` }
-                });
-                const metrics = metricsReq.ok ? await metricsReq.json() : [];
-                if (Array.isArray(metrics) && metrics.length === 0) {
-                    router.replace("/onboarding");
-                } else {
-                    router.replace("/");
-                }
-            } catch {
-                router.replace("/");
-            }
+
+            // New accounts (no body metrics yet) go through onboarding. This
+            // also runs the device's first sync, so Home opens with data.
+            router.replace((await needsOnboarding().catch(() => false)) ? "/onboarding" : "/");
         } catch (err: any) {
             console.error("[Auth Error]", err);
             const msg = err?.message || String(err);

@@ -9,6 +9,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData, fetchWithTimeout } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
+import FirstSyncBanner from '../components/FirstSyncBanner';
 import { HealthKitProvider } from '../hooks/useHealthKit';
 import { registerLocalDatabase } from '../lib/localDatabase';
 
@@ -42,9 +43,10 @@ function AppHealthKitProvider({ children }: { children: React.ReactNode }) {
   return <HealthKitProvider enabled={!!isAuthenticated}>{children}</HealthKitProvider>;
 }
 
-/* Sync when the app returns to the foreground or the device comes back online */
+/* Sync when the app returns to the foreground or the device comes back online.
+   prefetchAll syncs the local database on mobile (refetches from the API on web). */
 function SyncTriggers() {
-  const { prefetchAll, syncNow, isAuthenticated } = useData() as any;
+  const { prefetchAll, isAuthenticated } = useData() as any;
   const appState = useRef(AppState.currentState);
   const wasOffline = useRef(false);
 
@@ -56,21 +58,20 @@ function SyncTriggers() {
         isAuthenticated
       ) {
         prefetchAll();
-        syncNow();
       }
       appState.current = nextState;
     });
     return () => sub.remove();
-  }, [prefetchAll, syncNow, isAuthenticated]);
+  }, [prefetchAll, isAuthenticated]);
 
   useEffect(() => {
     return NetInfo.addEventListener((state) => {
       // isInternetReachable is null while unknown; only a definite false is offline
       const online = !!state.isConnected && state.isInternetReachable !== false;
-      if (online && wasOffline.current && isAuthenticated) syncNow();
+      if (online && wasOffline.current && isAuthenticated) prefetchAll();
       wasOffline.current = !online;
     });
-  }, [syncNow, isAuthenticated]);
+  }, [prefetchAll, isAuthenticated]);
 
   return null;
 }
@@ -184,6 +185,7 @@ export default function RootLayout() {
               <AppNavigator />
             </AppHealthKitProvider>
           </AuthGuard>
+          <FirstSyncBanner />
         </DataProvider>
       </SettingsProvider>
     </GestureHandlerRootView>

@@ -3,7 +3,26 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { getSecureStorage, getStorage } from "./storage.js";
 import { fetchWithTimeout } from "./utils.js";
 import { hasDatabase } from "./db/database.js";
+import {
+  workouts as workoutsRepo,
+  routines as routinesRepo,
+  prs as prsRepo,
+  bodyMetrics as bodyMetricsRepo,
+  exerciseCache,
+  outbox,
+} from "./db/repositories.js";
+import { useLiveQuery } from "./db/useLiveQuery.js";
 import { SyncManager } from "./sync/SyncManager.js";
+
+const DATA_KEYS = ["workouts", "routines", "prs", "metrics"];
+const isEmpty = (value) => !Array.isArray(value) || value.length === 0;
+
+/** Normalize an exercise reference from any screen shape (search result, plan entry, set). */
+const exerciseRef = (ex) => ({
+  exercise_id: ex.exercise_id ?? ex.exerciseId ?? ex.id ?? null,
+  exercise_name: ex.exercise_name ?? ex.name,
+  muscle_group: ex.muscle_group ?? ex.muscle ?? null,
+});
 
 const DataContext = createContext({});
 
@@ -45,8 +64,12 @@ export function DataProvider({ children }) {
   const refreshPromiseRef = useRef(null); // the in-flight refresh, shared by all callers
   const sessionRef = useRef(0);           // bumped on login/logout so stale refreshes are dropped
 
-  // Sync engine — only when a local database is registered (mobile). It calls
-  // the latest authFetch through this ref, so it can be created once.
+  // Offline-first mode: a local database is registered (mobile). Screens then
+  // read SQLite and write through the repositories; the sync engine keeps the
+  // server in step. Without one (web), data comes straight from the REST API.
+  const local = useRef(hasDatabase()).current;
+
+  // Sync engine — created once; it calls the latest authFetch through this ref.
   const authFetchRef = useRef(null);
   const syncRef = useRef(null);
   if (syncRef.current === null && hasDatabase()) {
@@ -264,12 +287,21 @@ export function DataProvider({ children }) {
     }
   }, [isAuthenticated, tokenLoading]);
 
-  // Trigger a sync now (foreground, back online, pull-to-refresh). No-op on web.
-  const syncNow = useCallback(() => {
+  // Trigger a sync now (foreground, back online, pull-to-refresh) and resolve
+  // with the sync status when it's done. No-op on web.
+  const syncNow = useCallback(async () => {
     const sync = syncRef.current;
-    if (!sync || !isAuthenticatedRef.current) return Promise.resolve(null);
+    if (!sync || !isAuthenticatedRef.current) return null;
+    await sync.start(); // no-op once running; covers a call right after login
     return sync.requestSync();
   }, []);
+
+  // ── Local data (offline-first) ─────────────────────────────────────────
+  // Live queries re-read SQLite whenever a table changes (local write or sync).
+  const liveWorkouts = useLiveQuery(() => (local ? workoutsRepo.list() : Promise.resolve(null)), ["workouts", "workout_sets"]);
+  const liveRoutines = useLiveQuery(() => (local ? routinesRepo.list() : Promise.resolve(null)), ["routines", "routine_exercises"]);
+  const livePrs = useLiveQuery(() => (local ? prsRepo.list() : Promise.resolve(null)), ["prs"]);
+  const liveMetrics = useLiveQuery(() => (local ? bodyMetricsRepo.list() : Promise.resolve(null)), ["body_metrics"]);
 
   // ── Login ──────────────────────────────────────────────────────────────
   // Called after a successful /auth/login or /auth/register response.
@@ -387,7 +419,7 @@ export function DataProvider({ children }) {
     }
   }, [authFetch, getApiUrl]);
 
-  const prefetchAll = useCallback(async () => {
+  const prefetchAllRemote = useCallback(async () => {
     if (!isAuthenticatedRef.current) {
         setData({ workouts: null, routines: null, prs: null, metrics: null });
         setLoading({ workouts: false, routines: false, prs: false, metrics: false });
@@ -455,14 +487,24 @@ export function DataProvider({ children }) {
     setLoading({ workouts: false, routines: false, prs: false, metrics: false });
   }, [authFetch, getApiUrl]);
 
-  // Prefetch once the boot sequence finishes, and again after signing in
+  // Web only: prefetch once the boot sequence finishes, and again after signing in
   useEffect(() => {
-    if (!tokenLoading) {
-      prefetchAll();
+    if (!local && !tokenLoading) {
+      prefetchAllRemote();
     }
-  }, [prefetchAll, tokenLoading, isAuthenticated]);
+  }, [local, prefetchAllRemote, tokenLoading, isAuthenticated]);
+
+  // Offline-first: "refresh" means sync (the screens re-read SQLite by themselves)
+  const prefetchAll = useCallback(
+    () => (local ? syncNow() : prefetchAllRemote()),
+    [local, syncNow, prefetchAllRemote]
+  );
 
   const refresh = useCallback((key) => {
+    if (local) {
+      syncNow();
+      return;
+    }
     const endpoints = {
       workouts: "/workouts",
       routines: "/routines",
@@ -473,14 +515,206 @@ export function DataProvider({ children }) {
     if (endpoints[key]) {
       fetchResource(key, endpoints[key]);
     }
-  }, [fetchResource]);
+  }, [local, syncNow, fetchResource]);
+
+  // ── Writes ─────────────────────────────────────────────────────────────
+  // Screens call these instead of the REST API. Offline-first they write
+  // SQLite (instant, works offline) and the outbox syncs in the background;
+  // on web they call the REST API and refetch.
+
+  const apiRequest = useCallback(async (path, { method = "GET", body } = {}) => {
+    const res = await authFetch(`${getApiUrl()}${path}`, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error || json?.errors?.[0]?.msg || `Request failed (${res.status})`);
+    }
+    return json;
+  }, [authFetch, getApiUrl]);
+
+  /**
+   * Save a finished workout with its sets.
+   * sets: [{ exercise_id, exercise_name | name, muscle_group, set_order, reps, weight, rir }]
+   * Resolves with the new workout's id.
+   */
+  const logWorkout = useCallback(async ({ name, notes, created_at, sets = [] }) => {
+    if (local) {
+      return workoutsRepo.create({
+        name,
+        notes,
+        created_at,
+        sets: sets.map((s) => ({
+          ...exerciseRef(s),
+          set_order: s.set_order,
+          reps: s.reps,
+          weight: s.weight,
+          rir: s.rir,
+        })),
+      });
+    }
+    const workout = await apiRequest("/workouts", { method: "POST", body: { name, notes } });
+    for (const s of sets) {
+      await apiRequest(`/workouts/${workout.id}/sets`, {
+        method: "POST",
+        body: { exerciseId: exerciseRef(s).exercise_id, setOrder: s.set_order, reps: s.reps, weight: s.weight, rir: s.rir },
+      });
+    }
+    fetchResource("workouts", "/workouts");
+    return workout.id;
+  }, [local, apiRequest, fetchResource]);
+
+  /**
+   * Create a routine, or update one when `id` is given (renames it and
+   * replaces its exercises). exercises: [{ exercise_id | id, name, muscle_group, sets, reps, weight, rir }]
+   */
+  const saveRoutine = useCallback(async ({ id, name, exercises }) => {
+    if (local) {
+      const rows = exercises.map((ex) => ({
+        ...exerciseRef(ex),
+        sets: ex.sets,
+        reps: ex.reps,
+        weight: ex.weight,
+        rir: ex.rir,
+      }));
+      const existing = await routinesRepo.find(id);
+      if (existing) {
+        await routinesRepo.update(existing.uuid, { name, exercises: rows });
+        return existing.uuid;
+      }
+      return routinesRepo.create({ name, exercises: rows });
+    }
+    const payload = {
+      name,
+      exercises: exercises.map((ex) => ({
+        exercise_id: exerciseRef(ex).exercise_id,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight: ex.weight,
+        rir: ex.rir,
+      })),
+    };
+    const saved = id != null
+      ? await apiRequest(`/routines/${id}`, { method: "PUT", body: payload })
+      : await apiRequest("/routines", { method: "POST", body: payload });
+    fetchResource("routines", "/routines");
+    return saved.id;
+  }, [local, apiRequest, fetchResource]);
+
+  const deleteRoutine = useCallback(async (id) => {
+    if (local) {
+      const existing = await routinesRepo.find(id);
+      if (existing) await routinesRepo.remove(existing.uuid);
+      return;
+    }
+    await apiRequest(`/routines/${id}`, { method: "DELETE" });
+    fetchResource("routines", "/routines");
+  }, [local, apiRequest, fetchResource]);
+
+  const logPR = useCallback(async ({ exerciseName, weight }) => {
+    if (local) return prsRepo.create({ exercise_name: exerciseName, weight });
+    const pr = await apiRequest("/prs", { method: "POST", body: { exerciseName, weight } });
+    fetchResource("prs", "/prs");
+    return pr.id;
+  }, [local, apiRequest, fetchResource]);
+
+  /**
+   * Log a body-metrics snapshot. A partial update (e.g. just weight) carries
+   * the other fields forward from the latest snapshot, like POST /metrics.
+   */
+  const logMetrics = useCallback(async ({ weight, height, trainingYears, bodyFat, gender }) => {
+    if (local) return bodyMetricsRepo.log({ weight, height, trainingYears, bodyFat, gender });
+    const metric = await apiRequest("/metrics", { method: "POST", body: { weight, height, trainingYears, bodyFat, gender } });
+    fetchResource("metrics", "/metrics");
+    return metric.id;
+  }, [local, apiRequest, fetchResource]);
+
+  /** Sets from the last session that included this exercise ("previous" hints). */
+  const getExerciseHistory = useCallback(async (exerciseId) => {
+    if (local) return workoutsRepo.lastSetsForExercise(exerciseId);
+    try {
+      const rows = await apiRequest(`/workouts/history/${exerciseId}`);
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
+  }, [local, apiRequest]);
+
+  /**
+   * Search the exercise catalogue. Online results are cached for offline use;
+   * offline (or if the server fails) the local cache and history answer instead.
+   */
+  const searchExercises = useCallback(async (query) => {
+    try {
+      const results = await apiRequest(`/exercises/search?name=${encodeURIComponent(query)}`);
+      const list = Array.isArray(results) ? results : [];
+      if (local) exerciseCache.upsertMany(list).catch(() => {});
+      return list;
+    } catch (e) {
+      if (!local) return [];
+      return exerciseCache.search(query);
+    }
+  }, [local, apiRequest]);
+
+  /**
+   * After sign-in: does this account still need onboarding (no body metrics)?
+   * Offline-first this waits for the first sync and reads SQLite; if that
+   * sync can't finish it asks the API, and assumes "no" if both fail.
+   */
+  const needsOnboarding = useCallback(async () => {
+    if (local) {
+      const status = await syncNow();
+      if (status?.initialSyncDone) return (await bodyMetricsRepo.list()).length === 0;
+    }
+    try {
+      const metrics = await apiRequest("/metrics");
+      return Array.isArray(metrics) && metrics.length === 0;
+    } catch {
+      return false;
+    }
+  }, [local, syncNow, apiRequest]);
+
+  /** Give changes that stopped retrying (parked) another go. */
+  const retryFailedChanges = useCallback(async () => {
+    if (!local) return;
+    await outbox.retryParked();
+    await syncNow();
+  }, [local, syncNow]);
+
+  // ── Exposed data ───────────────────────────────────────────────────────
+  // Offline-first, a table shows as loading only until SQLite answers — or,
+  // on a device's very first sync, until that sync finishes (or fails) while
+  // there's nothing local to show yet.
+  const firstSyncRunning = local && isAuthenticated && !!syncStatus && !syncStatus.initialSyncDone && !syncStatus.error;
+  const liveByKey = { workouts: liveWorkouts, routines: liveRoutines, prs: livePrs, metrics: liveMetrics };
+  const exposed = local
+    ? {
+        data: Object.fromEntries(DATA_KEYS.map((k) => [k, isAuthenticated ? liveByKey[k].data ?? null : null])),
+        loading: Object.fromEntries(DATA_KEYS.map((k) => [
+          k,
+          liveByKey[k].loading || (firstSyncRunning && isEmpty(liveByKey[k].data)),
+        ])),
+        errors: { workouts: null, routines: null, prs: null, metrics: null },
+      }
+    : { data, loading, errors };
 
   const value = {
-    ...data,
-    loading,
-    errors,
+    ...exposed.data,
+    loading: exposed.loading,
+    errors: exposed.errors,
     refresh,
     prefetchAll,
+    logWorkout,
+    saveRoutine,
+    deleteRoutine,
+    logPR,
+    logMetrics,
+    getExerciseHistory,
+    searchExercises,
+    needsOnboarding,
+    retryFailedChanges,
     token: accessToken,   // in-memory access token; null until the background refresh lands
     setToken,             // backward compat — old logout code calls setToken(null)
     tokenLoading,         // true only while SecureStore is being read at boot

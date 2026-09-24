@@ -330,6 +330,16 @@ export const routines = {
     }),
 
   remove: (uuid) => write((tx) => removeIn(tx, "routines", uuid)),
+
+  /**
+   * One routine by its uuid or its server id (a workout started before the
+   * offline-first upgrade still refers to the routine by server id).
+   */
+  find: async (id) => {
+    if (id === null || id === undefined) return null;
+    const all = await read(listRoutinesIn);
+    return all.find((r) => r.uuid === id || (r.server_id != null && String(r.server_id) === String(id))) || null;
+  },
 };
 
 export const prs = {
@@ -348,6 +358,32 @@ export const bodyMetrics = {
   }),
   create: (metric) => write((tx) => createIn(tx, "body_metrics", metric)),
   remove: (uuid) => write((tx) => removeIn(tx, "body_metrics", uuid)),
+
+  /**
+   * Log a snapshot like POST /metrics: when trainingYears, height or gender is
+   * left undefined, the missing fields (and bodyFat) carry forward from the
+   * latest snapshot. Reading it and writing the new one is one transaction.
+   */
+  log: ({ weight, height, trainingYears, bodyFat, gender }) =>
+    write(async (tx) => {
+      let carried = { trainingYears, height, bodyFat, gender };
+      if (trainingYears === undefined || height === undefined || gender === undefined) {
+        const latest = await tx.first(`SELECT * FROM body_metrics ORDER BY logged_at DESC, rowid DESC LIMIT 1`);
+        carried = {
+          trainingYears: trainingYears ?? latest?.training_years ?? 0,
+          height: height ?? latest?.height ?? "Not Selected",
+          gender: gender ?? latest?.gender ?? "male",
+          bodyFat: bodyFat === undefined ? latest?.body_fat ?? null : bodyFat,
+        };
+      }
+      return createIn(tx, "body_metrics", {
+        weight,
+        height: carried.height,
+        training_years: carried.trainingYears || null,
+        body_fat: carried.bodyFat || null,
+        gender: carried.gender || "male",
+      });
+    }),
 };
 
 // ── Exercise catalogue cache (shared across users, not synced) ───────────────
