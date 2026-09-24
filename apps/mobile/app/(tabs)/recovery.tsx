@@ -1,35 +1,24 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import {
   RECOVERY_COLOR,
   RECOVERY_LABEL,
-  getMuscleSoreness,
-  setMuscleSoreness,
+  MUSCLE_GROUPS,
+  ASSUMED_SLEEP_STAGES,
   computeDynamicRecovery,
-  parseLocalISO,
-  calculateReadinessScore,
-  computeMuscleReadiness,
 } from "@apex/core/src/recovery";
 import { useData } from "@apex/core";
 import MuscleMap from "@/components/MuscleMap";
 import { ANTERIOR_PATHS, POSTERIOR_PATHS } from "@apex/core";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useTheme } from "../../hooks/useTheme";
-import { useHealthKit } from "../../hooks/useHealthKit";
+import { useReadiness } from "../../hooks/useReadiness";
 
 const ALL_MUSCLES = [
   ...new Set([...ANTERIOR_PATHS, ...POSTERIOR_PATHS].map((p: any) => p.id))
 ];
-
-// Assumed 7.5 hours (450 mins) breakdown: ~15% Deep (68m), ~20% REM (90m), ~65% Core (292m)
-const ASSUMED_SLEEP_STAGES = {
-  deepMinutes: 68,
-  remMinutes: 90,
-  coreMinutes: 292,
-  awakeMinutes: 0,
-};
 
 /* ─── Legend Dot ────────────────────────────────────────────── */
 function LegendDot({ color, label }: any) {
@@ -135,13 +124,8 @@ function MuscleRow({ name, data, manualLevel, onSelect, onClear }: any) {
 }
 
 /* ─── Overall Score Ring ────────────────────────────────────── */
-function OverallScore({ muscleData, score }: any) {
+function OverallScore({ score: displayScore }: any) {
   const { colors } = useTheme();
-  
-  let displayScore = score;
-  if (displayScore === undefined) {
-    displayScore = computeMuscleReadiness(muscleData).score;
-  }
 
   const color = displayScore >= 75 ? "#30D158" : displayScore >= 50 ? "#FF9F0A" : "#FF2D55";
   const circumference = 2 * Math.PI * 44;
@@ -166,7 +150,7 @@ function OverallScore({ muscleData, score }: any) {
 }
 
 /* ─── HealthKit Readiness Score ─────────────────────────────── */
-function HealthKitReadiness({ healthData, hasPermission, loading, error, onRequestPermissions, hoursSinceLastWorkout, scoreData, unifiedScore }: any) {
+function HealthKitReadiness({ healthData, hasPermission, loading, error, onRequestPermissions, scoreData, unifiedScore }: any) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
 
@@ -363,84 +347,34 @@ function HealthKitReadiness({ healthData, hasPermission, loading, error, onReque
 /* ─── Page ──────────────────────────────────────────────────── */
 export default function RecoveryPage() {
   const router = useRouter();
-  const [lastTime, setLastTimeState] = useState<Date | null>(null);
-  const [manualOverrides, setManualOverrides] = useState<any>({});
-  const [muscleData, setMuscleData] = useState<any>({});
   const [view, setView] = useState("front");
   const { colors, isLight } = useTheme();
 
   const { workouts: data, loading } = useData() as any;
-  const { hasPermission, loading: healthLoading, healthData, error: healthError, requestPermissions } = useHealthKit() as any;
+  const {
+    score: unifiedScore,
+    muscleData,
+    scoreData,
+    overrides: manualOverrides,
+    setOverride,
+    now,
+    health,
+  } = useReadiness();
+  const { hasPermission, loading: healthLoading, healthData, error: healthError, requestPermissions } = health;
 
-  const hoursSinceLastWorkout = lastTime
-    ? (Date.now() - lastTime.getTime()) / 3_600_000
-    : 24;
-
-  const updateHeatmap = useCallback(() => {
-    try {
-      if (!data) return;
-
-      const overrides = getMuscleSoreness();
-      setManualOverrides(overrides);
-
-      let latestTime = 0;
-      data.forEach((w: any) => {
-        const wTime = parseLocalISO(w.created_at);
-        if (wTime > latestTime) latestTime = wTime;
-      });
-      setLastTimeState(latestTime > 0 ? new Date(latestTime) : null);
-
-      const dynData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
-      setMuscleData(dynData);
-    } catch (e) {
-      console.error("Failed to compute heatmap data", e);
-    }
-  }, [data]);
-
-  useEffect(() => { updateHeatmap(); }, [updateHeatmap]);
-
-  const handleSelect = (muscle: string, level: string) => {
-    setMuscleSoreness(muscle, level);
-    updateHeatmap();
-  };
-
-  const handleClear = (muscle: string) => {
-    setMuscleSoreness(muscle, null);
-    updateHeatmap();
-  };
-
-  const handleReset = () => {
-    router.push("/workout" as any);
-  };
-
-  const sortedMuscles = [...ALL_MUSCLES].sort(
-    (a, b) => (muscleData[a]?.pct ?? 0) - (muscleData[b]?.pct ?? 0)
+  // The body map colors individual sub-muscles; overrides still apply per group.
+  const mapData = useMemo(
+    () => computeDynamicRecovery(ALL_MUSCLES, data || [], manualOverrides),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, manualOverrides, now]
   );
 
-  const muscleReadinessScore = computeMuscleReadiness(muscleData).score;
+  const handleSelect = (muscle: string, level: string) => setOverride(muscle, level);
+  const handleClear = (muscle: string) => setOverride(muscle, null);
 
-  const hasSleep = healthData?.sleepStages !== null && healthData?.sleepStages !== undefined;
-  const hasHRV = healthData?.todayHRV !== null && healthData?.todayHRV !== undefined;
-  const hasRHR = healthData?.todayRHR !== null && healthData?.todayRHR !== undefined;
-  const hasActualData = hasSleep || hasHRV || hasRHR;
-
-  const scoreData = calculateReadinessScore({
-    sleepStages: hasSleep ? healthData?.sleepStages : ASSUMED_SLEEP_STAGES,
-    todayHRV: healthData?.todayHRV,
-    avg14DayHRV: healthData?.avg14DayHRV,
-    meanLnHRV: healthData?.meanLnHRV,
-    stdDevLnHRV: healthData?.stdDevLnHRV,
-    todayRHR: healthData?.todayRHR,
-    avg14DayRHR: healthData?.avg14DayRHR,
-    meanRHR: healthData?.meanRHR,
-    stdDevRHR: healthData?.stdDevRHR,
-    hoursSinceLastWorkout,
-    muscleReadinessScore
-  });
-
-  const unifiedScore = (hasPermission && hasActualData && scoreData)
-    ? scoreData.compositeReadiness
-    : muscleReadinessScore;
+  const sortedMuscles = [...MUSCLE_GROUPS].sort(
+    (a, b) => (muscleData[a]?.pct ?? 0) - (muscleData[b]?.pct ?? 0)
+  );
 
   return (
     <PageShell title="Recovery" subtitle="Muscle Readiness · Today" onSettingsClick={() => router.push("/settings" as any)}>
@@ -455,7 +389,6 @@ export default function RecoveryPage() {
           loading={healthLoading}
           error={healthError}
           onRequestPermissions={requestPermissions}
-          hoursSinceLastWorkout={hoursSinceLastWorkout}
           scoreData={scoreData}
           unifiedScore={unifiedScore}
         />
@@ -478,11 +411,11 @@ export default function RecoveryPage() {
                 </TouchableOpacity>
               </View>
             </View>
-            <OverallScore muscleData={muscleData} score={unifiedScore} />
+            <OverallScore score={unifiedScore} />
           </View>
 
           <View style={{ alignItems: "center", marginBottom: 32, height: 400 }}>
-            <MuscleMap muscleData={muscleData} view={view} />
+            <MuscleMap muscleData={mapData} view={view} />
           </View>
 
           <View style={styles.legendRow}>

@@ -4,10 +4,11 @@ import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import PlateCalculator from "@/components/PlateCalculator";
 import { useSettings, useData, getStorage } from "@apex/core";
-import { getStatusFromPct, getMuscleSoreness, computeDynamicRecovery, computeMuscleReadiness, RECOVERY_COLOR } from "@apex/core/src/recovery";
+import { getStatusFromPct, RECOVERY_COLOR } from "@apex/core/src/recovery";
 import Svg, { Circle, Polygon, Polyline } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../hooks/useTheme";
+import { useReadiness } from "../../hooks/useReadiness";
 
 /* --- Helpers ----------------------------------------------- */
 function greeting() {
@@ -216,7 +217,6 @@ export default function HomePage() {
 
   const [sessionCount, setSessionCount] = useState(0);
   const [strengthScore, setStrengthScore] = useState(0);
-  const [recoveryScore, setRecoveryScore] = useState(0);
   const [showPastWorkouts, setShowPastWorkouts] = useState(false);
   const [lastWorkout, setLastWorkout] = useState({
     name: "No Sessions Logged",
@@ -229,6 +229,9 @@ export default function HomePage() {
   });
 
   const { workouts: data, prs: prData, metrics: metData } = useData() as any;
+  // Same composite readiness as the Recovery tab (HealthKit + muscle readiness).
+  const { score: readinessScore } = useReadiness();
+  const recoveryScore = data ? readinessScore : 0;
 
   useEffect(() => {
     if (!data || !prData || !metData) return;
@@ -269,16 +272,6 @@ export default function HomePage() {
         const perfBasis = (rawIndex / 1.5) * 100;
         
         setStrengthScore(Math.min(100, Math.round((perfBasis * 0.7) + (avgPerf * 0.3))));
-
-        const ALL_MUSCLES = [
-            "chest", "shoulders", "biceps", "triceps",
-            "lats", "abdominals", "quadriceps", "hamstrings", "glutes", "calves",
-        ];
-        const overrides = getMuscleSoreness();
-        const recData = computeDynamicRecovery(ALL_MUSCLES, data, overrides);
-        
-        const { score } = computeMuscleReadiness(recData);
-        setRecoveryScore(score);
 
         if (data.length > 0) {
           const now = new Date();
