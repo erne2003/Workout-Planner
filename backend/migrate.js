@@ -52,6 +52,10 @@ async function migrate() {
             CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
             CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
 
+            -- Rotation grace: set when a token is rotated (not on logout/admin revoke)
+            ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS rotated_at TIMESTAMPTZ;
+            CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family_id ON refresh_tokens(family_id);
+
             -- Admin infrastructure
             ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT DEFAULT 0;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS is_disabled BOOLEAN DEFAULT FALSE;

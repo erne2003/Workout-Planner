@@ -14,13 +14,13 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const { colors, isLight } = useTheme();
-    const { token, tokenLoading, login: doLogin, authFetch } = useData() as any;
+    const { isAuthenticated, tokenLoading, login: doLogin, authFetch } = useData() as any;
 
     useEffect(() => {
-        if (!tokenLoading && token && !loading) {
+        if (!tokenLoading && isAuthenticated && !loading) {
             router.replace("/");
         }
-    }, [token, tokenLoading, loading, router]);
+    }, [isAuthenticated, tokenLoading, loading, router]);
 
     const handle = async () => {
         setError("");

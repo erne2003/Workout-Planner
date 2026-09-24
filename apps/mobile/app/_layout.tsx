@@ -6,7 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData } from '@apex/core';
+import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData, fetchWithTimeout } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
 import { HealthKitProvider } from '../hooks/useHealthKit';
 
@@ -36,13 +36,13 @@ function AppNavigator() {
 
 /* One HealthKit connection for the whole app; it only syncs once signed in */
 function AppHealthKitProvider({ children }: { children: React.ReactNode }) {
-  const { token } = useData() as any;
-  return <HealthKitProvider enabled={!!token}>{children}</HealthKitProvider>;
+  const { isAuthenticated } = useData() as any;
+  return <HealthKitProvider enabled={!!isAuthenticated}>{children}</HealthKitProvider>;
 }
 
 /* Re-fetch all data whenever the app returns to the foreground */
 function ForegroundRefresh() {
-  const { prefetchAll, token } = useData() as any;
+  const { prefetchAll, isAuthenticated } = useData() as any;
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
@@ -50,14 +50,14 @@ function ForegroundRefresh() {
       if (
         appState.current.match(/inactive|background/) &&
         nextState === 'active' &&
-        token
+        isAuthenticated
       ) {
         prefetchAll();
       }
       appState.current = nextState;
     });
     return () => sub.remove();
-  }, [prefetchAll, token]);
+  }, [prefetchAll, isAuthenticated]);
 
   return null;
 }
@@ -130,17 +130,13 @@ export default function RootLayout() {
           await AsyncStorage.removeItem('token');
         }
 
-        // ── Warm up the backend server before the app renders ───────────
-        // The backend may be on a cold-start hosting tier. Fire a non-blocking
-        // ping so the server is awake when DataContext starts fetching.
+        // ── Warm up the backend server ──────────────────────────────────
+        // The backend may be on a cold-start hosting tier. Fire-and-forget:
+        // boot must never wait on the network, or a sleeping or unreachable
+        // server holds the splash screen.
         const apiUrl = process.env.EXPO_PUBLIC_API_URL;
         if (apiUrl) {
-          try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 5000);
-            await fetch(`${apiUrl}/health`, { signal: controller.signal }).catch(() => {});
-            clearTimeout(timer);
-          } catch { /* best-effort, ignore failures */ }
+          fetchWithTimeout(`${apiUrl}/health`, {}, 5000).catch(() => { /* best-effort */ });
         }
       } catch (e) {
         console.warn(e);

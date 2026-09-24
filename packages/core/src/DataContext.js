@@ -32,87 +32,133 @@ export function DataProvider({ children }) {
   // Access token lives in memory only — never persisted to disk
   const [accessToken, setAccessToken] = useState(null);
   const [tokenLoading, setTokenLoading] = useState(true);
+  // True while a refresh token is stored on the device. This, not the access
+  // token, decides whether the user is signed in, so a slow or unreachable
+  // backend never logs anyone out.
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Refs for the interceptor engine (must survive re-renders)
   const accessTokenRef = useRef(null);
-  const isRefreshingRef = useRef(false);
-  const refreshSubscribersRef = useRef([]);
+  const isAuthenticatedRef = useRef(false);
+  const refreshPromiseRef = useRef(null); // the in-flight refresh, shared by all callers
+  const sessionRef = useRef(0);           // bumped on login/logout so stale refreshes are dropped
 
   // Keep the ref in sync with state so authFetch always reads the latest value
   useEffect(() => {
     accessTokenRef.current = accessToken;
   }, [accessToken]);
 
+  const setAuthenticated = useCallback((value) => {
+    isAuthenticatedRef.current = value;
+    setIsAuthenticated(value);
+  }, []);
+
+  // Drop every trace of the session from memory (callers handle SecureStore)
+  const clearSession = useCallback(() => {
+    setAccessToken(null);
+    accessTokenRef.current = null;
+    setAuthenticated(false);
+    setData({ workouts: null, routines: null, prs: null, metrics: null });
+  }, [setAuthenticated]);
+
   const getApiUrl = useCallback(() => {
-    return process.env.NEXT_PUBLIC_API_URL 
-      || process.env.EXPO_PUBLIC_API_URL 
+    return process.env.NEXT_PUBLIC_API_URL
+      || process.env.EXPO_PUBLIC_API_URL
       || "https://workout-planner-production-66ce.up.railway.app";
   }, []);
 
   // ── Token refresh ──────────────────────────────────────────────────────
-  // Reads the refresh token from SecureStore, calls /auth/refresh,
-  // stores the new refresh token, and updates the in-memory access token.
-  // Returns the new access token on success, or null on failure.
-  const refreshTokens = useCallback(async () => {
-    const secureStorage = getSecureStorage();
-    if (!secureStorage) return null;
+  // Exchanges the stored refresh token for a new pair. Resolves to one of:
+  //   { status: "ok", accessToken } — new tokens stored
+  //   { status: "invalid" }         — server rejected the token (400/401).
+  //                                   The only case that deletes it and signs out.
+  //   { status: "unreachable" }     — timeout, 5xx or no network. The refresh
+  //                                   token is kept so a later attempt can succeed.
+  // Concurrent calls share one request, so a refresh token is never rotated twice.
+  const refreshTokens = useCallback(() => {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
 
-    let refreshToken;
-    try {
-      refreshToken = await secureStorage.getItemAsync("refreshToken");
-    } catch (e) {
-      console.warn("[DataContext] Failed to read refresh token:", e);
-      return null;
-    }
-    if (!refreshToken) return null;
+    const session = sessionRef.current;
+    const run = async () => {
+      const secureStorage = getSecureStorage();
+      if (!secureStorage) return { status: "unreachable" };
 
-    try {
-      const apiUrl = getApiUrl();
-      const res = await fetchWithTimeout(`${apiUrl}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      if (!res.ok) {
-        // Refresh failed — token expired, revoked, or reuse detected
-        await secureStorage.removeItemAsync("refreshToken");
-        return null;
+      let refreshToken;
+      try {
+        refreshToken = await secureStorage.getItemAsync("refreshToken");
+      } catch (e) {
+        console.warn("[DataContext] Failed to read refresh token:", e);
+        return { status: "unreachable" };
+      }
+      if (!refreshToken) {
+        if (session === sessionRef.current) clearSession();
+        return { status: "invalid" };
       }
 
-      const result = await res.json();
+      let res;
+      try {
+        res = await fetchWithTimeout(`${getApiUrl()}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch (e) {
+        console.warn("[DataContext] Token refresh unreachable:", e?.message || e);
+        return { status: "unreachable" };
+      }
+
+      // Logged out or in again while this was in flight — ignore the result
+      if (session !== sessionRef.current) return { status: "invalid" };
+
+      if (res.status === 400 || res.status === 401) {
+        // Expired, revoked, or reuse detected
+        try { await secureStorage.removeItemAsync("refreshToken"); } catch { /* ignore */ }
+        clearSession();
+        return { status: "invalid" };
+      }
+      if (!res.ok) return { status: "unreachable" };
+
+      let result;
+      try {
+        result = await res.json();
+      } catch {
+        return { status: "unreachable" };
+      }
+      if (session !== sessionRef.current) return { status: "invalid" };
 
       // Persist the rotated refresh token
-      await secureStorage.setItemAsync("refreshToken", result.refreshToken);
+      try {
+        await secureStorage.setItemAsync("refreshToken", result.refreshToken);
+      } catch (e) {
+        console.warn("[DataContext] Failed to store rotated refresh token:", e);
+      }
 
       // Update in-memory access token
       setAccessToken(result.accessToken);
       accessTokenRef.current = result.accessToken;
 
-      return result.accessToken;
-    } catch (e) {
-      console.warn("[DataContext] Token refresh failed:", e);
-      return null;
-    }
-  }, [getApiUrl]);
+      return { status: "ok", accessToken: result.accessToken };
+    };
+
+    const promise = run().finally(() => {
+      if (refreshPromiseRef.current === promise) refreshPromiseRef.current = null;
+    });
+    refreshPromiseRef.current = promise;
+    return promise;
+  }, [getApiUrl, clearSession]);
 
   // ── Boot sequence ──────────────────────────────────────────────────────
-  // On mount, try to restore a session by exchanging the stored refresh token
-  // for a fresh access token. If no refresh token exists (or it's expired),
-  // the user will be redirected to login by AuthGuard.
+  // Only reads SecureStore, then lets the app render straight away. A stored
+  // refresh token means the user is signed in; the access token is fetched in
+  // the background and authFetch waits for it. No network call blocks boot.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let hasRefreshToken = false;
       try {
         const secureStorage = getSecureStorage();
         if (secureStorage) {
-          const rt = await secureStorage.getItemAsync("refreshToken");
-          if (rt) {
-            const newAccessToken = await refreshTokens();
-            if (!newAccessToken && !cancelled) {
-              await secureStorage.removeItemAsync("refreshToken");
-            }
-          }
+          hasRefreshToken = !!(await secureStorage.getItemAsync("refreshToken"));
           // Clean up legacy single-token storage from before this migration
           try {
             const legacyToken = await secureStorage.getItemAsync("token");
@@ -123,16 +169,20 @@ export function DataProvider({ children }) {
         }
       } catch (e) {
         console.warn("[DataContext] Session restore failed:", e);
-      } finally {
-        if (!cancelled) setTokenLoading(false);
       }
+      if (cancelled) return;
+      setAuthenticated(hasRefreshToken);
+      setTokenLoading(false);
+      if (hasRefreshToken) refreshTokens();
     })();
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── authFetch — the interceptor engine ─────────────────────────────────
   // Drop-in replacement for fetch(). Attaches the access token and silently
-  // refreshes on 401. Concurrent 401s are coalesced into a single refresh call.
+  // refreshes on 401. With no access token yet it waits for the refresh
+  // instead of sending "Bearer null". Throws like fetch() does when the
+  // backend can't be reached.
   const authFetch = useCallback(async (url, options = {}) => {
     const makeRequest = (token) =>
       fetchWithTimeout(url, {
@@ -143,51 +193,45 @@ export function DataProvider({ children }) {
         },
       });
 
-    // First attempt
-    const res = await makeRequest(accessTokenRef.current);
+    const notSignedIn = () =>
+      new Response(JSON.stringify({ error: "Not signed in", code: "NOT_AUTHENTICATED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    let token = accessTokenRef.current;
+    if (!token) {
+      if (!isAuthenticatedRef.current) return notSignedIn();
+      const result = await refreshTokens();
+      if (result.status === "unreachable") throw new TypeError("Network request failed");
+      if (result.status !== "ok") return notSignedIn();
+      token = result.accessToken;
+    }
+
+    const res = await makeRequest(token);
     if (res.status !== 401) return res;
 
     // ── 401 received — attempt silent refresh ────────────────────────────
-    if (isRefreshingRef.current) {
-      // Another refresh is already in flight — queue this request
-      return new Promise((resolve, reject) => {
-        refreshSubscribersRef.current.push((newToken) => {
-          if (newToken) {
-            makeRequest(newToken).then(resolve).catch(reject);
-          } else {
-            resolve(res); // refresh failed, return the original 401
-          }
-        });
-      });
+    // Another request may already have refreshed while this one was in flight
+    if (accessTokenRef.current && accessTokenRef.current !== token) {
+      return makeRequest(accessTokenRef.current);
     }
-
-    // Start the refresh
-    isRefreshingRef.current = true;
-    try {
-      const newToken = await refreshTokens();
-
-      // Drain the subscriber queue
-      const subscribers = refreshSubscribersRef.current;
-      refreshSubscribersRef.current = [];
-      subscribers.forEach((cb) => cb(newToken));
-
-      if (newToken) {
-        // Retry the original request with the fresh token
-        return makeRequest(newToken);
-      }
-
-      // Refresh failed — clear auth state so AuthGuard redirects to login
-      setAccessToken(null);
-      accessTokenRef.current = null;
-      return res; // return the original 401
-    } finally {
-      isRefreshingRef.current = false;
+    const result = await refreshTokens();
+    if (result.status === "ok") {
+      // Retry the original request with the fresh token
+      return makeRequest(result.accessToken);
     }
+    // Invalid: refreshTokens already signed the user out.
+    // Unreachable: stay signed in and let the caller surface the error.
+    return res;
   }, [refreshTokens]);
 
   // ── Login ──────────────────────────────────────────────────────────────
   // Called after a successful /auth/login or /auth/register response.
   const login = useCallback(async (newAccessToken, newRefreshToken, user) => {
+    sessionRef.current += 1;
+    refreshPromiseRef.current = null;
+
     // Persist refresh token securely
     const secureStorage = getSecureStorage();
     if (secureStorage) {
@@ -199,6 +243,7 @@ export function DataProvider({ children }) {
     // Set access token in memory
     setAccessToken(newAccessToken);
     accessTokenRef.current = newAccessToken;
+    setAuthenticated(true);
 
     // Persist user info in general storage
     const storage = getStorage();
@@ -207,12 +252,14 @@ export function DataProvider({ children }) {
       if (user?.email) storage.setItem("userEmail", user.email);
       storage.removeItem("userId");
     }
-  }, []);
+  }, [setAuthenticated]);
 
   // ── Logout ─────────────────────────────────────────────────────────────
   // Revokes the refresh token on the server (best-effort) and clears all
   // local auth state.
   const logout = useCallback(async () => {
+    sessionRef.current += 1; // any refresh still in flight is now stale
+    refreshPromiseRef.current = null;
     const secureStorage = getSecureStorage();
     let rt = null;
     if (secureStorage) {
@@ -239,9 +286,8 @@ export function DataProvider({ children }) {
       try { await secureStorage.removeItemAsync("token"); } catch { /* ignore */ } // legacy
     }
 
-    // Clear in-memory state
-    setAccessToken(null);
-    accessTokenRef.current = null;
+    // Clear in-memory state and cached data
+    clearSession();
 
     // Clear general storage
     const storage = getStorage();
@@ -250,10 +296,7 @@ export function DataProvider({ children }) {
       storage.removeItem("userEmail");
       storage.removeItem("userId");
     }
-
-    // Reset data
-    setData({ workouts: null, routines: null, prs: null, metrics: null });
-  }, [getApiUrl]);
+  }, [getApiUrl, clearSession]);
 
   // ── Backward-compatible setToken ───────────────────────────────────────
   // Existing code calls setToken(null) to log out. We keep this working.
@@ -268,7 +311,7 @@ export function DataProvider({ children }) {
 
   // ── Data fetching (uses authFetch for automatic refresh) ───────────────
   const fetchResource = useCallback(async (key, endpoint) => {
-    if (!accessTokenRef.current) return;
+    if (!isAuthenticatedRef.current) return;
 
     setLoading((prev) => ({ ...prev, [key]: true }));
     setErrors((prev) => ({ ...prev, [key]: null }));
@@ -300,7 +343,7 @@ export function DataProvider({ children }) {
   }, [authFetch, getApiUrl]);
 
   const prefetchAll = useCallback(async () => {
-    if (!accessTokenRef.current) {
+    if (!isAuthenticatedRef.current) {
         setData({ workouts: null, routines: null, prs: null, metrics: null });
         setLoading({ workouts: false, routines: false, prs: false, metrics: false });
         return;
@@ -344,7 +387,6 @@ export function DataProvider({ children }) {
       keys.map((key) => fetchWithRetry(endpoints[key]))
     );
 
-    let has401 = false;
     const newErrors = { workouts: null, routines: null, prs: null, metrics: null };
     const updates = {};
 
@@ -354,29 +396,26 @@ export function DataProvider({ children }) {
         updates[key] = result.value;
       } else {
         const err = result.reason;
-        if (err.is401) has401 = true;
         newErrors[key] = err.name === 'AbortError'
           ? "Request timed out. Please close and reopen the app."
           : (err.message || "Failed to load");
       }
     });
 
-    if (has401) {
-      setAccessToken(null);
-      accessTokenRef.current = null;
-    } else {
-      setData((prev) => ({ ...prev, ...updates }));
-    }
+    // A 401 here means authFetch's refresh already failed. If the refresh
+    // token was rejected the user is already signed out; if the server was
+    // unreachable they stay signed in. Either way, keep what did load.
+    setData((prev) => ({ ...prev, ...updates }));
     setErrors(newErrors);
     setLoading({ workouts: false, routines: false, prs: false, metrics: false });
   }, [authFetch, getApiUrl]);
 
-  // Only prefetch after the boot sequence finishes
+  // Prefetch once the boot sequence finishes, and again after signing in
   useEffect(() => {
     if (!tokenLoading) {
       prefetchAll();
     }
-  }, [prefetchAll, tokenLoading]);
+  }, [prefetchAll, tokenLoading, isAuthenticated]);
 
   const refresh = useCallback((key) => {
     const endpoints = {
@@ -397,9 +436,10 @@ export function DataProvider({ children }) {
     errors,
     refresh,
     prefetchAll,
-    token: accessToken,   // backward compat — AuthGuard checks this
+    token: accessToken,   // in-memory access token; null until the background refresh lands
     setToken,             // backward compat — old logout code calls setToken(null)
-    tokenLoading,
+    tokenLoading,         // true only while SecureStore is being read at boot
+    isAuthenticated,      // signed in (a refresh token is stored) — gate UI on this, not token
     authFetch,
     login,
     logout,
