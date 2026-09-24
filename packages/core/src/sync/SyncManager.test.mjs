@@ -379,3 +379,119 @@ test("concurrent requests share runs; stop() halts a run before its next write",
   await Promise.all([run, stopped]);
   assert.equal(await outbox.count(), 1, "the stopped run didn't settle the outbox");
 });
+
+// ── Phase 8: test matrix ─────────────────────────────────────────────────────
+
+test("killing the app mid-sync loses nothing and duplicates nothing", async (ctx) => {
+  if (skipReason) return ctx.skip(skipReason);
+  const userId = await t.createUser();
+  const bench = (await t.pool.query(`SELECT id FROM exercises WHERE name = 'Bench Press'`)).rows[0].id;
+  for (let i = 0; i < 6; i++) {
+    const w = await t.api(userId, "POST", "/workouts", { name: `Server ${i}` });
+    await t.api(userId, "POST", `/workouts/${w.body.id}/sets`, { exerciseId: bench, setOrder: 1, reps: 5, weight: 100 });
+  }
+  await workouts.create({ name: "Phone 1", sets: [set()] });
+  await workouts.create({ name: "Phone 2", sets: [set()] });
+
+  // First launch dies after the push and one page of the pull
+  const first = device(userId, { pullLimit: 4 });
+  let pulls = 0;
+  const realFetch = first.sync._fetch;
+  first.sync._fetch = async (url, init) => {
+    if (url.includes("/sync/pull") && ++pulls === 2) throw new TypeError("Network request failed"); // app killed
+    return realFetch(url, init);
+  };
+  await first.sync.start();
+  await first.sync.requestSync();
+  await first.sync.stop();
+  assert.ok((await workouts.list()).length < 8, "the pull really was cut short");
+
+  // Next launch: a fresh engine on the same database
+  const second = device(userId, { pullLimit: 4 });
+  await second.sync.start();
+  const status = await second.sync.requestSync();
+  assert.equal(status.error, null);
+
+  const local = await workouts.list();
+  assert.equal(local.length, 8);
+  assert.equal(new Set(local.map((w) => w.uuid)).size, 8);
+  assert.ok(local.every((w) => w.sets.length === 1));
+  const onServer = await serverWorkouts(userId);
+  assert.equal(onServer.length, 8, "the phone's workouts were pushed exactly once");
+  await second.sync.stop();
+});
+
+test("a delete made offline reaches the server and isn't undone by the next pull", async (ctx) => {
+  if (skipReason) return ctx.skip(skipReason);
+  const userId = await t.createUser();
+  const { sync, net } = device(userId);
+  await sync.start();
+  const keep = await workouts.create({ name: "Keep", sets: [set()] });
+  const drop = await workouts.create({ name: "Drop", sets: [set()] });
+  await sync.requestSync();
+
+  net.online = false;
+  await workouts.remove(drop);
+  await sync.requestSync();
+  assert.deepEqual((await workouts.list()).map((w) => w.uuid), [keep], "gone locally at once");
+
+  net.online = true;
+  await sync.requestSync();
+  assert.deepEqual((await workouts.list()).map((w) => w.uuid), [keep]);
+  const rows = await serverWorkouts(userId);
+  assert.ok(rows.find((w) => w.uuid === drop).deleted_at, "tombstoned on the server");
+  assert.equal((await t.api(userId, "GET", "/workouts")).body.length, 1, "and hidden from the REST API");
+
+  // A fresh device never sees it
+  registerDatabase(createNodeSqliteAdapter());
+  const fresh = device(userId);
+  await fresh.sync.start();
+  await fresh.sync.requestSync();
+  assert.deepEqual((await workouts.list()).map((w) => w.uuid), [keep]);
+  await fresh.sync.stop();
+  await sync.stop();
+});
+
+test("editing the same workout on web and mobile converges", async (ctx) => {
+  if (skipReason) return ctx.skip(skipReason);
+  const userId = await t.createUser();
+  const { sync, net } = device(userId);
+  await sync.start();
+  const uuid = await workouts.create({ name: "Original" });
+  await sync.requestSync();
+  const serverId = (await workouts.list())[0].server_id;
+
+  // Both edit while the phone is offline; the phone's edit is pushed last, so it wins
+  net.online = false;
+  await workouts.update(uuid, { name: "Edited on phone" });
+  await sync.requestSync();
+  await t.api(userId, "PUT", `/workouts/${serverId}`, { name: "Edited on web" });
+  net.online = true;
+  await sync.requestSync();
+  assert.equal((await workouts.list())[0].name, "Edited on phone");
+  assert.equal((await t.api(userId, "GET", `/workouts/${serverId}`)).body.name, "Edited on phone");
+
+  // A later web edit reaches the phone on its next sync
+  await t.api(userId, "PUT", `/workouts/${serverId}`, { name: "Edited on web again" });
+  await sync.requestSync();
+  assert.equal((await workouts.list())[0].name, "Edited on web again");
+  assert.equal(await outbox.count(), 0);
+  await sync.stop();
+});
+
+test("a slow or hung network never blocks local reads and writes", async (ctx) => {
+  if (skipReason) return ctx.skip(skipReason);
+  const userId = await t.createUser();
+  const { sync } = device(userId, { fetch: () => new Promise(() => {}) }); // backend never answers
+  await sync.start();
+  await workouts.create({ name: "Before" });
+  sync.requestSync(); // stuck on the network from now on
+
+  const started = performance.now();
+  await workouts.create({ name: "During", sets: [set()] });
+  const list = await workouts.list();
+  const elapsed = performance.now() - started;
+  assert.equal(list.length, 2);
+  assert.ok(elapsed < 200, `local database stayed responsive (${elapsed.toFixed(0)} ms)`);
+  assert.equal(sync.getStatus().syncing, true);
+});
