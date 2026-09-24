@@ -2,21 +2,15 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
-import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../hooks/useTheme';
-import { useData, getStorage } from '@apex/core';
+import { useLogout } from '../../hooks/useLogout';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
-  const router = useRouter();
   const { colors, isLight } = useTheme();
 
-  const { setToken, logout: doLogout } = useData() as any;
-
-  const handleLogout = async () => {
-    await doLogout();
-    router.replace("/login");
-  };
+  // Warns first if some changes haven't synced (logging out wipes the device's data)
+  const handleLogout = useLogout();
 
   return (
     <View style={[styles.tabBarContainer, { borderTopColor: colors.border }]}>

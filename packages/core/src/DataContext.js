@@ -13,6 +13,7 @@ import {
 } from "./db/repositories.js";
 import { useLiveQuery } from "./db/useLiveQuery.js";
 import { SyncManager } from "./sync/SyncManager.js";
+import { wipeLocalSession, claimLocalData, rememberLocalUser, countUnsyncedChanges } from "./sync/session.js";
 
 const DATA_KEYS = ["workouts", "routines", "prs", "metrics"];
 const isEmpty = (value) => !Array.isArray(value) || value.length === 0;
@@ -176,6 +177,11 @@ export function DataProvider({ children }) {
       setAccessToken(result.accessToken);
       accessTokenRef.current = result.accessToken;
 
+      // Record who owns the local data (an upgrading user never goes through login)
+      if (syncRef.current && result.user?.id != null) {
+        rememberLocalUser(result.user.id).catch((e) => console.warn("[DataContext] Could not record the local user:", e));
+      }
+
       // Back online with a valid session: catch up
       syncRef.current?.requestSync();
 
@@ -317,6 +323,15 @@ export function DataProvider({ children }) {
       try { await secureStorage.removeItemAsync("token"); } catch { /* ignore */ }
     }
 
+    // Local data left by a different account is wiped before the first sync
+    if (syncRef.current) {
+      try {
+        await claimLocalData(user?.id, syncRef.current);
+      } catch (e) {
+        console.warn("[DataContext] Could not check the local data's owner:", e);
+      }
+    }
+
     // Set access token in memory
     setAccessToken(newAccessToken);
     accessTokenRef.current = newAccessToken;
@@ -332,8 +347,9 @@ export function DataProvider({ children }) {
   }, [setAuthenticated]);
 
   // ── Logout ─────────────────────────────────────────────────────────────
-  // Revokes the refresh token on the server (best-effort) and clears all
-  // local auth state.
+  // Revokes the refresh token on the server (best-effort), stops syncing,
+  // wipes the local database and clears all local auth state. Unsynced
+  // changes are lost: check getUnsyncedCount() and warn the user first.
   const logout = useCallback(async () => {
     sessionRef.current += 1; // any refresh still in flight is now stale
     refreshPromiseRef.current = null;
@@ -361,6 +377,15 @@ export function DataProvider({ children }) {
     if (secureStorage) {
       try { await secureStorage.removeItemAsync("refreshToken"); } catch { /* ignore */ }
       try { await secureStorage.removeItemAsync("token"); } catch { /* ignore */ } // legacy
+    }
+
+    // Stop syncing and drop this account's data from the device
+    if (syncRef.current) {
+      try {
+        await wipeLocalSession(syncRef.current);
+      } catch (e) {
+        console.warn("[DataContext] Failed to wipe local data:", e);
+      }
     }
 
     // Clear in-memory state and cached data
@@ -676,6 +701,15 @@ export function DataProvider({ children }) {
     }
   }, [local, syncNow, apiRequest]);
 
+  /**
+   * Changes on this device that haven't reached the server (after one last,
+   * bounded attempt to push them). Logging out would lose them.
+   */
+  const getUnsyncedCount = useCallback(
+    () => (syncRef.current ? countUnsyncedChanges(syncRef.current) : Promise.resolve(0)),
+    []
+  );
+
   /** Give changes that stopped retrying (parked) another go. */
   const retryFailedChanges = useCallback(async () => {
     if (!local) return;
@@ -714,6 +748,7 @@ export function DataProvider({ children }) {
     getExerciseHistory,
     searchExercises,
     needsOnboarding,
+    getUnsyncedCount,
     retryFailedChanges,
     token: accessToken,   // in-memory access token; null until the background refresh lands
     setToken,             // backward compat — old logout code calls setToken(null)
