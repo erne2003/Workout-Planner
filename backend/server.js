@@ -103,7 +103,29 @@ app.use((err, req, res, next) => {
     }
 });
 
+// ── Tombstone purge ───────────────────────────────────────────────────────────
+// Soft-deleted rows are kept 90 days so offline clients can sync the deletion,
+// then purged once a day. Idempotent, so running it on every instance is fine.
+const { TOMBSTONE_RETENTION_DAYS } = require("./config/sync");
+const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+async function purgeTombstones() {
+    try {
+        const { rows } = await pool.query(`SELECT purge_sync_tombstones($1) AS purged`, [TOMBSTONE_RETENTION_DAYS]);
+        if (rows[0].purged > 0) console.log(`[Sync] Purged ${rows[0].purged} tombstones`);
+    } catch (err) {
+        console.warn("[Sync] Tombstone purge failed:", err.message);
+    }
+}
+
 // ── Start ──────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+// Only when run directly; tests import the app without opening a port.
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+    setTimeout(purgeTombstones, 60 * 1000).unref();
+    setInterval(purgeTombstones, PURGE_INTERVAL_MS).unref();
+}
+
+module.exports = app;

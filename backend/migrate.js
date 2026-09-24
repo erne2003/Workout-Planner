@@ -1,5 +1,10 @@
 require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 const pool = require("./config/db");
+
+// Larger migrations live in sql/ and run after the inline statements, in order
+const SQL_FILES = ["012_offline_sync.sql"];
 
 async function migrate() {
     try {
@@ -56,6 +61,9 @@ async function migrate() {
             ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS rotated_at TIMESTAMPTZ;
             CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family_id ON refresh_tokens(family_id);
 
+            -- Workout status (added by hand on older databases)
+            ALTER TABLE workouts ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'completed';
+
             -- Admin infrastructure
             ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT DEFAULT 0;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS is_disabled BOOLEAN DEFAULT FALSE;
@@ -86,9 +94,14 @@ async function migrate() {
 
             CREATE INDEX IF NOT EXISTS idx_deleted_accounts_deleted_at ON deleted_accounts(deleted_at DESC);
         `);
+
+        for (const file of SQL_FILES) {
+            await pool.query(fs.readFileSync(path.join(__dirname, "sql", file), "utf8"));
+        }
         console.log("Migration successful!");
     } catch (e) {
         console.error("Migration failed:", e.message);
+        process.exitCode = 1;
     } finally {
         pool.end();
     }
