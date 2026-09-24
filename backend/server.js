@@ -43,6 +43,7 @@ const routinesRoutes = require("./routes/routines.routes");
 const prsRoutes      = require("./routes/prs.routes");
 const metricsRoutes  = require("./routes/metrics.routes");
 const adminRoutes    = require("./routes/admin.routes");
+const syncRoutes     = require("./routes/sync.routes");
 
 const pool = require("./config/db");
 
@@ -71,6 +72,7 @@ app.use("/exercises", requireAuth, exerciseRoutes);
 app.use("/routines",  requireAuth, routinesRoutes);
 app.use("/prs",       requireAuth, prsRoutes);
 app.use("/metrics",   requireAuth, metricsRoutes);
+app.use("/sync",      requireAuth, syncRoutes);
 
 // ── Global error capture → admin_info ─────────────────────────────────────────
 // Writes unhandled Express errors to admin_info for the dashboard to surface.
