@@ -2,6 +2,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { getSecureStorage, getStorage } from "./storage.js";
 import { fetchWithTimeout } from "./utils.js";
+import { hasDatabase } from "./db/database.js";
+import { SyncManager } from "./sync/SyncManager.js";
 
 const DataContext = createContext({});
 
@@ -42,6 +44,20 @@ export function DataProvider({ children }) {
   const isAuthenticatedRef = useRef(false);
   const refreshPromiseRef = useRef(null); // the in-flight refresh, shared by all callers
   const sessionRef = useRef(0);           // bumped on login/logout so stale refreshes are dropped
+
+  // Sync engine — only when a local database is registered (mobile). It calls
+  // the latest authFetch through this ref, so it can be created once.
+  const authFetchRef = useRef(null);
+  const syncRef = useRef(null);
+  if (syncRef.current === null && hasDatabase()) {
+    syncRef.current = new SyncManager({
+      fetch: (url, init) => authFetchRef.current(url, init),
+      getApiUrl: () => process.env.NEXT_PUBLIC_API_URL
+        || process.env.EXPO_PUBLIC_API_URL
+        || "https://workout-planner-production-66ce.up.railway.app",
+    });
+  }
+  const [syncStatus, setSyncStatus] = useState(() => syncRef.current?.getStatus() ?? null);
 
   // Keep the ref in sync with state so authFetch always reads the latest value
   useEffect(() => {
@@ -137,6 +153,9 @@ export function DataProvider({ children }) {
       setAccessToken(result.accessToken);
       accessTokenRef.current = result.accessToken;
 
+      // Back online with a valid session: catch up
+      syncRef.current?.requestSync();
+
       return { status: "ok", accessToken: result.accessToken };
     };
 
@@ -225,6 +244,32 @@ export function DataProvider({ children }) {
     // Unreachable: stay signed in and let the caller surface the error.
     return res;
   }, [refreshTokens]);
+  authFetchRef.current = authFetch;
+
+  // ── Sync lifecycle ─────────────────────────────────────────────────────
+  // Runs while signed in; stops (and finishes any run in progress) on sign-out.
+  useEffect(() => {
+    const sync = syncRef.current;
+    if (!sync) return undefined;
+    return sync.subscribe(setSyncStatus);
+  }, []);
+
+  useEffect(() => {
+    const sync = syncRef.current;
+    if (!sync || tokenLoading) return;
+    if (isAuthenticated) {
+      sync.start().then(() => sync.requestSync());
+    } else {
+      sync.stop();
+    }
+  }, [isAuthenticated, tokenLoading]);
+
+  // Trigger a sync now (foreground, back online, pull-to-refresh). No-op on web.
+  const syncNow = useCallback(() => {
+    const sync = syncRef.current;
+    if (!sync || !isAuthenticatedRef.current) return Promise.resolve(null);
+    return sync.requestSync();
+  }, []);
 
   // ── Login ──────────────────────────────────────────────────────────────
   // Called after a successful /auth/login or /auth/register response.
@@ -441,6 +486,8 @@ export function DataProvider({ children }) {
     tokenLoading,         // true only while SecureStore is being read at boot
     isAuthenticated,      // signed in (a refresh token is stored) — gate UI on this, not token
     authFetch,
+    syncStatus,           // { syncing, pending, parked, lastSyncedAt, error, initialSyncDone } — null on web
+    syncNow,
     login,
     logout,
   };

@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppState } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData, fetchWithTimeout } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
@@ -41,10 +42,11 @@ function AppHealthKitProvider({ children }: { children: React.ReactNode }) {
   return <HealthKitProvider enabled={!!isAuthenticated}>{children}</HealthKitProvider>;
 }
 
-/* Re-fetch all data whenever the app returns to the foreground */
-function ForegroundRefresh() {
-  const { prefetchAll, isAuthenticated } = useData() as any;
+/* Sync when the app returns to the foreground or the device comes back online */
+function SyncTriggers() {
+  const { prefetchAll, syncNow, isAuthenticated } = useData() as any;
   const appState = useRef(AppState.currentState);
+  const wasOffline = useRef(false);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
@@ -54,11 +56,21 @@ function ForegroundRefresh() {
         isAuthenticated
       ) {
         prefetchAll();
+        syncNow();
       }
       appState.current = nextState;
     });
     return () => sub.remove();
-  }, [prefetchAll, isAuthenticated]);
+  }, [prefetchAll, syncNow, isAuthenticated]);
+
+  useEffect(() => {
+    return NetInfo.addEventListener((state) => {
+      // isInternetReachable is null while unknown; only a definite false is offline
+      const online = !!state.isConnected && state.isInternetReachable !== false;
+      if (online && wasOffline.current && isAuthenticated) syncNow();
+      wasOffline.current = !online;
+    });
+  }, [syncNow, isAuthenticated]);
 
   return null;
 }
@@ -166,7 +178,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SettingsProvider>
         <DataProvider>
-          <ForegroundRefresh />
+          <SyncTriggers />
           <AuthGuard>
             <AppHealthKitProvider>
               <AppNavigator />
