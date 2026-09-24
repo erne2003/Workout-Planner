@@ -60,7 +60,8 @@
           "NSHealthUpdateUsageDescription": "Virtus Fitness needs access to your sleep and heart rate data to calculate your daily readiness score.",
           "background": true
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": false,

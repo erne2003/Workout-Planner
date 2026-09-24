@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData, fetchWithTimeout } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
 import { HealthKitProvider } from '../hooks/useHealthKit';
+import { registerLocalDatabase } from '../lib/localDatabase';
 
 import { useTheme } from '../hooks/useTheme';
 
@@ -116,6 +117,9 @@ export default function RootLayout() {
           setItemAsync: (key: string, val: string) => SecureStore.setItemAsync(key, val),
           removeItemAsync: (key: string) => SecureStore.deleteItemAsync(key),
         });
+
+        // ── Local database (offline-first data) ─────────────────────────
+        registerLocalDatabase();
 
         // ── Migration: move token from AsyncStorage (old shim) → SecureStore ──
         // Existing users have their token in AsyncStorage. Move it to

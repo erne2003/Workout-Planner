@@ -2,5 +2,8 @@
   "name": "@apex/core",
   "version": "1.0.0",
   "main": "index.js",
+  "scripts": {
+    "test:offline": "node --test \"src/db/*.test.mjs\" \"src/sync/*.test.mjs\""
+  },
   "dependencies": {}
 }

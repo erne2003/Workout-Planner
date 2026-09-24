@@ -6,4 +6,5 @@ export * from './src/SettingsContext.js';
 export * from './src/muscle-paths.js';
 export * from './src/utils.js';
 export * from './src/performance.js';
+export * from './src/db/index.js';
 
