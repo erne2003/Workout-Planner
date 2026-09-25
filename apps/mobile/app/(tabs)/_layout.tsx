@@ -4,13 +4,9 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../hooks/useTheme';
-import { useLogout } from '../../hooks/useLogout';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const { colors, isLight } = useTheme();
-
-  // Warns first if some changes haven't synced (logging out wipes the device's data)
-  const handleLogout = useLogout();
 
   return (
     <View style={[styles.tabBarContainer, { borderTopColor: colors.border }]}>
@@ -108,15 +104,6 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
               </TouchableOpacity>
             );
           })}
-
-          <TouchableOpacity onPress={handleLogout} style={styles.tabButton}>
-            <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <Path d="M9 3H5a1 1 0 00-1 1v14a1 1 0 001 1h4" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" />
-              <Path d="M15 15l4-4-4-4" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              <Line x1="19" y1="11" x2="9" y2="11" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" />
-            </Svg>
-            <Text style={[styles.tabLabel, { color: colors.textTertiary }]}>OUT</Text>
-          </TouchableOpacity>
         </View>
       </BlurView>
     </View>

@@ -54,7 +54,7 @@ Some checks need the TestFlight or development build rather than Metro. In airpl
 | Kill the app mid-sync | Log several workouts offline, reconnect, and kill the app right away | After reopening, everything arrives with no duplicates. |
 | Delete while offline | Airplane mode, delete a routine | It's gone at once, and stays gone after reconnecting. In Supabase the row has `deleted_at` set. |
 | Change on another client | Edit on a second device, or through the REST API | It appears after you bring the app to the foreground. |
-| Logout with unsynced changes | Airplane mode, log a PR, log out | A warning says how many changes would be lost. Cancel keeps everything. "Log Out Anyway" wipes the device. |
+| Logout with unsynced changes | Airplane mode, log a PR, then Settings → Log Out (the only logout button) | A warning says how many changes would be lost. Cancel keeps everything. "Log Out Anyway" wipes the device. |
 | Different account, same device | Log out, then log in as another account | None of the first account's data appears. |
 | Delete account | Settings → Delete Account | You return to the login screen and the device holds no data. |
 | Parked changes | Hard to trigger by hand; covered by the automated tests | Settings shows "N changes couldn't sync" with a Retry button. |
