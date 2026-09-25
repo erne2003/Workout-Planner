@@ -2,21 +2,11 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
-import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../hooks/useTheme';
-import { useData, getStorage } from '@apex/core';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
-  const router = useRouter();
   const { colors, isLight } = useTheme();
-
-  const { setToken, logout: doLogout } = useData() as any;
-
-  const handleLogout = async () => {
-    await doLogout();
-    router.replace("/login");
-  };
 
   return (
     <View style={[styles.tabBarContainer, { borderTopColor: colors.border }]}>
@@ -114,15 +104,6 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
               </TouchableOpacity>
             );
           })}
-
-          <TouchableOpacity onPress={handleLogout} style={styles.tabButton}>
-            <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <Path d="M9 3H5a1 1 0 00-1 1v14a1 1 0 001 1h4" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" />
-              <Path d="M15 15l4-4-4-4" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              <Line x1="19" y1="11" x2="9" y2="11" stroke={colors.textTertiary} strokeWidth="1.8" strokeLinecap="round" />
-            </Svg>
-            <Text style={[styles.tabLabel, { color: colors.textTertiary }]}>OUT</Text>
-          </TouchableOpacity>
         </View>
       </BlurView>
     </View>

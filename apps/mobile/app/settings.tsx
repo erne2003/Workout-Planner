@@ -6,6 +6,8 @@ import { useSettings, useData, getStorage, fetchWithTimeout } from "@apex/core";
 import Svg, { Path, Polyline, Line } from "react-native-svg";
 import { useTheme } from "../hooks/useTheme";
 import { useHealthKit } from "../hooks/useHealthKit";
+import SyncStatusCard from "@/components/SyncStatusCard";
+import { useLogout } from "../hooks/useLogout";
 
 function Toggle({ active, onClick, color }: any) {
   const { colors } = useTheme();
@@ -97,7 +99,9 @@ export default function SettingsPage() {
         Alert.alert("Success", "Account and all associated data deleted successfully.");
         setShowDeleteModal(false);
         setDeletePassword("");
-        logout();
+        // The server confirmed: wipe this device too (nothing left to sync)
+        await doLogout();
+        router.replace("/login");
       } else {
         Alert.alert("Error", data.error || "Failed to delete account");
       }
@@ -108,7 +112,9 @@ export default function SettingsPage() {
     }
   };
 
-  const { token, setToken, logout: doLogout, authFetch } = useData() as any;
+  const { logout: doLogout, authFetch, syncStatus } = useData() as any;
+  // Warns first if some changes haven't synced (logging out wipes the device's data)
+  const logout = useLogout();
   const ctx = useSettings() as any;
 
   useEffect(() => {
@@ -134,10 +140,6 @@ export default function SettingsPage() {
     getStorage()?.setItem("userName", userName);
   };
 
-  const logout = async () => {
-    await doLogout();
-    router.replace("/login");
-  };
 
   return (
     <PageShell title="Settings" backAction={() => router.back()}>
@@ -268,6 +270,14 @@ export default function SettingsPage() {
                 />
               </View>
             </View>
+          </View>
+        )}
+
+        {/* Sync (mobile only: changes are saved on the device first) */}
+        {syncStatus && (
+          <View>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Sync</Text>
+            <SyncStatusCard />
           </View>
         )}
 

@@ -106,7 +106,7 @@ function ExerciseSearch({ onAdd }: any) {
   const [customName, setCustomName] = useState("");
   const [selectedMuscle, setSelectedMuscle] = useState("Chest");
   const { colors, isLight } = useTheme();
-  const { token, authFetch } = useData() as any;
+  const { authFetch, searchExercises } = useData() as any;
 
   const MUSCLE_OPTIONS = [
     "Chest", "Back", "Shoulders", "Biceps", "Triceps", "Abs",
@@ -121,9 +121,8 @@ function ExerciseSearch({ onAdd }: any) {
     const t = setTimeout(async () => {
       setIsLoading(true);
       try {
-        const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/exercises/search?name=${encodeURIComponent(query)}`);
-        const data = res.ok ? await res.json() : [];
-        setResults(data);
+        // Falls back to cached exercises and your history when offline
+        setResults(await searchExercises(query));
       } catch { setResults([]); }
       finally { setIsLoading(false); }
     }, 500);
@@ -447,7 +446,7 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
   // (keyed by uid), and the old exercise's "previous" hints must not show against the new one.
   const [history, setHistory] = useState<{ exerciseId: any; sets: any[] }>({ exerciseId: null, sets: [] });
   const { colors, isLight } = useTheme();
-  const { token, authFetch } = useData() as any;
+  const { getExerciseHistory } = useData() as any;
 
   const exerciseId = exercise.exerciseId || exercise.id;
   const prevSets = history.exerciseId === exerciseId ? history.sets : [];
@@ -455,12 +454,8 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
   useEffect(() => {
     if (!exerciseId || String(exerciseId).startsWith("e")) return;
 
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-    if (!apiUrl) return;
-
     let cancelled = false;
-    authFetch(`${apiUrl}/workouts/history/${exerciseId}`)
-      .then((r: any) => r.ok ? r.json() : [])
+    getExerciseHistory(exerciseId)
       .then((data: any) => { if (!cancelled) setHistory({ exerciseId, sets: Array.isArray(data) ? data : [] }); })
       .catch(() => { if (!cancelled) setHistory({ exerciseId, sets: [] }); });
     return () => { cancelled = true; };
@@ -552,7 +547,10 @@ export default function WorkoutPage() {
   const [routineModified, setRoutineModified] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
 
-  const { workouts, routines: templateRoutines, loading: dataLoading, refresh, token, authFetch } = useData() as any;
+  const {
+    workouts, routines: templateRoutines, loading: dataLoading,
+    logWorkout, saveRoutine, deleteRoutine: removeRoutine,
+  } = useData() as any;
 
   const toDisplayWeight = (lbs: any) => (unit === "kg" ? Number((Number(lbs) / 2.205).toFixed(2)) : Number(lbs));
 
@@ -576,7 +574,9 @@ export default function WorkoutPage() {
     try {
       const target = JSON.parse(raw)[String(exId)];
       const latest = workouts.find((w: any) => w.sets?.some((s: any) => (s.exercise_id || s.id) === exId));
-      return target && latest && String(latest.id) === String(target.basedOnWorkoutId) ? target : null;
+      // Targets saved before the offline-first upgrade point at the server id
+      const latestIds = latest ? [latest.id, latest.server_id].filter((v) => v != null).map(String) : [];
+      return target && latestIds.includes(String(target.basedOnWorkoutId)) ? target : null;
     } catch {
       return null;
     }
@@ -830,6 +830,8 @@ export default function WorkoutPage() {
           .filter((ex: any) => ex.sets.length > 0)
           .map((ex: any) => ({
             exercise_id: ex.exerciseId || ex.id,
+            name: ex.name,
+            muscle_group: ex.muscle || ex.muscle_group,
             sets: ex.sets.length,
             reps: ex.sets[0]?.reps || 10,
             weight: ex.sets[0]?.weight || 0,
@@ -837,52 +839,36 @@ export default function WorkoutPage() {
           }));
 
         if (payloadExercises.length > 0) {
-          const routineRes = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${activeRoutine.id}`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              name: activeRoutine.name,
-              exercises: payloadExercises
-            }),
-          });
-          if (routineRes.ok) refresh("routines");
-          else console.warn("Failed to update routine template:", routineRes.status);
-        }
-      }
-
-      const workoutRes = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: routineName,
-          notes: `Finished with ${Math.round(overallPct)}% completion in ${formatWorkoutTime(elapsed)}`,
-        }),
-      });
-      if (!workoutRes.ok) throw new Error("Failed to create workout");
-      const { id: workoutId } = await workoutRes.json();
-
-      for (let ei = 0; ei < workoutPlan.length; ei++) {
-        const exercise = workoutPlan[ei];
-        const exId = exercise.exerciseId || exercise.id || 1;
-        for (let si = 0; si < exercise.sets.length; si++) {
-          const set = exercise.sets[si];
-          if (set.done) {
-            await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/workouts/${workoutId}/sets`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ exerciseId: exId, setOrder: si + 1, reps: set.reps, weight: unit === "kg" ? Number((Number(set.weight) * 2.205).toFixed(2)) : Number(set.weight), rir: set.rir || 0 }),
-            });
+          try {
+            await saveRoutine({ id: activeRoutine.id, name: activeRoutine.name, exercises: payloadExercises });
+          } catch (e) {
+            console.warn("Failed to update routine template:", e);
           }
         }
       }
+
+      // Saved on the device first; it syncs to the server in the background
+      const workoutSets: any[] = [];
+      workoutPlan.forEach((exercise: any) => {
+        exercise.sets.forEach((set: any, si: number) => {
+          if (!set.done) return;
+          workoutSets.push({
+            exercise_id: exercise.exerciseId || exercise.id || 1,
+            name: exercise.name,
+            muscle_group: exercise.muscle || exercise.muscle_group,
+            set_order: si + 1,
+            reps: set.reps,
+            weight: unit === "kg" ? Number((Number(set.weight) * 2.205).toFixed(2)) : Number(set.weight),
+            rir: set.rir || 0,
+          });
+        });
+      });
+      const workoutId = await logWorkout({
+        name: routineName,
+        notes: `Finished with ${Math.round(overallPct)}% completion in ${formatWorkoutTime(elapsed)}`,
+        sets: workoutSets,
+      });
       setLastWorkoutTime(new Date());
-      refresh("workouts");
       if (summary.exercises.length > 0) {
         // The session is saved, so clear it now; the recap works from its own snapshot
         resetWorkout();
@@ -981,11 +967,7 @@ export default function WorkoutPage() {
       {
         text: "Delete", style: "destructive", onPress: async () => {
           try {
-            await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines/${rId}`, {
-              method: "DELETE",
-            });
-            refresh("workouts");
-            refresh("routines");
+            await removeRoutine(rId);
           } catch (e) {
             console.error(e);
           }
@@ -997,18 +979,10 @@ export default function WorkoutPage() {
   const saveNewRoutine = async () => {
     if (!newRoutineName.trim() || newRoutineConfig.length === 0) return Alert.alert("Error", "Add a name and exercises!");
     try {
-      await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/routines`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name: newRoutineName, exercises: newRoutineConfig }),
-      });
+      await saveRoutine({ name: newRoutineName, exercises: newRoutineConfig });
       setIsCreatingRoutine(false);
       setNewRoutineName("");
       setNewRoutineConfig([]);
-      refresh("workouts");
-      refresh("routines");
     } catch (e) {
       console.error(e);
       Alert.alert("Error", "Failed to save routine");

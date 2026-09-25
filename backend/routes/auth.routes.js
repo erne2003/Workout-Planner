@@ -8,6 +8,7 @@ const { body, validationResult } = require("express-validator");
 
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const ROTATION_GRACE_SECONDS = 60; // a just-rotated refresh token is still accepted this long
 
 const validate = (req, res, next) => {
     const errors = validationResult(req);
@@ -165,45 +166,69 @@ router.post("/refresh", async (req, res) => {
 
         const storedToken = result.rows[0];
 
-        // ── Reuse detection ─────────────────────────────────────
-        // If the token was already revoked, someone is replaying an old token.
-        // Revoke the ENTIRE family to protect the user.
-        if (storedToken.revoked) {
-            await pool.query(
-                `UPDATE refresh_tokens SET revoked = true WHERE family_id = $1`,
-                [storedToken.family_id]
-            );
-            console.error(`[Auth] Refresh token reuse detected for user ${storedToken.user_id}, family ${storedToken.family_id}`);
-            return res.status(401).json({
-                error: "Token reuse detected. All sessions revoked. Please log in again.",
-                code: "TOKEN_REUSE"
+        // Generate a new token pair — embed current token_version — and store the
+        // new refresh token in the SAME family (sliding 30-day window)
+        const issueTokens = async () => {
+            const newAccessToken = generateAccessToken(storedToken.user_id, storedToken.user_name, storedToken.user_token_version ?? 0);
+            const newRefreshToken = generateRefreshToken();
+            await storeRefreshToken(storedToken.user_id, newRefreshToken, storedToken.family_id);
+
+            res.json({
+                accessToken: newAccessToken,
+                refreshToken: newRefreshToken,
+                user: { id: storedToken.user_id, name: storedToken.user_name }
             });
+        };
+
+        if (!storedToken.revoked) {
+            // ── Expiration check ────────────────────────────────
+            if (new Date(storedToken.expires_at) < new Date()) {
+                await pool.query(`DELETE FROM refresh_tokens WHERE id = $1`, [storedToken.id]);
+                return res.status(401).json({ error: "Refresh token expired", code: "REFRESH_EXPIRED" });
+            }
+
+            // ── Valid token — rotate ────────────────────────────
+            // Conditional so two concurrent refreshes can't both rotate it; the
+            // loser falls through to the grace check below.
+            const rotated = await pool.query(
+                `UPDATE refresh_tokens SET revoked = true, rotated_at = NOW()
+                 WHERE id = $1 AND revoked = false`,
+                [storedToken.id]
+            );
+            if (rotated.rowCount === 1) return issueTokens();
         }
 
-        // ── Expiration check ────────────────────────────────────
-        if (new Date(storedToken.expires_at) < new Date()) {
-            await pool.query(`DELETE FROM refresh_tokens WHERE id = $1`, [storedToken.id]);
-            return res.status(401).json({ error: "Refresh token expired", code: "REFRESH_EXPIRED" });
-        }
-
-        // ── Valid token — rotate ────────────────────────────────
-        // 1. Revoke the old token
-        await pool.query(
-            `UPDATE refresh_tokens SET revoked = true WHERE id = $1`,
-            [storedToken.id]
+        // ── Rotation grace ──────────────────────────────────────
+        // A client can lose the response carrying its new token (timeout, app
+        // killed mid-request) and retry with the previous one. Accept that retry
+        // for ROTATION_GRACE_SECONDS after rotation while the family is still live:
+        // revoke the unseen successor and issue a fresh pair. Tokens revoked by
+        // logout or admin action have no rotated_at, so they never qualify.
+        const grace = await pool.query(
+            `UPDATE refresh_tokens SET revoked = true
+             WHERE family_id = $1 AND revoked = false AND expires_at > NOW()
+               AND EXISTS (
+                   SELECT 1 FROM refresh_tokens
+                   WHERE id = $2 AND rotated_at > NOW() - make_interval(secs => $3)
+               )`,
+            [storedToken.family_id, storedToken.id, ROTATION_GRACE_SECONDS]
         );
+        if (grace.rowCount > 0) {
+            console.warn(`[Auth] Refresh token retried within rotation grace for user ${storedToken.user_id}, family ${storedToken.family_id}`);
+            return issueTokens();
+        }
 
-        // 2. Generate new token pair — embed current token_version
-        const newAccessToken = generateAccessToken(storedToken.user_id, storedToken.user_name, storedToken.user_token_version ?? 0);
-        const newRefreshToken = generateRefreshToken();
-
-        // 3. Store new refresh token in the SAME family (sliding 30-day window)
-        await storeRefreshToken(storedToken.user_id, newRefreshToken, storedToken.family_id);
-
-        res.json({
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken,
-            user: { id: storedToken.user_id, name: storedToken.user_name }
+        // ── Reuse detection ─────────────────────────────────────
+        // The token was already revoked and is outside the grace window: someone
+        // is replaying an old token. Revoke the ENTIRE family to protect the user.
+        await pool.query(
+            `UPDATE refresh_tokens SET revoked = true WHERE family_id = $1`,
+            [storedToken.family_id]
+        );
+        console.error(`[Auth] Refresh token reuse detected for user ${storedToken.user_id}, family ${storedToken.family_id}`);
+        return res.status(401).json({
+            error: "Token reuse detected. All sessions revoked. Please log in again.",
+            code: "TOKEN_REUSE"
         });
     } catch (err) {
         console.error("POST /auth/refresh error:", err.message);
