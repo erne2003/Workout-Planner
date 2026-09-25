@@ -123,7 +123,12 @@ async function purgeTombstones() {
 // ── Start ──────────────────────────────────────────────────────────────────────
 // Only when run directly; tests import the app without opening a port.
 if (require.main === module) {
-    app.listen(PORT, () => {
+    // Express 5 passes listen errors (e.g. EADDRINUSE) to this callback
+    app.listen(PORT, (err) => {
+        if (err) {
+            console.error(`Could not start on port ${PORT}: ${err.message}`);
+            process.exit(1);
+        }
         console.log(`Server running on port ${PORT}`);
     });
     setTimeout(purgeTombstones, 60 * 1000).unref();
