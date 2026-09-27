@@ -79,4 +79,15 @@ const updateMuscleGroup = async (exerciseId, muscleGroup) => {
     return result.rows[0];
 };
 
-module.exports = { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup };
+const getExerciseById = async (exerciseId, userId) => {
+    const result = await pool.query(
+        `SELECT e.*, best.weight AS best_weight, best.reps AS best_reps
+         FROM exercises e
+         ${BEST_SET_LATERAL}
+         WHERE e.id = $2`,
+        [userId, exerciseId]
+    );
+    return result.rows[0] || null;
+};
+
+module.exports = { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup, getExerciseById };

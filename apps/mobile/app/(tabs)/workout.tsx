@@ -468,12 +468,14 @@ function SetRow({ exUid, setIdx, set, onToggle, onUpdateSet, onRemoveSet, onSwip
 function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, onOpenMenu, onSwipeOpen, onSwipeClose, disabled }: any) {
   // History is tagged with the exercise it was fetched for: a swap keeps this card mounted
   // (keyed by uid), and the old exercise's "previous" hints must not show against the new one.
-  const [history, setHistory] = useState<{ exerciseId: any; sets: any[] }>({ exerciseId: null, sets: [] });
+  const [history, setHistory] = useState<{ exerciseId: any; sets: any[]; demo_image_url?: string | null; best1RM?: number; bestSetLabel?: string }>({ exerciseId: null, sets: [] });
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const { colors, isLight } = useTheme();
   const { token, authFetch } = useData() as any;
 
   const exerciseId = exercise.exerciseId || exercise.id;
   const prevSets = history.exerciseId === exerciseId ? history.sets : [];
+  const stats = history.exerciseId === exerciseId ? history : null;
 
   useEffect(() => {
     if (!exerciseId || String(exerciseId).startsWith("e")) return;
@@ -483,8 +485,17 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
 
     let cancelled = false;
     authFetch(`${apiUrl}/workouts/history/${exerciseId}`)
-      .then((r: any) => r.ok ? r.json() : [])
-      .then((data: any) => { if (!cancelled) setHistory({ exerciseId, sets: Array.isArray(data) ? data : [] }); })
+      .then((r: any) => r.ok ? r.json() : { sets: [] })
+      .then((data: any) => {
+        if (cancelled) return;
+        setHistory({
+          exerciseId,
+          sets: Array.isArray(data.sets) ? data.sets : [],
+          demo_image_url: data.demo_image_url ?? null,
+          best1RM: data.best1RM,
+          bestSetLabel: data.bestSetLabel,
+        });
+      })
       .catch(() => { if (!cancelled) setHistory({ exerciseId, sets: [] }); });
     return () => { cancelled = true; };
   }, [exerciseId]);
@@ -503,17 +514,39 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
       style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
     >
       <View style={styles.exCardHeader}>
-        <View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
-            <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+          {stats?.demo_image_url ? (
+            <TouchableOpacity onPress={() => setViewingImage(stats.demo_image_url!)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Image source={{ uri: stats.demo_image_url }} style={styles.searchResultThumb} />
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.searchResultThumb, styles.searchResultThumbPlaceholder, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)" }]} />
+          )}
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
+              <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
+            </View>
+            <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
+            {(stats?.best1RM != null || stats?.bestSetLabel) && (
+              <Text style={[styles.searchResultStats, { color: colors.textTertiary }]}>
+                {stats.best1RM != null ? `Best 1RM: ${stats.best1RM}` : ""}
+                {stats.best1RM != null && stats.bestSetLabel ? "  ·  " : ""}
+                {stats.bestSetLabel ? `Best Set: ${stats.bestSetLabel}` : ""}
+              </Text>
+            )}
           </View>
-          <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
         </View>
         <Text style={[styles.exCardDoneCount, { color: allDone ? "#30D158" : colors.textSecondary }]}>
           {done}/{total}
         </Text>
       </View>
+
+      <Modal visible={!!viewingImage} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
+        <TouchableOpacity style={styles.imageModalOverlay} activeOpacity={1} onPress={() => setViewingImage(null)}>
+          {viewingImage && <Image source={{ uri: viewingImage }} style={styles.imageModalFull} resizeMode="contain" />}
+        </TouchableOpacity>
+      </Modal>
 
       <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
         <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: allDone ? "#30D158" : (exercise.accentColor || "#30D158") }]} />
