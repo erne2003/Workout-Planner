@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard, Image } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import CelebrationOverlay from "@/components/CelebrationOverlay";
@@ -53,6 +53,7 @@ function ExerciseSearch({ onAdd }: any) {
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [customName, setCustomName] = useState("");
   const [selectedMuscle, setSelectedMuscle] = useState("Chest");
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const { colors, isLight } = useTheme();
   const { token, authFetch } = useData() as any;
 
@@ -167,10 +168,26 @@ function ExerciseSearch({ onAdd }: any) {
                       setSelectedEx(ex);
                       setQuery(ex.name);
                     }}
-                    style={[styles.searchResultItem, { borderBottomColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)" }]}
+                    style={[styles.searchResultRow, { borderBottomColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)" }]}
                   >
-                    <Text style={[styles.searchResultName, { color: colors.textPrimary }]}>{ex.name}</Text>
-                    <Text style={[styles.searchResultMuscle, { color: colors.textSecondary }]}>{ex.muscle_group || ex.muscle}</Text>
+                    {ex.demo_image_url ? (
+                      <TouchableOpacity onPress={() => setViewingImage(ex.demo_image_url)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Image source={{ uri: ex.demo_image_url }} style={styles.searchResultThumb} />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[styles.searchResultThumb, styles.searchResultThumbPlaceholder, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)" }]} />
+                    )}
+                    <View style={styles.searchResultTextCol}>
+                      <Text style={[styles.searchResultName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                      <Text style={[styles.searchResultMuscle, { color: colors.textSecondary }]}>{ex.muscle_group || ex.muscle}</Text>
+                      {(ex.best1RM != null || ex.bestSetLabel) && (
+                        <Text style={[styles.searchResultStats, { color: colors.textTertiary }]}>
+                          {ex.best1RM != null ? `Best 1RM: ${ex.best1RM}` : ""}
+                          {ex.best1RM != null && ex.bestSetLabel ? "  ·  " : ""}
+                          {ex.bestSetLabel ? `Best Set: ${ex.bestSetLabel}` : ""}
+                        </Text>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -206,6 +223,12 @@ function ExerciseSearch({ onAdd }: any) {
           <Text style={[styles.addBtnText, { color: selectedEx ? "#000" : colors.textTertiary }]}>Add</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={!!viewingImage} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
+        <TouchableOpacity style={styles.imageModalOverlay} activeOpacity={1} onPress={() => setViewingImage(null)}>
+          {viewingImage && <Image source={{ uri: viewingImage }} style={styles.imageModalFull} resizeMode="contain" />}
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -1343,11 +1366,44 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  searchResultRow: {
+    padding: 12,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  searchResultThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+  },
+  searchResultThumbPlaceholder: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  searchResultTextCol: {
+    flex: 1,
+    gap: 2,
+  },
   searchResultName: {
     fontWeight: "700", color: "#fff", fontSize: 14,
   },
   searchResultMuscle: {
     fontSize: 11, color: "rgba(255,255,255,0.4)",
+  },
+  searchResultStats: {
+    fontSize: 10, fontWeight: "600", marginTop: 2,
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalFull: {
+    width: "90%",
+    height: "70%",
   },
   addBtn: {
     paddingHorizontal: 20,
