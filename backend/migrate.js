@@ -81,10 +81,6 @@ async function migrate() {
             );
 
             CREATE INDEX IF NOT EXISTS idx_deleted_accounts_deleted_at ON deleted_accounts(deleted_at DESC);
-
-            -- Exercise demo images (matched from free-exercise-db, see backend/scratch/backfill_exercise_images.js)
-            ALTER TABLE exercises ADD COLUMN IF NOT EXISTS demo_image_path VARCHAR(255);
-            ALTER TABLE exercises ADD COLUMN IF NOT EXISTS demo_image_fed_id VARCHAR(255);
         `);
         console.log("Migration successful!");
     } catch (e) {

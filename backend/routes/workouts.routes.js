@@ -163,8 +163,8 @@ router.delete("/:id/sets/:setId", async (req, res) => {
 // ── NEW: Previous sets for an exercise ───────────────────────────────────────
 // GET /workouts/history/:exerciseId?userId=1
 // Returns the sets from the last time this user did this exercise, plus its
-// demo image / best1RM / bestSetLabel so the active-workout exercise card can
-// show the same stats as the exercise search list.
+// best1RM/bestSetLabel so the active-workout exercise card can show the same
+// stats as the exercise search list.
 
 router.get("/history/:exerciseId", async (req, res) => {
     const { exerciseId } = req.params;
@@ -173,8 +173,8 @@ router.get("/history/:exerciseId", async (req, res) => {
             getLastSetsForExercise(req.userId, exerciseId),
             getExerciseById(exerciseId, req.userId),
         ]);
-        const { demo_image_url, best1RM, bestSetLabel } = exercise ? attachComputedFields(exercise) : {};
-        res.json({ sets, demo_image_url, best1RM, bestSetLabel });
+        const { best1RM, bestSetLabel } = exercise ? attachComputedFields(exercise) : {};
+        res.json({ sets, best1RM, bestSetLabel });
     } catch (err) {
         console.error("GET /workouts/history/:exerciseId error:", err.message);
         res.status(500).json({ error: "Failed to fetch exercise history" });

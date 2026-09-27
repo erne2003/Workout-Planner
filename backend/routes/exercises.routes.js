@@ -3,7 +3,6 @@ const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 const router = express.Router();
 const { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup } = require("../queries/exercises.queries");
-const { findConfidentImageMatch } = require("../utils/exerciseImageMatch");
 const { attachComputedFields } = require("../utils/exerciseStats");
 
 const exerciseSearchLimiter = rateLimit({
@@ -42,15 +41,10 @@ router.get("/search", exerciseSearchLimiter, async (req, res) => {
             const apiData = response.data;
 
             if (apiData && apiData.length > 0) {
-                const mappedData = apiData.map(ex => {
-                    const match = findConfidentImageMatch(ex.name);
-                    return {
-                        name: ex.name,
-                        muscle: ex.muscle,
-                        demo_image_path: match?.imagePath,
-                        demo_image_fed_id: match?.fedId,
-                    };
-                });
+                const mappedData = apiData.map(ex => ({
+                    name: ex.name,
+                    muscle: ex.muscle
+                }));
                 // 3. Save new exercises to the database
                 const inserted = await insertExercises(mappedData);
                 exercises = inserted.map((ex) => ({ ...ex, best_weight: null, best_reps: null }));
@@ -103,8 +97,7 @@ router.post("/", async (req, res) => {
     try {
         const { name, muscle } = req.body;
         if (!name || !muscle) return res.status(400).json({ error: "name and muscle are required" });
-        const match = findConfidentImageMatch(name);
-        const inserted = await insertExercises([{ name, muscle, demo_image_path: match?.imagePath, demo_image_fed_id: match?.fedId }]);
+        const inserted = await insertExercises([{ name, muscle }]);
         res.status(201).json(attachComputedFields({ ...inserted[0], best_weight: null, best_reps: null }));
     } catch (err) {
         console.error("POST /exercises error:", err.message);

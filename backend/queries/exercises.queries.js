@@ -33,13 +33,13 @@ const insertExercises = async (exercises) => {
     let paramIndex = 1;
 
     for (const ex of exercises) {
-        valuesString.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3})`);
-        valuesArray.push(ex.name, ex.muscle, ex.demo_image_path || null, ex.demo_image_fed_id || null);
-        paramIndex += 4;
+        valuesString.push(`($${paramIndex}, $${paramIndex + 1})`);
+        valuesArray.push(ex.name, ex.muscle);
+        paramIndex += 2;
     }
 
     const query = `
-        INSERT INTO exercises (name, muscle_group, demo_image_path, demo_image_fed_id)
+        INSERT INTO exercises (name, muscle_group)
         VALUES ${valuesString.join(", ")}
         RETURNING *
     `;

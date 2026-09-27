@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard, Image, type GestureResponderEvent } from "react-native";
+import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, TextInput, Modal, Alert, Keyboard, type GestureResponderEvent } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import ReanimatedSwipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -105,7 +105,6 @@ function ExerciseSearch({ onAdd }: any) {
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [customName, setCustomName] = useState("");
   const [selectedMuscle, setSelectedMuscle] = useState("Chest");
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const { colors, isLight } = useTheme();
   const { token, authFetch } = useData() as any;
 
@@ -222,13 +221,6 @@ function ExerciseSearch({ onAdd }: any) {
                     }}
                     style={[styles.searchResultRow, { borderBottomColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)" }]}
                   >
-                    {ex.demo_image_url ? (
-                      <TouchableOpacity onPress={() => setViewingImage(ex.demo_image_url)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Image source={{ uri: ex.demo_image_url }} style={styles.searchResultThumb} />
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={[styles.searchResultThumb, styles.searchResultThumbPlaceholder, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)" }]} />
-                    )}
                     <View style={styles.searchResultTextCol}>
                       <Text style={[styles.searchResultName, { color: colors.textPrimary }]}>{ex.name}</Text>
                       <Text style={[styles.searchResultMuscle, { color: colors.textSecondary }]}>{ex.muscle_group || ex.muscle}</Text>
@@ -275,12 +267,6 @@ function ExerciseSearch({ onAdd }: any) {
           <Text style={[styles.addBtnText, { color: selectedEx ? "#000" : colors.textTertiary }]}>Add</Text>
         </TouchableOpacity>
       </View>
-
-      <Modal visible={!!viewingImage} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
-        <TouchableOpacity style={styles.imageModalOverlay} activeOpacity={1} onPress={() => setViewingImage(null)}>
-          {viewingImage && <Image source={{ uri: viewingImage }} style={styles.imageModalFull} resizeMode="contain" />}
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 }
@@ -468,8 +454,7 @@ function SetRow({ exUid, setIdx, set, onToggle, onUpdateSet, onRemoveSet, onSwip
 function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, onOpenMenu, onSwipeOpen, onSwipeClose, disabled }: any) {
   // History is tagged with the exercise it was fetched for: a swap keeps this card mounted
   // (keyed by uid), and the old exercise's "previous" hints must not show against the new one.
-  const [history, setHistory] = useState<{ exerciseId: any; sets: any[]; demo_image_url?: string | null; best1RM?: number; bestSetLabel?: string }>({ exerciseId: null, sets: [] });
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ exerciseId: any; sets: any[]; best1RM?: number; bestSetLabel?: string }>({ exerciseId: null, sets: [] });
   const { colors, isLight } = useTheme();
   const { token, authFetch } = useData() as any;
 
@@ -491,7 +476,6 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
         setHistory({
           exerciseId,
           sets: Array.isArray(data.sets) ? data.sets : [],
-          demo_image_url: data.demo_image_url ?? null,
           best1RM: data.best1RM,
           bestSetLabel: data.bestSetLabel,
         });
@@ -514,39 +498,24 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
       style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
     >
       <View style={styles.exCardHeader}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-          {stats?.demo_image_url ? (
-            <TouchableOpacity onPress={() => setViewingImage(stats.demo_image_url!)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Image source={{ uri: stats.demo_image_url }} style={styles.searchResultThumb} />
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.searchResultThumb, styles.searchResultThumbPlaceholder, { backgroundColor: isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)" }]} />
-          )}
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
-              <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-            </View>
-            <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
-            {(stats?.best1RM != null || stats?.bestSetLabel) && (
-              <Text style={[styles.searchResultStats, { color: colors.textTertiary }]}>
-                {stats.best1RM != null ? `Best 1RM: ${stats.best1RM}` : ""}
-                {stats.best1RM != null && stats.bestSetLabel ? "  ·  " : ""}
-                {stats.bestSetLabel ? `Best Set: ${stats.bestSetLabel}` : ""}
-              </Text>
-            )}
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
+            <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
           </View>
+          <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
+          {(stats?.best1RM != null || stats?.bestSetLabel) && (
+            <Text style={[styles.searchResultStats, { color: colors.textTertiary }]}>
+              {stats.best1RM != null ? `Best 1RM: ${stats.best1RM}` : ""}
+              {stats.best1RM != null && stats.bestSetLabel ? "  ·  " : ""}
+              {stats.bestSetLabel ? `Best Set: ${stats.bestSetLabel}` : ""}
+            </Text>
+          )}
         </View>
         <Text style={[styles.exCardDoneCount, { color: allDone ? "#30D158" : colors.textSecondary }]}>
           {done}/{total}
         </Text>
       </View>
-
-      <Modal visible={!!viewingImage} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
-        <TouchableOpacity style={styles.imageModalOverlay} activeOpacity={1} onPress={() => setViewingImage(null)}>
-          {viewingImage && <Image source={{ uri: viewingImage }} style={styles.imageModalFull} resizeMode="contain" />}
-        </TouchableOpacity>
-      </Modal>
 
       <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
         <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: allDone ? "#30D158" : (exercise.accentColor || "#30D158") }]} />
@@ -1736,15 +1705,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  searchResultThumb: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-  },
-  searchResultThumbPlaceholder: {
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
   searchResultTextCol: {
     flex: 1,
     gap: 2,
@@ -1757,16 +1717,6 @@ const styles = StyleSheet.create({
   },
   searchResultStats: {
     fontSize: 10, fontWeight: "600", marginTop: 2,
-  },
-  imageModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.92)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imageModalFull: {
-    width: "90%",
-    height: "70%",
   },
   addBtn: {
     paddingHorizontal: 20,
