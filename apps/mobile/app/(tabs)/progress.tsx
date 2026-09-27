@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert } from "react-native";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, Keyboard } from "react-native";
 import { useRouter } from "expo-router";
 import PageShell from "@/components/PageShell";
 import {
@@ -244,6 +244,219 @@ function MuscleGroupStats({ workouts, selected, onSelect }: any) {
           <Text style={[styles.volumeDeltaLabel, { color: colors.textTertiary }]}>vs Last Week</Text>
         </View>
       </View>
+    </View>
+  );
+}
+
+/* --- Exercise Performance Explorer ---------------------------- */
+function ExercisePerformanceCard({ workouts, unit }: any) {
+  const { colors, isLight } = useTheme();
+  const [query, setQuery] = useState("");
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+
+  const loggedExercises = useMemo(() => getLoggedExercises(workouts || []), [workouts]);
+
+  // Default to the most recently trained exercise so the card is never blank on first view.
+  const mostRecentExercise = useMemo(() => {
+    if (!workouts || workouts.length === 0) return null;
+    const sorted = [...workouts].sort(
+      (a: any, b: any) => new Date(b.created_at || b.date || 0).getTime() - new Date(a.created_at || a.date || 0).getTime()
+    );
+    for (const w of sorted) {
+      for (const s of w.sets || []) {
+        const name = (s.exercise_name || s.name || "").trim();
+        if (name) return name;
+      }
+    }
+    return null;
+  }, [workouts]);
+
+  useEffect(() => {
+    if (!selectedExercise && mostRecentExercise) setSelectedExercise(mostRecentExercise);
+  }, [mostRecentExercise]);
+
+  const filteredResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return loggedExercises;
+    return loggedExercises.filter((e: any) => e.name.toLowerCase().includes(q));
+  }, [query, loggedExercises]);
+
+  const points = useMemo(
+    () => (selectedExercise ? getExerciseProgressPoints(workouts || [], selectedExercise, "ALL") : []),
+    [workouts, selectedExercise]
+  );
+
+  const convert = (w: number) => (unit === "kg" ? Number((w / 2.205).toFixed(1)) : Math.round(w));
+
+  const stats = useMemo(() => {
+    if (points.length === 0) return null;
+    let best1RM = 0;
+    let bestSet = points[0];
+    let totalVolume = 0;
+    points.forEach((p: any) => {
+      if (p.estimated1RM > best1RM) best1RM = p.estimated1RM;
+      if (p.topSetWeight > bestSet.topSetWeight || (p.topSetWeight === bestSet.topSetWeight && p.topSetReps > bestSet.topSetReps)) {
+        bestSet = p;
+      }
+      totalVolume += p.sessionVolume;
+    });
+
+    const sparkVals = points.map((p: any) => ({ val: convert(p.estimated1RM) }));
+    const sparkData = sparkVals.length === 1 ? [sparkVals[0], sparkVals[0]] : sparkVals;
+    const trendDelta = convert(points[points.length - 1].estimated1RM) - convert(points[0].estimated1RM);
+
+    return {
+      best1RM: convert(best1RM),
+      bestSetWeight: convert(bestSet.topSetWeight),
+      bestSetReps: bestSet.topSetReps,
+      sessions: points.length,
+      totalVolume: convert(totalVolume),
+      lastDate: points[points.length - 1].date,
+      sparkData,
+      trendDelta,
+    };
+  }, [points, unit]);
+
+  const lastDateLabel = stats
+    ? new Date(stats.lastDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : "";
+
+  const dropdownBg = colors.bgDropdown || (isLight ? "#ffffff" : "#1c1c1e");
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.bgCard, borderColor: colors.border, zIndex: 20 }]}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <Text style={[styles.cardHeaderSmall, { color: colors.textSecondary, marginBottom: 0 }]}>Exercise Performance</Text>
+        {loggedExercises.length > 0 && (
+          <Text style={{ fontSize: 10, color: colors.textTertiary, fontWeight: "600" }}>
+            {loggedExercises.length} logged
+          </Text>
+        )}
+      </View>
+
+      {loggedExercises.length === 0 ? (
+        <Text style={{ fontSize: 12, color: colors.textTertiary, textAlign: "center", paddingVertical: 12 }}>
+          Log a set to start tracking your best lifts here.
+        </Text>
+      ) : (
+        <>
+          <View style={{ position: "relative" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TextInput
+                ref={inputRef}
+                value={query || selectedExercise || ""}
+                onFocus={() => { setDropdownOpen(true); setQuery(""); }}
+                onChangeText={(t) => { setQuery(t); setDropdownOpen(true); }}
+                placeholder="Search a logged exercise..."
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="search"
+                style={[
+                  styles.exerciseSearchInput,
+                  { backgroundColor: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.05)", borderColor: colors.border, color: colors.textPrimary },
+                ]}
+              />
+              {selectedExercise && !dropdownOpen && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedExercise(null);
+                    setQuery("");
+                    setDropdownOpen(false);
+                    inputRef.current?.blur();
+                    Keyboard.dismiss();
+                  }}
+                  style={[styles.exerciseClearBtn, { borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.textSecondary, fontWeight: "700", fontSize: 13 }}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {dropdownOpen && (
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={() => {
+                  setQuery("");
+                  setDropdownOpen(false);
+                  inputRef.current?.blur();
+                  Keyboard.dismiss();
+                }}
+                style={styles.exerciseDropdownCatcher}
+              />
+            )}
+
+            {dropdownOpen && (
+              <View style={[styles.exerciseDropdown, { backgroundColor: dropdownBg, borderColor: colors.border }]}>
+                <ScrollView style={{ maxHeight: 220 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                  {filteredResults.length === 0 ? (
+                    <Text style={{ padding: 12, fontSize: 12, color: colors.textTertiary }}>No matching exercises.</Text>
+                  ) : (
+                    filteredResults.map((ex: any) => (
+                      <TouchableOpacity
+                        key={ex.name}
+                        onPress={() => {
+                          setSelectedExercise(ex.name);
+                          setQuery("");
+                          setDropdownOpen(false);
+                          Keyboard.dismiss();
+                        }}
+                        style={[styles.exerciseDropdownRow, { borderBottomColor: colors.border }]}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: ex.name === selectedExercise ? "700" : "500",
+                            color: ex.name === selectedExercise ? colors.accentBlue : colors.textPrimary,
+                          }}
+                        >
+                          {ex.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+
+          {stats && !dropdownOpen && (
+            <View style={{ marginTop: 18 }}>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.liftCardTitle, { color: colors.textSecondary }]}>Best Est. 1RM</Text>
+                  <Text style={[styles.liftCardValue, { color: colors.accentBlue }]}>
+                    {stats.best1RM}
+                    <Text style={[styles.liftCardUnit, { color: colors.textTertiary }]}> {unit}</Text>
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.liftCardTitle, { color: colors.textSecondary }]}>Best Set</Text>
+                  <Text style={[styles.liftCardValue, { color: colors.accentPurple }]}>
+                    {stats.bestSetWeight}
+                    <Text style={[styles.liftCardUnit, { color: colors.textTertiary }]}>×{stats.bestSetReps}</Text>
+                  </Text>
+                </View>
+              </View>
+
+              {stats.sparkData.length > 1 && (
+                <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Sparkline data={stats.sparkData} dataKey="val" color={colors.accentBlue} width={180} height={36} />
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: stats.trendDelta >= 0 ? "#30D158" : "#FF453A" }}>
+                    {stats.trendDelta >= 0 ? "+" : ""}{stats.trendDelta} {unit}
+                  </Text>
+                </View>
+              )}
+
+              <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 12 }}>
+                {stats.sessions} session{stats.sessions === 1 ? "" : "s"} logged · {stats.totalVolume.toLocaleString()} {unit} lifetime volume · Last trained {lastDateLabel}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
     </View>
   );
 }
@@ -1454,6 +1667,13 @@ export function ProgressContent({ onScrubChange }: { onScrubChange?: (v: boolean
         )}
       </View>
 
+      {/* Exercise Performance Explorer */}
+      {dataLoading.workouts ? (
+        <View style={[styles.card, { height: 260, backgroundColor: colors.bgCard, borderColor: colors.border }]} />
+      ) : (
+        <ExercisePerformanceCard workouts={allWorkouts || []} unit={unit} />
+      )}
+
       {/* Exercise Trajectory Chart */}
       <ExerciseTrajectoryChart workouts={allWorkouts || []} unit={unit} onScrubChange={(scrubbing: boolean) => onScrubChange?.(!scrubbing)} />
 
@@ -1741,5 +1961,53 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 10,
     textTransform: "uppercase",
+  },
+  exerciseSearchInput: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  exerciseClearBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Invisible full-bleed tap-catcher rendered behind the dropdown (lower zIndex than
+  // exerciseDropdown below) so a tap anywhere else on the page — including over other
+  // cards further down the scroll view — collapses the dropdown instead of hitting them.
+  exerciseDropdownCatcher: {
+    position: "absolute",
+    top: "100%",
+    left: -1000,
+    right: -1000,
+    height: 2000,
+    zIndex: 5,
+  },
+  exerciseDropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginTop: 6,
+    zIndex: 9999,
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    overflow: "hidden",
+  },
+  exerciseDropdownRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
   },
 });
