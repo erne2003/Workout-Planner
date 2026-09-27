@@ -11,6 +11,8 @@ export function useTheme() {
     colors: {
       bgBase: isLight ? "#ffffff" : "#07070f",
       bgCard: isLight ? "#f2f2f7" : "rgba(255, 255, 255, 0.035)",
+      // bgCard composited over bgBase, for surfaces that must hide what's behind them
+      bgCardSolid: isLight ? "#f2f2f7" : "#101017",
       bgCardBorder: isLight ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.09)",
       border: isLight ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.07)",
       borderStrong: isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.12)",

@@ -65,6 +65,9 @@ export const MUSCLE_WEIGHT = {
   abdominals:  0.06,
 };
 
+/** Canonical muscle groups that count toward readiness and accept overrides. */
+export const MUSCLE_GROUPS = Object.keys(MUSCLE_WEIGHT);
+
 // ─── Inheritance map: sub-muscle / muscle-path IDs → canonical DB group ────
 // Hoisted here so both computeRecovery and computeDynamicRecovery can share it.
 export const INHERITANCE_MAP = {
@@ -159,24 +162,53 @@ export function setLastWorkoutTime(date = new Date()) {
   }
 }
 
-/** Read all manual override soreness levels { muscleName: "fresh"|"moderate"|"sore" }. */
+/**
+ * Re-key a soreness override map by canonical muscle group, so an override set
+ * on any sub-muscle ("upperChest", "deltoids") applies to the whole group.
+ * Older builds stored overrides by body-map path ID; when several legacy keys
+ * collapse into one group, an entry already keyed by the group name wins.
+ * @returns {Record<string, string>}
+ */
+export function normalizeSorenessOverrides(overrides) {
+  const result = {};
+  const fromCanonicalKey = new Set();
+  for (const [key, level] of Object.entries(overrides || {})) {
+    if (!level) continue;
+    const canonical = resolveCanonicalGroup(key);
+    const isCanonicalKey = key.toLowerCase() === canonical;
+    if (fromCanonicalKey.has(canonical) && !isCanonicalKey) continue;
+    result[canonical] = level;
+    if (isCanonicalKey) fromCanonicalKey.add(canonical);
+  }
+  return result;
+}
+
+/**
+ * Read all manual override soreness levels, keyed by canonical muscle group.
+ * @returns {Record<string, string>}
+ */
 export function getMuscleSoreness() {
   const storage = getStorage();
   if (!storage) return {};
   try {
-    return JSON.parse(storage.getItem("muscleSoreness") || "{}");
+    return normalizeSorenessOverrides(JSON.parse(storage.getItem("muscleSoreness") || "{}"));
   } catch {
     return {};
   }
 }
 
-/** Persist a single muscle's manual soreness override. Pass null to clear it. */
+/**
+ * Persist a manual soreness override for the muscle's canonical group. Pass
+ * null to clear it. Rewriting the normalized map also migrates legacy
+ * path-ID keys, so clearing a group can't leave a stale sub-muscle override.
+ */
 export function setMuscleSoreness(muscle, level) {
   const current = getMuscleSoreness();
+  const canonical = resolveCanonicalGroup(muscle);
   if (level === null) {
-    delete current[muscle];
+    delete current[canonical];
   } else {
-    current[muscle] = level;
+    current[canonical] = level;
   }
   const storage = getStorage();
   if (storage) {
@@ -228,26 +260,35 @@ export function computeRecovery(muscles, lastWorkoutTime, manualOverrides) {
 /**
  * Compute recovery dynamically per-muscle by scanning raw `/workouts` history.
  * Uses per-muscle recovery windows from RECOVERY_WINDOW_HOURS based on muscle size.
- * Sub-muscles inherit their parent's recovery window via INHERITANCE_MAP.
+ * Sub-muscles inherit their parent's recovery window via INHERITANCE_MAP, and
+ * manual overrides are looked up by canonical group.
  */
 export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
   const now = Date.now();
   const lastHit = {};
+  const overrides = normalizeSorenessOverrides(manualOverrides);
+
+  const recordHit = (key, wDate) => {
+    if (key && (!lastHit[key] || wDate > lastHit[key])) {
+      lastHit[key] = wDate;
+    }
+  };
 
   workoutsData.forEach(w => {
     const wDate = parseLocalISO(w.created_at);
     w.sets?.forEach(s => {
       const nm = (s.muscle_group || "").toLowerCase();
-      if (nm && (!lastHit[nm] || wDate > lastHit[nm])) {
-        lastHit[nm] = wDate;
-      }
+      // Record under the logged name and its canonical group, so e.g. sets
+      // logged as "abs" also count for "abdominals".
+      recordHit(nm, wDate);
+      recordHit(resolveCanonicalGroup(nm), wDate);
     });
   });
 
   const result = {};
   muscles.forEach(muscle => {
     const mKey = muscle.toLowerCase();
-    const manual = manualOverrides[muscle] ?? null;
+    const manual = overrides[resolveCanonicalGroup(mKey)] ?? null;
 
     // Resolve to canonical group for both time lookup and recovery window
     const canonical = resolveCanonicalGroup(mKey);
@@ -291,6 +332,11 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
  * Untrained muscles are excluded (they must NOT inflate the score at 100%).
  * Weights are renormalized over just the active subset.
  *
+ * Entries are collapsed to their canonical group before weighting, so each
+ * group counts exactly once at its MUSCLE_WEIGHT no matter how many body-map
+ * sub-muscles the caller passed. A group is as recovered as its least
+ * recovered active entry.
+ *
  * @param {Object} muscleRecoveryData - Output of computeDynamicRecovery:
  *   { [muscle]: { pct, hours, status, isManual } }
  * @param {number} [activeWindowDays=7] - Only muscles trained within this many days are included
@@ -298,9 +344,7 @@ export function computeDynamicRecovery(muscles, workoutsData, manualOverrides) {
  */
 export function computeMuscleReadiness(muscleRecoveryData, activeWindowDays = 7) {
   const activeWindowHours = activeWindowDays * 24;
-  let totalWeight = 0;
-  let weightedSum = 0;
-  let activeCount = 0;
+  const groupPct = {};
 
   for (const [muscle, data] of Object.entries(muscleRecoveryData)) {
     // hours === 0 means never trained (was Infinity, set to 0 in computeDynamicRecovery)
@@ -309,11 +353,17 @@ export function computeMuscleReadiness(muscleRecoveryData, activeWindowDays = 7)
     if (data.hours > activeWindowHours && !data.isManual) continue;
 
     const canonical = resolveCanonicalGroup(muscle);
-    const weight = MUSCLE_WEIGHT[canonical] ?? 0;
-    if (weight === 0) continue;
+    if (!MUSCLE_WEIGHT[canonical]) continue;
 
-    totalWeight += weight;
-    weightedSum += data.pct * weight;
+    groupPct[canonical] = Math.min(groupPct[canonical] ?? Infinity, data.pct);
+  }
+
+  let totalWeight = 0;
+  let weightedSum = 0;
+  let activeCount = 0;
+  for (const [group, pct] of Object.entries(groupPct)) {
+    totalWeight += MUSCLE_WEIGHT[group];
+    weightedSum += pct * MUSCLE_WEIGHT[group];
     activeCount++;
   }
 
@@ -484,4 +534,56 @@ export function calculateReadinessScore(data) {
     zHRV,
     zRHR
   };
+}
+
+// Assumed 7.5 hours (450 mins) breakdown: ~15% Deep (68m), ~20% REM (90m), ~65% Core (292m).
+// Stands in for sleep when HealthKit has HRV/RHR but no sleep for last night.
+export const ASSUMED_SLEEP_STAGES = {
+  deepMinutes: 68,
+  remMinutes: 90,
+  coreMinutes: 292,
+  awakeMinutes: 0,
+};
+
+/**
+ * The single readiness number shown across the app. Every screen must use this
+ * so they can't drift apart.
+ *
+ * With HealthKit connected and at least one of sleep/HRV/RHR available, the
+ * score is the composite from calculateReadinessScore (muscle readiness is its
+ * workout component). Otherwise it falls back to muscle readiness alone.
+ *
+ * @returns {{ score: number, muscleScore: number,
+ *   muscleData: Record<string, { status: string, pct: number, isManual: boolean, hours: number }>,
+ *   scoreData: ReturnType<typeof calculateReadinessScore>, hasHealthData: boolean }}
+ *   muscleData is keyed by canonical group (MUSCLE_GROUPS).
+ */
+export function computeOverallReadiness({
+  workouts = [],
+  overrides = {},
+  healthData = null,
+  hasHealthPermission = false,
+} = {}) {
+  const muscleData = computeDynamicRecovery(MUSCLE_GROUPS, workouts, overrides);
+  const muscleScore = computeMuscleReadiness(muscleData).score;
+
+  const hasSleep = healthData?.sleepStages != null;
+  const hasHealthData = hasSleep || healthData?.todayHRV != null || healthData?.todayRHR != null;
+
+  const scoreData = calculateReadinessScore({
+    sleepStages: hasSleep ? healthData.sleepStages : ASSUMED_SLEEP_STAGES,
+    todayHRV: healthData?.todayHRV,
+    meanLnHRV: healthData?.meanLnHRV,
+    stdDevLnHRV: healthData?.stdDevLnHRV,
+    todayRHR: healthData?.todayRHR,
+    meanRHR: healthData?.meanRHR,
+    stdDevRHR: healthData?.stdDevRHR,
+    muscleReadinessScore: muscleScore,
+  });
+
+  const score = hasHealthPermission && hasHealthData
+    ? scoreData.compositeReadiness
+    : muscleScore;
+
+  return { score, muscleScore, muscleData, scoreData, hasHealthData };
 }
