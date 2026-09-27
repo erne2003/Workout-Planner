@@ -60,7 +60,7 @@ export function SettingsProvider({ children }) {
   const save = (key, val) => {
     const storage = getStorage();
     if (storage) {
-      storage.setItem(key, val);
+      storage.setItem(key, String(val));
     }
   };
 

@@ -12,6 +12,8 @@ const {
     deleteWorkoutSet,
     getLastSetsForExercise,
 } = require("../queries/workouts.queries");
+const { getExerciseById } = require("../queries/exercises.queries");
+const { attachComputedFields } = require("../utils/exerciseStats");
 const { body, param, validationResult } = require("express-validator");
 
 const validate = (req, res, next) => {
@@ -160,12 +162,19 @@ router.delete("/:id/sets/:setId", async (req, res) => {
 
 // ── NEW: Previous sets for an exercise ───────────────────────────────────────
 // GET /workouts/history/:exerciseId?userId=1
-// Returns the sets from the last time this user did this exercise.
+// Returns the sets from the last time this user did this exercise, plus its
+// best1RM/bestSetLabel so the active-workout exercise card can show the same
+// stats as the exercise search list.
 
 router.get("/history/:exerciseId", async (req, res) => {
     const { exerciseId } = req.params;
     try {
-        res.json(await getLastSetsForExercise(req.userId, exerciseId));
+        const [sets, exercise] = await Promise.all([
+            getLastSetsForExercise(req.userId, exerciseId),
+            getExerciseById(exerciseId, req.userId),
+        ]);
+        const { best1RM, bestSetLabel } = exercise ? attachComputedFields(exercise) : {};
+        res.json({ sets, best1RM, bestSetLabel });
     } catch (err) {
         console.error("GET /workouts/history/:exerciseId error:", err.message);
         res.status(500).json({ error: "Failed to fetch exercise history" });

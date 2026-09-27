@@ -218,10 +218,19 @@ function ExerciseSearch({ onAdd }: any) {
                       setSelectedEx(ex);
                       setQuery(ex.name);
                     }}
-                    style={[styles.searchResultItem, { borderBottomColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)" }]}
+                    style={[styles.searchResultRow, { borderBottomColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)" }]}
                   >
-                    <Text style={[styles.searchResultName, { color: colors.textPrimary }]}>{ex.name}</Text>
-                    <Text style={[styles.searchResultMuscle, { color: colors.textSecondary }]}>{ex.muscle_group || ex.muscle}</Text>
+                    <View style={styles.searchResultTextCol}>
+                      <Text style={[styles.searchResultName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                      <Text style={[styles.searchResultMuscle, { color: colors.textSecondary }]}>{ex.muscle_group || ex.muscle}</Text>
+                      {(ex.best1RM != null || ex.bestSetLabel) && (
+                        <Text style={[styles.searchResultStats, { color: colors.textTertiary }]}>
+                          {ex.best1RM != null ? `Best 1RM: ${ex.best1RM}` : ""}
+                          {ex.best1RM != null && ex.bestSetLabel ? "  ·  " : ""}
+                          {ex.bestSetLabel ? `Best Set: ${ex.bestSetLabel}` : ""}
+                        </Text>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -444,19 +453,29 @@ function SetRow({ exUid, setIdx, set, onToggle, onUpdateSet, onRemoveSet, onSwip
 function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, onOpenMenu, onSwipeOpen, onSwipeClose, disabled }: any) {
   // History is tagged with the exercise it was fetched for: a swap keeps this card mounted
   // (keyed by uid), and the old exercise's "previous" hints must not show against the new one.
-  const [history, setHistory] = useState<{ exerciseId: any; sets: any[] }>({ exerciseId: null, sets: [] });
+  const [history, setHistory] = useState<{ exerciseId: any; sets: any[]; best1RM?: number; bestSetLabel?: string }>({ exerciseId: null, sets: [] });
   const { colors, isLight } = useTheme();
   const { getExerciseHistory } = useData() as any;
 
   const exerciseId = exercise.exerciseId || exercise.id;
   const prevSets = history.exerciseId === exerciseId ? history.sets : [];
+  const stats = history.exerciseId === exerciseId ? history : null;
 
   useEffect(() => {
     if (!exerciseId || String(exerciseId).startsWith("e")) return;
 
     let cancelled = false;
-    getExerciseHistory(exerciseId)
-      .then((data: any) => { if (!cancelled) setHistory({ exerciseId, sets: Array.isArray(data) ? data : [] }); })
+    authFetch(`${apiUrl}/workouts/history/${exerciseId}`)
+      .then((r: any) => r.ok ? r.json() : { sets: [] })
+      .then((data: any) => {
+        if (cancelled) return;
+        setHistory({
+          exerciseId,
+          sets: Array.isArray(data.sets) ? data.sets : [],
+          best1RM: data.best1RM,
+          bestSetLabel: data.bestSetLabel,
+        });
+      })
       .catch(() => { if (!cancelled) setHistory({ exerciseId, sets: [] }); });
     return () => { cancelled = true; };
   }, [exerciseId]);
@@ -475,12 +494,19 @@ function ExerciseCard({ exercise, onToggle, onUpdateSet, onAddSet, onRemoveSet, 
       style={[styles.exerciseCard, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
     >
       <View style={styles.exCardHeader}>
-        <View>
+        <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={[styles.exColorDot, { backgroundColor: exercise.accentColor || "#30D158" }]} />
             <Text style={[styles.exCardTitle, { color: colors.textPrimary }]}>{exercise.name}</Text>
           </View>
           <Text style={[styles.exCardMuscle, { color: colors.textSecondary }]}>{exercise.muscle}</Text>
+          {(stats?.best1RM != null || stats?.bestSetLabel) && (
+            <Text style={[styles.searchResultStats, { color: colors.textTertiary }]}>
+              {stats.best1RM != null ? `Best 1RM: ${stats.best1RM}` : ""}
+              {stats.best1RM != null && stats.bestSetLabel ? "  ·  " : ""}
+              {stats.bestSetLabel ? `Best Set: ${stats.bestSetLabel}` : ""}
+            </Text>
+          )}
         </View>
         <Text style={[styles.exCardDoneCount, { color: allDone ? "#30D158" : colors.textSecondary }]}>
           {done}/{total}
@@ -1647,11 +1673,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  searchResultRow: {
+    padding: 12,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  searchResultTextCol: {
+    flex: 1,
+    gap: 2,
+  },
   searchResultName: {
     fontWeight: "700", color: "#fff", fontSize: 14,
   },
   searchResultMuscle: {
     fontSize: 11, color: "rgba(255,255,255,0.4)",
+  },
+  searchResultStats: {
+    fontSize: 10, fontWeight: "600", marginTop: 2,
   },
   addBtn: {
     paddingHorizontal: 20,

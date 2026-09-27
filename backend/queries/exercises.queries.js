@@ -1,16 +1,32 @@
 const pool = require("../config/db");
 
-const searchExercises = async (name) => {
+// Attaches each user's heaviest-ever set for that exercise (by weight, then reps
+// as a tiebreak) so the exercise list can show a computed Best 1RM / Best Set.
+const BEST_SET_LATERAL = `
+    LEFT JOIN LATERAL (
+        SELECT ws.weight, ws.reps
+        FROM workout_sets ws
+        JOIN workouts w ON w.id = ws.workout_id
+        WHERE ws.exercise_id = e.id AND w.user_id = $1
+        ORDER BY ws.weight DESC, ws.reps DESC
+        LIMIT 1
+    ) best ON true
+`;
+
+const searchExercises = async (name, userId) => {
     const result = await pool.query(
-        `SELECT * FROM exercises WHERE name ILIKE $1`,
-        [`%${name}%`]
+        `SELECT e.*, best.weight AS best_weight, best.reps AS best_reps
+         FROM exercises e
+         ${BEST_SET_LATERAL}
+         WHERE e.name ILIKE $2`,
+        [userId, `%${name}%`]
     );
     return result.rows;
 };
 
 const insertExercises = async (exercises) => {
     if (!exercises || exercises.length === 0) return [];
-    
+
     // Build values string and array for parameterized insertion
     let valuesString = [];
     let valuesArray = [];
@@ -27,7 +43,7 @@ const insertExercises = async (exercises) => {
         VALUES ${valuesString.join(", ")}
         RETURNING *
     `;
-    
+
     const result = await pool.query(query, valuesArray);
     return result.rows;
 }
@@ -39,14 +55,18 @@ const getUniqueMuscles = async () => {
     return result.rows.map(r => r.muscle_group);
 };
 
-const getAllExercises = async (muscle) => {
-    let query = "SELECT * FROM exercises";
-    let params = [];
+const getAllExercises = async (muscle, userId) => {
+    let query = `
+        SELECT e.*, best.weight AS best_weight, best.reps AS best_reps
+        FROM exercises e
+        ${BEST_SET_LATERAL}
+    `;
+    let params = [userId];
     if (muscle) {
-        query += " WHERE muscle_group ILIKE $1";
+        query += " WHERE e.muscle_group ILIKE $2";
         params.push(`%${muscle}%`);
     }
-    query += " ORDER BY name ASC";
+    query += " ORDER BY e.name ASC";
     const result = await pool.query(query, params);
     return result.rows;
 };
@@ -59,4 +79,15 @@ const updateMuscleGroup = async (exerciseId, muscleGroup) => {
     return result.rows[0];
 };
 
-module.exports = { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup };
+const getExerciseById = async (exerciseId, userId) => {
+    const result = await pool.query(
+        `SELECT e.*, best.weight AS best_weight, best.reps AS best_reps
+         FROM exercises e
+         ${BEST_SET_LATERAL}
+         WHERE e.id = $2`,
+        [userId, exerciseId]
+    );
+    return result.rows[0] || null;
+};
+
+module.exports = { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup, getExerciseById };

@@ -3,6 +3,7 @@ const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 const router = express.Router();
 const { searchExercises, insertExercises, getUniqueMuscles, getAllExercises, updateMuscleGroup } = require("../queries/exercises.queries");
+const { attachComputedFields } = require("../utils/exerciseStats");
 
 const exerciseSearchLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -21,12 +22,12 @@ router.get("/search", exerciseSearchLimiter, async (req, res) => {
 
     try {
         // 1. Search database first
-        let exercises = await searchExercises(name);
+        let exercises = await searchExercises(name, req.userId);
 
         // 2. Fallback to API Ninjas if no results in DB
         if (exercises.length === 0) {
             const apiKey = process.env.API_NINJAS_KEY;
-            
+
             if (!apiKey) {
                 console.warn("API_NINJAS_KEY is missing in environment variables.");
                 return res.status(500).json({ error: "Server configuration error - missing API Ninjas key" });
@@ -46,11 +47,11 @@ router.get("/search", exerciseSearchLimiter, async (req, res) => {
                 }));
                 // 3. Save new exercises to the database
                 const inserted = await insertExercises(mappedData);
-                exercises = inserted;
+                exercises = inserted.map((ex) => ({ ...ex, best_weight: null, best_reps: null }));
             }
         }
 
-        res.json(exercises);
+        res.json(exercises.map(attachComputedFields));
     } catch (error) {
         console.error("GET /exercises/search error:", error.message);
         res.status(500).json({ error: "Failed to search exercises" });
@@ -70,8 +71,8 @@ router.get("/muscles", async (req, res) => {
 router.get("/", async (req, res) => {
     try {
         const { muscle } = req.query;
-        const exercises = await getAllExercises(muscle || null);
-        res.json(exercises);
+        const exercises = await getAllExercises(muscle || null, req.userId);
+        res.json(exercises.map(attachComputedFields));
     } catch (err) {
         console.error("GET /exercises error:", err.message);
         res.status(500).json({ error: "Failed to fetch exercises" });
@@ -97,7 +98,7 @@ router.post("/", async (req, res) => {
         const { name, muscle } = req.body;
         if (!name || !muscle) return res.status(400).json({ error: "name and muscle are required" });
         const inserted = await insertExercises([{ name, muscle }]);
-        res.status(201).json(inserted[0]);
+        res.status(201).json(attachComputedFields({ ...inserted[0], best_weight: null, best_reps: null }));
     } catch (err) {
         console.error("POST /exercises error:", err.message);
         res.status(500).json({ error: "Failed to create exercise" });
