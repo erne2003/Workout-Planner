@@ -5,10 +5,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppState } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData } from '@apex/core';
+import { SettingsProvider, DataProvider, registerStorage, registerSecureStorage, useData, fetchWithTimeout } from '@apex/core';
 import AuthGuard from '../components/AuthGuard';
+import FirstSyncBanner from '../components/FirstSyncBanner';
 import { HealthKitProvider } from '../hooks/useHealthKit';
+import { registerLocalDatabase } from '../lib/localDatabase';
 
 import { useTheme } from '../hooks/useTheme';
 
@@ -36,28 +39,39 @@ function AppNavigator() {
 
 /* One HealthKit connection for the whole app; it only syncs once signed in */
 function AppHealthKitProvider({ children }: { children: React.ReactNode }) {
-  const { token } = useData() as any;
-  return <HealthKitProvider enabled={!!token}>{children}</HealthKitProvider>;
+  const { isAuthenticated } = useData() as any;
+  return <HealthKitProvider enabled={!!isAuthenticated}>{children}</HealthKitProvider>;
 }
 
-/* Re-fetch all data whenever the app returns to the foreground */
-function ForegroundRefresh() {
-  const { prefetchAll, token } = useData() as any;
+/* Sync when the app returns to the foreground or the device comes back online.
+   prefetchAll syncs the local database on mobile (refetches from the API on web). */
+function SyncTriggers() {
+  const { prefetchAll, isAuthenticated } = useData() as any;
   const appState = useRef(AppState.currentState);
+  const wasOffline = useRef(false);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (
         appState.current.match(/inactive|background/) &&
         nextState === 'active' &&
-        token
+        isAuthenticated
       ) {
         prefetchAll();
       }
       appState.current = nextState;
     });
     return () => sub.remove();
-  }, [prefetchAll, token]);
+  }, [prefetchAll, isAuthenticated]);
+
+  useEffect(() => {
+    return NetInfo.addEventListener((state) => {
+      // isInternetReachable is null while unknown; only a definite false is offline
+      const online = !!state.isConnected && state.isInternetReachable !== false;
+      if (online && wasOffline.current && isAuthenticated) prefetchAll();
+      wasOffline.current = !online;
+    });
+  }, [prefetchAll, isAuthenticated]);
 
   return null;
 }
@@ -117,6 +131,9 @@ export default function RootLayout() {
           removeItemAsync: (key: string) => SecureStore.deleteItemAsync(key),
         });
 
+        // ── Local database (offline-first data) ─────────────────────────
+        registerLocalDatabase();
+
         // ── Migration: move token from AsyncStorage (old shim) → SecureStore ──
         // Existing users have their token in AsyncStorage. Move it to
         // SecureStore so they don't get logged out on this update.
@@ -130,17 +147,13 @@ export default function RootLayout() {
           await AsyncStorage.removeItem('token');
         }
 
-        // ── Warm up the backend server before the app renders ───────────
-        // The backend may be on a cold-start hosting tier. Fire a non-blocking
-        // ping so the server is awake when DataContext starts fetching.
+        // ── Warm up the backend server ──────────────────────────────────
+        // The backend may be on a cold-start hosting tier. Fire-and-forget:
+        // boot must never wait on the network, or a sleeping or unreachable
+        // server holds the splash screen.
         const apiUrl = process.env.EXPO_PUBLIC_API_URL;
         if (apiUrl) {
-          try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 5000);
-            await fetch(`${apiUrl}/health`, { signal: controller.signal }).catch(() => {});
-            clearTimeout(timer);
-          } catch { /* best-effort, ignore failures */ }
+          fetchWithTimeout(`${apiUrl}/health`, {}, 5000).catch(() => { /* best-effort */ });
         }
       } catch (e) {
         console.warn(e);
@@ -166,12 +179,13 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SettingsProvider>
         <DataProvider>
-          <ForegroundRefresh />
+          <SyncTriggers />
           <AuthGuard>
             <AppHealthKitProvider>
               <AppNavigator />
             </AppHealthKitProvider>
           </AuthGuard>
+          <FirstSyncBanner />
         </DataProvider>
       </SettingsProvider>
     </GestureHandlerRootView>

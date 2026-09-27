@@ -245,9 +245,9 @@ function StrengthRow({ item }: any) {
 }
 
 /* --- Log PR Card Component ----------------------------------- */
-function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
+function LogPRCard({ unit }: { unit: string }) {
   const { colors, isLight } = useTheme();
-  const { token, authFetch } = useData() as any;
+  const { logPR } = useData() as any;
   const [exercise, setExercise] = useState("bench");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("1");
@@ -271,27 +271,13 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
       const parsedWeight = parseFloat(weight);
       const dbWeight = unit === "kg" ? Number((parsedWeight * 2.205).toFixed(2)) : parsedWeight;
 
-      const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/prs`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          exerciseName: exercise,
-          weight: dbWeight
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to save PR");
-      }
+      await logPR({ exerciseName: exercise, weight: dbWeight });
 
       setCelebrationSubtitle(`${LIFTS.find(l => l.key === exercise)?.label || exercise} · ${weight} ${unit}`);
       setShowCelebration(true);
       setWeight("");
       setReps("1");
       setRir("0");
-      refresh("prs");
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Failed to save PR");
@@ -443,9 +429,9 @@ function LogPRCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
 }
 
 /* --- Log BW Card Component ----------------------------------- */
-function LogBWCard({ refresh, unit }: { refresh: (key: string) => void; unit: string }) {
+function LogBWCard({ unit }: { unit: string }) {
   const { colors, isLight } = useTheme();
-  const { token, authFetch } = useData() as any;
+  const { logMetrics } = useData() as any;
   const [weight, setWeight] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -460,23 +446,11 @@ function LogBWCard({ refresh, unit }: { refresh: (key: string) => void; unit: st
       const parsedWeight = parseFloat(weight);
       const dbWeight = unit === "kg" ? Number((parsedWeight * 2.205).toFixed(2)) : parsedWeight;
       
-      const res = await authFetch(`${process.env.EXPO_PUBLIC_API_URL}/metrics`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          weight: dbWeight
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to save bodyweight");
-      }
+      // Other fields carry forward from the latest snapshot
+      await logMetrics({ weight: dbWeight });
 
       Alert.alert("Success", `Logged bodyweight: ${weight} ${unit}!`);
       setWeight("");
-      refresh("metrics");
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Failed to save bodyweight");
@@ -586,7 +560,7 @@ export function StrengthContent() {
       { muscle: "Core",      score: 0, color: "#FF3B30", prev: 0 },
   ]);
 
-  const { workouts, prs: prData, metrics: metData, loading, refresh, token } = useData() as any;
+  const { workouts, prs: prData, metrics: metData, loading } = useData() as any;
 
   useEffect(() => {
       try {
@@ -787,8 +761,8 @@ export function StrengthContent() {
         )}
       </View>
 
-      <LogPRCard refresh={refresh} unit={unit} />
-      <LogBWCard refresh={refresh} unit={unit} />
+      <LogPRCard unit={unit} />
+      <LogBWCard unit={unit} />
 
       <Text style={[styles.sectionLabel, { marginTop: 16, color: colors.textSecondary }]}>Strength by Muscle Group</Text>
 

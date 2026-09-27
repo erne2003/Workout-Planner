@@ -43,6 +43,7 @@ const routinesRoutes = require("./routes/routines.routes");
 const prsRoutes      = require("./routes/prs.routes");
 const metricsRoutes  = require("./routes/metrics.routes");
 const adminRoutes    = require("./routes/admin.routes");
+const syncRoutes     = require("./routes/sync.routes");
 
 const pool = require("./config/db");
 
@@ -71,6 +72,7 @@ app.use("/exercises", requireAuth, exerciseRoutes);
 app.use("/routines",  requireAuth, routinesRoutes);
 app.use("/prs",       requireAuth, prsRoutes);
 app.use("/metrics",   requireAuth, metricsRoutes);
+app.use("/sync",      requireAuth, syncRoutes);
 
 // ── Global error capture → admin_info ─────────────────────────────────────────
 // Writes unhandled Express errors to admin_info for the dashboard to surface.
@@ -103,7 +105,34 @@ app.use((err, req, res, next) => {
     }
 });
 
+// ── Tombstone purge ───────────────────────────────────────────────────────────
+// Soft-deleted rows are kept 90 days so offline clients can sync the deletion,
+// then purged once a day. Idempotent, so running it on every instance is fine.
+const { TOMBSTONE_RETENTION_DAYS } = require("./config/sync");
+const PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+async function purgeTombstones() {
+    try {
+        const { rows } = await pool.query(`SELECT purge_sync_tombstones($1) AS purged`, [TOMBSTONE_RETENTION_DAYS]);
+        if (rows[0].purged > 0) console.log(`[Sync] Purged ${rows[0].purged} tombstones`);
+    } catch (err) {
+        console.warn("[Sync] Tombstone purge failed:", err.message);
+    }
+}
+
 // ── Start ──────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+// Only when run directly; tests import the app without opening a port.
+if (require.main === module) {
+    // Express 5 passes listen errors (e.g. EADDRINUSE) to this callback
+    app.listen(PORT, (err) => {
+        if (err) {
+            console.error(`Could not start on port ${PORT}: ${err.message}`);
+            process.exit(1);
+        }
+        console.log(`Server running on port ${PORT}`);
+    });
+    setTimeout(purgeTombstones, 60 * 1000).unref();
+    setInterval(purgeTombstones, PURGE_INTERVAL_MS).unref();
+}
+
+module.exports = app;

@@ -28,7 +28,7 @@ const getHistoricalPRs = async (userId) => {
     `SELECT p.id, p.weight, p.achieved_at, e.name as exercise_name 
      FROM prs p
      JOIN exercises e ON p.exercise_id = e.id
-     WHERE p.user_id = $1
+     WHERE p.user_id = $1 AND p.deleted_at IS NULL
      ORDER BY p.achieved_at ASC`,
     [userId]
   );

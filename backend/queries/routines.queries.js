@@ -3,7 +3,7 @@ const pool = require("../config/db");
 // Fetch all routines for a user, including their exercises
 const getRoutinesByUser = async (userId) => {
     const routinesRes = await pool.query(
-        `SELECT * FROM routines WHERE user_id = $1 ORDER BY created_at DESC`,
+        `SELECT * FROM routines WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
         [userId]
     );
 
@@ -14,7 +14,7 @@ const getRoutinesByUser = async (userId) => {
             `SELECT re.*, e.name, e.muscle_group 
              FROM routine_exercises re
              JOIN exercises e ON re.exercise_id = e.id
-             WHERE re.routine_id = $1
+             WHERE re.routine_id = $1 AND re.deleted_at IS NULL
              ORDER BY re.exercise_order ASC`,
             [routine.id]
         );
@@ -56,11 +56,12 @@ const createRoutine = async ({ userId, name, exercises }) => {
     }
 };
 
-// Delete a routine
+// Delete a routine (soft delete — a trigger tombstones its exercises too)
 const deleteRoutine = async (routineId, userId) => {
-    // ON DELETE CASCADE on the FK handles routine_exercises mapping automatically.
     const result = await pool.query(
-        `DELETE FROM routines WHERE id = $1 AND user_id = $2 RETURNING *`,
+        `UPDATE routines SET deleted_at = now()
+         WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+         RETURNING *`,
         [routineId, userId]
     );
     return result.rows[0];
@@ -73,7 +74,7 @@ const updateRoutine = async ({ userId, routineId, name, exercises }) => {
         await client.query("BEGIN");
 
         const routineRes = await client.query(
-            `UPDATE routines SET name = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
+            `UPDATE routines SET name = $1 WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL RETURNING *`,
             [name, routineId, userId]
         );
 
@@ -82,9 +83,9 @@ const updateRoutine = async ({ userId, routineId, name, exercises }) => {
             return null;
         }
 
-        // Delete existing exercise mappings
+        // Tombstone the existing exercise mappings so synced clients drop them too
         await client.query(
-            `DELETE FROM routine_exercises WHERE routine_id = $1`,
+            `UPDATE routine_exercises SET deleted_at = now() WHERE routine_id = $1 AND deleted_at IS NULL`,
             [routineId]
         );
 

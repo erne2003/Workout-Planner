@@ -92,7 +92,7 @@ router.get("/stats", requireAdmin, async (req, res) => {
                 (SELECT COUNT(*) FROM users)                                   AS total_users,
                 (SELECT COUNT(*) FROM users WHERE is_disabled = true)          AS disabled_users,
                 (SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days') AS new_this_week,
-                (SELECT COUNT(DISTINCT user_id) FROM workouts WHERE created_at >= NOW() - INTERVAL '24 hours') AS active_today
+                (SELECT COUNT(DISTINCT user_id) FROM workouts WHERE created_at >= NOW() - INTERVAL '24 hours' AND deleted_at IS NULL) AS active_today
         `);
 
         const errorCount = await pool.query(
@@ -127,11 +127,13 @@ router.get("/users", requireAdmin, async (req, res) => {
             LEFT JOIN (
                 SELECT user_id, COUNT(*) AS workout_count
                 FROM workouts
+                WHERE deleted_at IS NULL
                 GROUP BY user_id
             ) wc ON wc.user_id = u.id
             LEFT JOIN (
                 SELECT user_id, MAX(created_at) AS last_active
                 FROM workouts
+                WHERE deleted_at IS NULL
                 GROUP BY user_id
             ) wl ON wl.user_id = u.id
         `;
@@ -165,8 +167,8 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
         const [statsRes, sessionsRes, metricsRes] = await Promise.all([
             pool.query(
                 `SELECT
-                    (SELECT COUNT(*) FROM workouts WHERE user_id = $1)  AS workout_count,
-                    (SELECT COUNT(*) FROM prs      WHERE user_id = $1)  AS pr_count`,
+                    (SELECT COUNT(*) FROM workouts WHERE user_id = $1 AND deleted_at IS NULL)  AS workout_count,
+                    (SELECT COUNT(*) FROM prs      WHERE user_id = $1 AND deleted_at IS NULL)  AS pr_count`,
                 [userId]
             ),
             pool.query(
@@ -177,7 +179,7 @@ router.get("/users/:id", requireAdmin, async (req, res) => {
                 [userId]
             ),
             pool.query(
-                `SELECT COUNT(*) AS metrics_count FROM body_metrics WHERE user_id = $1`,
+                `SELECT COUNT(*) AS metrics_count FROM body_metrics WHERE user_id = $1 AND deleted_at IS NULL`,
                 [userId]
             ),
         ]);

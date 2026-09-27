@@ -4,11 +4,11 @@ import { useRouter } from "expo-router";
 import Svg, { Path, Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../hooks/useTheme";
-import { useData, fetchWithTimeout } from "@apex/core";
+import { useData } from "@apex/core";
 
 export default function OnboardingPage() {
     const router = useRouter();
-    const { token, authFetch, refresh, prefetchAll } = useData() as any;
+    const { logMetrics } = useData() as any;
     const [years, setYears] = useState("");
     const [weight, setWeight] = useState("");
     const [gender, setGender] = useState<"male" | "female">("male");
@@ -34,32 +34,17 @@ export default function OnboardingPage() {
         }
  
         try {
-            const apiUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:5000";
-            const res = await authFetch(`${apiUrl}/metrics`, {
-                method: "POST",
-                headers: { 
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    trainingYears: parseFloat(years) || 0,
-                    weight: parseFloat(weight),
-                    height: finalHeight,
-                    bodyFat: bodyFat ? parseFloat(bodyFat) : null,
-                    gender: gender
-                })
+            const parsedWeight = parseFloat(weight);
+            if (!Number.isFinite(parsedWeight)) throw new Error("Please enter your bodyweight.");
+
+            // Saved on the device; it syncs to the server in the background
+            await logMetrics({
+                trainingYears: parseFloat(years) || 0,
+                weight: parsedWeight,
+                height: finalHeight,
+                bodyFat: bodyFat ? parseFloat(bodyFat) : null,
+                gender: gender
             });
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || errData.errors?.[0]?.msg || "Failed saving profile.");
-            }
-
-            if (refresh) {
-                refresh("metrics");
-            }
-            if (prefetchAll) {
-                await prefetchAll();
-            }
 
             router.replace("/");
         } catch (err: any) {

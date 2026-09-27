@@ -14,7 +14,7 @@ const logMetrics = async (userId, trainingYears, weight, height, bodyFat, gender
 const getHistoricalMetrics = async (userId) => {
   const result = await pool.query(
     `SELECT * FROM body_metrics
-     WHERE user_id = $1
+     WHERE user_id = $1 AND deleted_at IS NULL
      ORDER BY logged_at ASC`,
     [userId]
   );
@@ -25,7 +25,7 @@ const getHistoricalMetrics = async (userId) => {
 const getLatestMetric = async (userId) => {
   const result = await pool.query(
     `SELECT * FROM body_metrics
-     WHERE user_id = $1
+     WHERE user_id = $1 AND deleted_at IS NULL
      ORDER BY logged_at DESC
      LIMIT 1`,
     [userId]

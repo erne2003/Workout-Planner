@@ -20,9 +20,9 @@ const getWorkoutsByUser = async (userId) => {
             ws.id AS set_id, ws.set_order, ws.reps, ws.weight, ws.rir,
             e.id AS exercise_id, e.name AS exercise_name, e.muscle_group
          FROM workouts w
-         LEFT JOIN workout_sets ws ON w.id = ws.workout_id
+         LEFT JOIN workout_sets ws ON w.id = ws.workout_id AND ws.deleted_at IS NULL
          LEFT JOIN exercises e ON ws.exercise_id = e.id
-         WHERE w.user_id = $1
+         WHERE w.user_id = $1 AND w.deleted_at IS NULL
          ORDER BY w.created_at DESC, ws.set_order ASC`,
         [userId]
     );
@@ -63,7 +63,7 @@ const getWorkoutsByUser = async (userId) => {
 
 const getWorkoutById = async (userId, workoutId) => {
     const workoutResult = await pool.query(
-        `SELECT * FROM workouts WHERE id = $1 AND user_id = $2`,
+        `SELECT * FROM workouts WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
         [workoutId, userId]
     );
     const workout = workoutResult.rows[0];
@@ -73,7 +73,7 @@ const getWorkoutById = async (userId, workoutId) => {
         `SELECT ws.*, e.name AS exercise_name, e.muscle_group
          FROM workout_sets ws
          JOIN exercises e ON ws.exercise_id = e.id
-         WHERE ws.workout_id = $1
+         WHERE ws.workout_id = $1 AND ws.deleted_at IS NULL
          ORDER BY ws.set_order ASC`,
         [workoutId]
     );
@@ -86,16 +86,20 @@ const updateWorkout = async (userId, workoutId, { name, notes }) => {
         `UPDATE workouts
          SET name  = COALESCE($1, name),
              notes = COALESCE($2, notes)
-         WHERE id = $3 AND user_id = $4
+         WHERE id = $3 AND user_id = $4 AND deleted_at IS NULL
          RETURNING *`,
         [name, notes, workoutId, userId]
     );
     return result.rows[0];
 };
 
+// Soft delete: the tombstone lets offline clients learn about the deletion.
+// A trigger tombstones the workout's sets too.
 const deleteWorkout = async (userId, id) => {
     const result = await pool.query(
-        `DELETE FROM workouts WHERE id = $1 AND user_id = $2 RETURNING *`,
+        `UPDATE workouts SET deleted_at = now()
+         WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+         RETURNING *`,
         [id, userId]
     );
     return result.rows[0];
@@ -108,7 +112,7 @@ const getWorkoutSets = async (workoutId) => {
         `SELECT ws.*, e.name AS exercise_name, e.muscle_group
          FROM workout_sets ws
          JOIN exercises e ON ws.exercise_id = e.id
-         WHERE ws.workout_id = $1
+         WHERE ws.workout_id = $1 AND ws.deleted_at IS NULL
          ORDER BY ws.set_order ASC`,
         [workoutId]
     );
@@ -136,6 +140,8 @@ const updateWorkoutSet = async (userId, setId, { reps, weight, rir, setOrder }) 
          WHERE ws.id = $5 
            AND ws.workout_id = w.id 
            AND w.user_id = $6
+           AND ws.deleted_at IS NULL
+           AND w.deleted_at IS NULL
          RETURNING ws.*`,
         [reps, weight, rir, setOrder, setId, userId]
     );
@@ -144,11 +150,12 @@ const updateWorkoutSet = async (userId, setId, { reps, weight, rir, setOrder }) 
 
 const deleteWorkoutSet = async (userId, setId) => {
     const result = await pool.query(
-        `DELETE FROM workout_sets ws
-         USING workouts w
+        `UPDATE workout_sets ws SET deleted_at = now()
+         FROM workouts w
          WHERE ws.id = $1
            AND ws.workout_id = w.id
            AND w.user_id = $2
+           AND ws.deleted_at IS NULL
          RETURNING ws.*`,
         [setId, userId]
     );
@@ -157,7 +164,9 @@ const deleteWorkoutSet = async (userId, setId) => {
 
 const deleteWorkoutSetsByWorkoutId = async (workoutId) => {
     const result = await pool.query(
-        `DELETE FROM workout_sets WHERE workout_id = $1 RETURNING *`,
+        `UPDATE workout_sets SET deleted_at = now()
+         WHERE workout_id = $1 AND deleted_at IS NULL
+         RETURNING *`,
         [workoutId]
     );
     return result.rows;
@@ -176,6 +185,7 @@ const getLastSetsForExercise = async (userId, exerciseId) => {
          JOIN workouts w ON ws.workout_id = w.id
          WHERE w.user_id   = $1
            AND ws.exercise_id = $2
+           AND ws.deleted_at IS NULL
            AND w.id = (
                -- most recent workout for this user that has this exercise
                SELECT w2.id
@@ -183,6 +193,8 @@ const getLastSetsForExercise = async (userId, exerciseId) => {
                JOIN workout_sets ws2 ON ws2.workout_id = w2.id
                WHERE w2.user_id    = $1
                  AND ws2.exercise_id = $2
+                 AND w2.deleted_at IS NULL
+                 AND ws2.deleted_at IS NULL
                ORDER BY w2.created_at DESC
                LIMIT 1
            )
